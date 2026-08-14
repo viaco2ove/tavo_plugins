@@ -1,0 +1,96 @@
+﻿工具名,分类,用途说明(中文),英文说明
+tavo_app_version,系统状态,读取 Tavo 对外展示的版本号字符串。,Read the public Tavo app version string.
+tavo_app_version_number,系统状态,读取 Tavo 的数值构建号（build number）。,Read the numeric Tavo app build number.
+tavo_status,系统状态,返回 Tavo MCP 服务器状态及各类数据仓库资产数量（角色/世界书/对话等计数）。,Return Tavo MCP server status and data-library asset counts.
+tavo_file_delete,文件存储,从对话/全局作用域删除文件。,Delete a file from chat-scoped or global Tavo storage.
+tavo_file_exists,文件存储,检查某文件在对话/全局作用域中是否存在。,Check whether a file exists in chat-scoped or global Tavo storage.
+tavo_file_list,文件存储,列出对话/全局作用域中的文件元数据（分页）。,List paginated file metadata from chat-scoped or global Tavo storage.
+tavo_file_load,文件存储,从对话作用域或全局作用域读取文件内容。,Load file content from chat-scoped or global Tavo storage.
+tavo_file_save,文件存储,在当前对话作用域或全局作用域中保存文件内容。,Save file content in chat-scoped or global Tavo storage.
+tavo_character_create,角色,新建一个角色资产。,Create a Tavo character from CCv3-compatible character data or a full CCv2/CCv3/SillyTavern card.
+tavo_character_delete,角色,删除一个角色资产。,"Write a Tavo data-library asset. Supports dryRun, expectedRevision, and clientRequestId."
+tavo_character_get,角色,按 id 读取单个角色资产（更新前先读取以保留未知字段）。,Read one Tavo asset by id. Call this before updating so unknown fields can be preserved.
+tavo_character_import_card,角色,导入完整 CCv2/CCv3 或 SillyTavern 角色卡，及卡片内嵌的世界书/正则数据。,Import a full CCv2/CCv3 or SillyTavern-compatible character card and its embedded lorebook or regex data.
+tavo_character_search,角色,按名称搜索角色资产（未知 id 时先调用它定位）。,Search Tavo assets by name. Use this before get/update when the id is unknown.
+tavo_character_update,角色,更新一个角色资产（建议先 get 以保留未修改字段）。,Update a Tavo character with CCv3-compatible fields. Read it first to preserve fields not being changed.
+tavo_lorebook_create,世界书,新建一个世界书资产。,Create a lorebook from CCv3 Lorebook data or SillyTavern World Info JSON.
+tavo_lorebook_delete,世界书,删除一个世界书资产。,"Write a Tavo data-library asset. Supports dryRun, expectedRevision, and clientRequestId."
+tavo_lorebook_entry_delete,世界书,删除世界书中的单条 entry。,"Write a Tavo data-library asset. Supports dryRun, expectedRevision, and clientRequestId."
+tavo_lorebook_entry_upsert,世界书,新增或替换单条世界书 entry（兼容 CCv3/SillyTavern 形态）。,"Create or replace one lorebook entry in Tavo, CCv3, or SillyTavern shape."
+tavo_lorebook_get,世界书,按 id 读取单个世界书资产（更新前先读取以保留未知字段）。,Read one Tavo asset by id. Call this before updating so unknown fields can be preserved.
+tavo_lorebook_import,世界书,从外部格式导入世界书（如 CCv3/SillyTavern 等）。,"Import a bare CCv3 Lorebook, standalone lorebook_v3 JSON, or SillyTavern World Info JSON."
+tavo_lorebook_search,世界书,按名称搜索世界书资产（未知 id 时先调用它定位）。,Search Tavo assets by name. Use this before get/update when the id is unknown.
+tavo_lorebook_update,世界书,更新一个世界书资产（建议先 get 以保留未修改字段）。,Update a lorebook using CCv3 Lorebook or SillyTavern World Info fields.
+tavo_regex_create,正则脚本,新建一个正则脚本资产。,"Write a Tavo data-library asset. Supports dryRun, expectedRevision, and clientRequestId."
+tavo_regex_delete,正则脚本,删除一个正则脚本资产。,"Write a Tavo data-library asset. Supports dryRun, expectedRevision, and clientRequestId."
+tavo_regex_entry_delete,正则脚本,删除单条正则脚本 entry。,"Write a Tavo data-library asset. Supports dryRun, expectedRevision, and clientRequestId."
+tavo_regex_entry_upsert,正则脚本,新增或替换单条正则脚本 entry。,"Write a Tavo data-library asset. Supports dryRun, expectedRevision, and clientRequestId."
+tavo_regex_get,正则脚本,按 id 读取单个正则脚本资产（更新前先读取以保留未知字段）。,Read one Tavo asset by id. Call this before updating so unknown fields can be preserved.
+tavo_regex_import,正则脚本,从外部格式导入正则脚本（如 CCv3/SillyTavern 等）。,"Write a Tavo data-library asset. Supports dryRun, expectedRevision, and clientRequestId."
+tavo_regex_search,正则脚本,按名称搜索正则脚本资产（未知 id 时先调用它定位）。,Search Tavo assets by name. Use this before get/update when the id is unknown.
+tavo_regex_test,正则脚本,在本地测试正则脚本是否按预期匹配/替换。,"Write a Tavo data-library asset. Supports dryRun, expectedRevision, and clientRequestId."
+tavo_regex_update,正则脚本,更新一个正则脚本资产（建议先 get 以保留未修改字段）。,"Write a Tavo data-library asset. Supports dryRun, expectedRevision, and clientRequestId."
+tavo_preset_create,生成预设,新建一个生成预设资产。,"Write a Tavo data-library asset. Supports dryRun, expectedRevision, and clientRequestId."
+tavo_preset_delete,生成预设,删除一个生成预设资产。,"Write a Tavo data-library asset. Supports dryRun, expectedRevision, and clientRequestId."
+tavo_preset_entry_delete,生成预设,删除单条生成预设 entry。,"Write a Tavo data-library asset. Supports dryRun, expectedRevision, and clientRequestId."
+tavo_preset_entry_upsert,生成预设,新增或替换单条生成预设 entry。,"Write a Tavo data-library asset. Supports dryRun, expectedRevision, and clientRequestId."
+tavo_preset_get,生成预设,按 id 读取单个生成预设资产（更新前先读取以保留未知字段）。,Read one Tavo asset by id. Call this before updating so unknown fields can be preserved.
+tavo_preset_import,生成预设,从外部格式导入生成预设（如 CCv3/SillyTavern 等）。,"Write a Tavo data-library asset. Supports dryRun, expectedRevision, and clientRequestId."
+tavo_preset_search,生成预设,按名称搜索生成预设资产（未知 id 时先调用它定位）。,Search Tavo assets by name. Use this before get/update when the id is unknown.
+tavo_preset_set_active,生成预设,将某个生成预设设为当前激活预设。,"Write a Tavo data-library asset. Supports dryRun, expectedRevision, and clientRequestId."
+tavo_preset_update,生成预设,更新一个生成预设资产（建议先 get 以保留未修改字段）。,"Write a Tavo data-library asset. Supports dryRun, expectedRevision, and clientRequestId."
+tavo_persona_create,用户人格,新建一个用户人格资产。,"Write a Tavo data-library asset. Supports dryRun, expectedRevision, and clientRequestId."
+tavo_persona_delete,用户人格,删除一个用户人格资产。,"Write a Tavo data-library asset. Supports dryRun, expectedRevision, and clientRequestId."
+tavo_persona_get,用户人格,按 id 读取单个用户人格资产（更新前先读取以保留未知字段）。,Read one Tavo asset by id. Call this before updating so unknown fields can be preserved.
+tavo_persona_search,用户人格,按名称搜索用户人格资产（未知 id 时先调用它定位）。,Search Tavo assets by name. Use this before get/update when the id is unknown.
+tavo_persona_set_active,用户人格,将某个人格设为当前激活人格（用户侧身份）。,"Write a Tavo data-library asset. Supports dryRun, expectedRevision, and clientRequestId."
+tavo_persona_update,用户人格,更新一个用户人格资产（建议先 get 以保留未修改字段）。,"Write a Tavo data-library asset. Supports dryRun, expectedRevision, and clientRequestId."
+tavo_chat_copy,对话/群聊,复制对话（走 provider 克隆逻辑）。,Copy a Tavo chat through provider clone logic.
+tavo_chat_create,对话/群聊,由角色/人格 id 创建一个对话（群聊）。,Create a Tavo chat from character/persona ids.
+tavo_chat_delete,对话/群聊,删除对话（含底层 provider 的清理）。,Delete a Tavo chat through provider cleanup.
+tavo_chat_get,对话/群聊,按 id 读取单个对话的完整信息。,Read one Tavo chat by id.
+tavo_chat_reset,对话/群聊,重置对话的消息与状态。,Reset a Tavo chat messages/state.
+tavo_chat_search,对话/群聊,按显示标题搜索对话。,Search Tavo chats by display title.
+tavo_chat_update,对话/群聊,更新对话的元数据、成员列表与覆盖设置。,"Update chat metadata, members, and overrides."
+tavo_current_chat_get,对话/群聊,读取当前激活的对话。,Read the current active Tavo chat.
+tavo_current_chat_set,对话/群聊,设置当前激活的对话。,Set the current active Tavo chat.
+tavo_theme_create,对话主题,创建自定义对话主题。,Create a custom chat theme.
+tavo_theme_delete,对话主题,删除自定义对话主题（需显式确认重试）。,Delete a custom chat theme with explicit confirmation retry.
+tavo_theme_export,对话主题,将对话主题导出到该对话的内部文件存储。,Export a chat theme to the specified chat internal file store.
+tavo_theme_get,对话主题,按 id 读取一个完整对话主题。,Read one complete chat theme by id.
+tavo_theme_import,对话主题,导入对话级 .thm 主题包（可指定冲突处理策略）。,Import a chat-scoped .thm archive with explicit conflict behavior.
+tavo_theme_search,对话主题,搜索或列出对话主题。,Search or list chat themes.
+tavo_theme_update,对话主题,递归 patch 自定义对话主题。,Recursively patch a custom chat theme.
+tavo_message_append,消息,追加一条用户或助手消息（需提供内容）。,Append a user or assistant message with required content.
+tavo_message_count,消息,统计某对话中的消息数量。,Count messages in a Tavo chat.
+tavo_message_delete,消息,按 id 或索引删除消息。,Delete a message by stable id or index.
+tavo_message_find,消息,按范围/角色/可见性/说话人/内容等条件筛选消息。,"Find messages by inclusive range and role, visibility, speaker, or content filters."
+tavo_message_get,消息,按稳定 id 或漂移索引读取单条消息（id 优先）。,Read one message by stable id or drifting index. Id wins.
+tavo_message_update,消息,按 id 或索引更新消息内容/推理过程/可见性。,"Update message content, reasoning, or visibility by stable id or index."
+tavo_variable_get,变量,按路径从指定作用域读取一个变量。,"Read a variable by path from one explicit global, chat, or message scope."
+tavo_variable_list,变量,列出某个作用域（全局/对话/消息）下完整的变量树。,"List the complete variable tree for one explicit global, chat, or message scope."
+tavo_variable_set,变量,在指定作用域设置一个原始 JSON 变量值。,Set a raw JSON variable value in one explicit scope.
+tavo_variable_unset,变量,从指定作用域移除一个变量路径。,Remove a variable path from one explicit scope.
+tavo_variable_update,变量,在指定作用域浅合并对象变量，或替换其他类型值。,"Shallow-merge object variables, or replace other values, in one explicit scope."
+tavo_memory_append,长期记忆,在不替换已有条目的前提下追加一条或多条长期记忆。,Append one or more long-term memory entries without replacing existing entries.
+tavo_memory_get,长期记忆,读取对话的长期记忆，含是否启用注入。,"Read long-term memory for a Tavo chat, including whether injection is enabled."
+tavo_memory_update,长期记忆,更新长期记忆的启用状态，或整体替换记忆条目。,Update the enabled state and/or replace the long-term memory entries for a Tavo chat.
+tavo_input_append,输入框,向当前激活对话输入框追加文本。,Append text to the current active chat input box.
+tavo_input_clear,输入框,清空当前激活对话输入框。,Clear the current active chat input box.
+tavo_input_get,输入框,读取当前激活对话输入框的现有文本。,Read the current active chat input box text.
+tavo_input_send,输入框,将输入框内容经输入钩子与正常对话流程发送（不等待生成完成）。,"Send the current active chat input through input hooks and the normal chat flow. Returns when accepted, cancelled, busy, or rejected; it does not wait for generation."
+tavo_input_set,输入框,替换当前激活对话输入框的文本。,Replace the current active chat input box text.
+tavo_generate,生成与语音,对对话执行一次非流式文本生成（MCP 生成不弹确认框）。,Run one non-streaming text generation for a Tavo chat. MCP generation does not show a confirmation dialog.
+tavo_image_generate,生成与语音,为对话生成一张图片并保存为持久 Tavo 文件（不弹确认框）。,Generate an image for a Tavo chat and save it as a durable Tavo file. MCP image generation does not show a confirmation dialog.
+tavo_tts_play,生成与语音,用指定角色/人格语音播放文本（不弹确认框，入队即返回）。,"Play text with an explicit configured character or persona voice. Returns after the app shared TTS queue accepts playback, not after playback completes. MCP playback does not show a confirmation dialog."
+tavo_tts_stop,生成与语音,停止当前播放并清空全局 TTS 队列。,Stop active playback and clear the app shared global TTS queue.
+tavo_plugin_get,插件,读取单个已安装插件（含 manifest 与配置）。,"Read one installed Tavo plugin, including manifest and config."
+tavo_plugin_get_runtime_contributions,插件,列出已启用插件向 Tavo 暴露的运行时贡献。,List enabled plugin runtime contributions exposed to Tavo.
+tavo_plugin_install,插件,从 zipBase64 字符串或本地 zipPath 安装插件。,Install a Tavo plugin from zipBase64 or a local zipPath.
+tavo_plugin_package,插件,将插件源码文件打包成可安装的 zip。,Package plugin source files into an installable zip.
+tavo_plugin_reset_config,插件,将插件某个配置重置为 manifest 默认值。,Reset one plugin configuration to manifest defaults.
+tavo_plugin_search,插件,按 id/名称/描述搜索已安装插件。,"Search installed Tavo plugins by id, name, or description."
+tavo_plugin_set_config,插件,设置插件的一个配置项。,Set one plugin configuration value.
+tavo_plugin_set_enabled,插件,启用或禁用某个已安装插件。,Enable or disable an installed plugin.
+tavo_plugin_uninstall,插件,卸载一个已安装插件。,Uninstall an installed Tavo plugin.
+tavo_plugin_validate_manifest,插件,在打包/安装前校验插件 manifest 对象。,Validate a plugin manifest object before packaging or installing.

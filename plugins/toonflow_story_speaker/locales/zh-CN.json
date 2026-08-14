@@ -1,0 +1,10 @@
+{
+  "plugin.name": "Toonflow-角色发言",
+  "plugin.description": "为群聊中的角色生成台词，配合角色编排插件使用。",
+  "sidebar.test": "测试发言",
+  "sidebar.char": "角色列表",
+  "settings.info": "读取当前角色设定，生成自然台词。",
+  "settings.enabled": "启用发言",
+  "settings.temperature": "创造性",
+  "settings.maxTokens": "最大字数"
+}

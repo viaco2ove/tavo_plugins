@@ -1,0 +1,23 @@
+{
+  "plugin.name": "Toonflow-事件管理器",
+  "plugin.description": "故事事件管理器：追踪章节进度、评估完成条件、自动推进章节。与世界书配合使用。",
+  "sidebar.progress": "故事进度",
+  "sidebar.restart": "重新开始",
+  "settings.info": "追踪故事章节进度，在条件满足时自动推进。",
+  "settings.enabled": "启用事件管理",
+  "settings.autoAdvance": "自动推进章节",
+  "settings.showPanel": "显示故事面板",
+  "runtime.chapterCompleted": "章节「{chapter}」已完成！",
+  "runtime.chapterAdvanced": "进入章节「{chapter}」",
+  "runtime.storyCompleted": "故事已完成！",
+  "runtime.storyRestarted": "故事已重新开始",
+  "runtime.noStory": "当前聊天未绑定故事",
+  "runtime.evaluating": "评估完成条件...",
+  "panel.title": "故事进度",
+  "panel.chapter": "当前章节",
+  "panel.progress": "进度",
+  "panel.condition": "完成条件",
+  "panel.completed": "已完成",
+  "panel.noConditions": "无明确条件",
+  "panel.restart": "重新开始"
+}

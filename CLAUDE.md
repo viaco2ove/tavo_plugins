@@ -73,3 +73,6 @@ Detailed design specs are in `md/currdesign/toonflow_story_memory_manager/`:
 3. **Compact/full dual mode**: Compact mode reduces token usage, configurable via settings
 4. **No auto writeback**: Role card patches are stored in `tmm.cards` but not auto-synced back to tavo character cards (avoids confirmation dialogs)
 5. **JSON parsing resilience**: Triple-layer unwrap + safe parse + sanitize for unreliable model output
+
+## git 提交限制
+不允许自己commit 和push 到 git

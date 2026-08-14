@@ -1,0 +1,324 @@
+<!-- toonflow_story_event_manager - story progress panel -->
+<style>
+  #tf-event-panel {
+    position: fixed;
+    width: 260px;
+    background: var(--bg-secondary, #2a2a2a);
+    border: 1px solid var(--border-color, #444);
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+    z-index: 1000;
+    font-family: system-ui, -apple-system, sans-serif;
+    font-size: 12px;
+    color: var(--text-primary, #e0e0e0);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  #tf-event-panel-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 12px;
+    background: var(--bg-tertiary, #333);
+    border-bottom: 1px solid var(--border-color, #444);
+    cursor: move;
+    user-select: none;
+  }
+  #tf-event-panel-title {
+    font-weight: 600;
+    font-size: 13px;
+  }
+  #tf-event-panel-actions {
+    display: flex;
+    gap: 4px;
+  }
+  #tf-event-panel-actions button {
+    background: transparent;
+    border: 1px solid var(--border-color, #555);
+    color: var(--text-secondary, #aaa);
+    border-radius: 4px;
+    padding: 2px 6px;
+    cursor: pointer;
+    font-size: 11px;
+  }
+  #tf-event-panel-content {
+    padding: 10px 12px;
+  }
+  #tf-event-panel-empty {
+    text-align: center;
+    color: var(--text-muted, #888);
+    padding: 20px 0;
+  }
+  .tf-event-chapter {
+    margin-bottom: 12px;
+  }
+  .tf-event-chapter-title {
+    font-weight: 600;
+    color: var(--accent-color, #7cb3ff);
+    margin-bottom: 4px;
+  }
+  .tf-event-progress-bar {
+    width: 100%;
+    height: 6px;
+    background: var(--bg-tertiary, #333);
+    border-radius: 3px;
+    overflow: hidden;
+    margin: 6px 0;
+  }
+  .tf-event-progress-fill {
+    height: 100%;
+    background: var(--accent-color, #7cb3ff);
+    transition: width 0.3s;
+  }
+  .tf-event-chapters {
+    list-style: none;
+    padding: 0;
+    margin: 8px 0 0;
+  }
+  .tf-event-chapters li {
+    padding: 4px 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+  }
+  .tf-event-chapters li.completed {
+    color: var(--text-muted, #888);
+    text-decoration: line-through;
+  }
+  .tf-event-chapters li.current {
+    color: var(--accent-color, #7cb3ff);
+    font-weight: 600;
+  }
+  .tf-event-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--border-color, #444);
+  }
+  .tf-event-chapters li.completed .tf-event-dot {
+    background: #4caf50;
+  }
+  .tf-event-chapters li.current .tf-event-dot {
+    background: var(--accent-color, #7cb3ff);
+  }
+  #tf-event-panel-footer {
+    padding: 6px 12px;
+    border-top: 1px solid var(--border-color, #444);
+    font-size: 10px;
+    color: var(--text-muted, #666);
+    display: flex;
+    justify-content: space-between;
+  }
+  #tf-event-restart-btn {
+    background: var(--bg-tertiary, #333);
+    border: 1px solid var(--border-color, #444);
+    color: var(--text-secondary, #aaa);
+    border-radius: 4px;
+    padding: 3px 10px;
+    cursor: pointer;
+    font-size: 11px;
+  }
+  #tf-event-restart-btn:hover {
+    background: var(--accent-bg, rgba(124, 179, 255, 0.2));
+    border-color: var(--accent-color, #7cb3ff);
+    color: var(--accent-color, #7cb3ff);
+  }
+</style>
+
+<div id="tf-event-panel">
+  <div id="tf-event-panel-header">
+    <span id="tf-event-panel-title">故事进度</span>
+    <div id="tf-event-panel-actions">
+      <button id="tf-event-reset-btn" title="重置位置">↺</button>
+    </div>
+  </div>
+  <div id="tf-event-panel-content">
+    <div id="tf-event-panel-empty">未绑定故事</div>
+    <div id="tf-event-panel-body" style="display: none;">
+      <div class="tf-event-chapter">
+        <div class="tf-event-chapter-title" id="tf-event-current-chapter">第一章</div>
+        <div class="tf-event-progress-bar">
+          <div class="tf-event-progress-fill" id="tf-event-progress-fill" style="width: 0%"></div>
+        </div>
+        <div id="tf-event-progress-text">0%</div>
+      </div>
+      <ul class="tf-event-chapters" id="tf-event-chapters-list"></ul>
+    </div>
+  </div>
+  <div id="tf-event-panel-footer">
+    <span id="tf-event-footer-info"></span>
+    <button id="tf-event-restart-btn">重新开始</button>
+  </div>
+</div>
+
+<script>
+(function() {
+  const NS = 'tf_story';
+  const DEFAULT_POS = { right: 20, bottom: 50 };
+
+  const DEFAULT_I18N = {
+    'panel.title': '故事进度',
+    'panel.chapter': '章节',
+    'panel.progress': '进度',
+    'panel.completed': '已完成',
+    'panel.noConditions': '无明确条件',
+    'panel.restart': '重新开始',
+  };
+
+  function t(key, params) {
+    if (window.tavo && window.tavo.plugin && window.tavo.plugin.i18n) {
+      return window.tavo.plugin.i18n.t(key, params) || DEFAULT_I18N[key] || key;
+    }
+    return DEFAULT_I18N[key] || key;
+  }
+
+  function getPanelPos() {
+    try {
+      if (window.tavo) {
+        const pos = window.tavo.get(NS + '.panelPos');
+        if (pos && typeof pos === 'object') return pos;
+      }
+    } catch (e) {}
+    return DEFAULT_POS;
+  }
+
+  function savePanelPos(pos) {
+    try {
+      if (window.tavo) {
+        window.tavo.update(NS + '.panelPos', pos, 'chat');
+      }
+    } catch (e) {}
+  }
+
+  function applyPanelPos() {
+    const panel = document.getElementById('tf-event-panel');
+    if (!panel) return;
+    const pos = getPanelPos();
+    panel.style.right = (pos.right || DEFAULT_POS.right) + 'px';
+    panel.style.bottom = (pos.bottom || DEFAULT_POS.bottom) + 'px';
+    panel.style.left = 'auto';
+    panel.style.top = 'auto';
+  }
+
+  let isDragging = false;
+  let dragStartX, dragStartY, panelStartRight, panelStartBottom;
+
+  function initDrag() {
+    const panel = document.getElementById('tf-event-panel');
+    const header = document.getElementById('tf-event-panel-header');
+    if (!panel || !header) return;
+
+    header.addEventListener('mousedown', function(e) {
+      if (e.target.closest('#tf-event-panel-actions')) return;
+      isDragging = true;
+      dragStartX = e.clientX;
+      dragStartY = e.clientY;
+      const pos = getPanelPos();
+      panelStartRight = pos.right || DEFAULT_POS.right;
+      panelStartBottom = pos.bottom || DEFAULT_POS.bottom;
+      e.preventDefault();
+    });
+
+    document.addEventListener('mousemove', function(e) {
+      if (!isDragging) return;
+      panel.style.right = (panelStartRight + (dragStartX - e.clientX)) + 'px';
+      panel.style.bottom = (panelStartBottom + (dragStartY - e.clientY)) + 'px';
+      panel.style.left = 'auto';
+      panel.style.top = 'auto';
+    });
+
+    document.addEventListener('mouseup', function() {
+      if (!isDragging) return;
+      isDragging = false;
+      const rect = panel.getBoundingClientRect();
+      savePanelPos({
+        right: window.innerWidth - rect.right,
+        bottom: window.innerHeight - rect.bottom,
+      });
+    });
+  }
+
+  function updatePanel() {
+    let state = null;
+    try {
+      if (window.tavo) {
+        state = window.tavo.get(NS);
+      }
+    } catch (e) {}
+
+    const emptyEl = document.getElementById('tf-event-panel-empty');
+    const bodyEl = document.getElementById('tf-event-panel-body');
+
+    if (!state || !state.chapters?.length) {
+      emptyEl.style.display = 'block';
+      bodyEl.style.display = 'none';
+      return;
+    }
+
+    emptyEl.style.display = 'none';
+    bodyEl.style.display = 'block';
+
+    // Current chapter
+    const currentChapter = state.chapters[state.current_chapter];
+    document.getElementById('tf-event-current-chapter').textContent =
+      currentChapter?.name || '未知章节';
+
+    // Progress
+    const progress = state.progress || 0;
+    document.getElementById('tf-event-progress-fill').style.width = progress + '%';
+    document.getElementById('tf-event-progress-text').textContent =
+      `${state.current_chapter + 1}/${state.chapters.length} (${progress}%)`;
+
+    // Chapter list
+    const listEl = document.getElementById('tf-event-chapters-list');
+    listEl.innerHTML = state.chapters.map((ch, i) => {
+      let cls = '';
+      if (ch.completed) cls = 'completed';
+      else if (i === state.current_chapter) cls = 'current';
+      return `<li class="${cls}"><span class="tf-event-dot"></span>${ch.name}</li>`;
+    }).join('');
+
+    // Footer
+    document.getElementById('tf-event-footer-info').textContent =
+      state.completed ? '故事已完成' : '';
+  }
+
+  function initRestartBtn() {
+    document.getElementById('tf-event-restart-btn').addEventListener('click', function() {
+      if (window.tavo && window.tavo.plugin) {
+        window.tavo.plugin.emit('sidebar:action', 'tf-story-restart');
+      }
+    });
+  }
+
+  function initResetBtn() {
+    document.getElementById('tf-event-reset-btn').addEventListener('click', function() {
+      savePanelPos(DEFAULT_POS);
+      const panel = document.getElementById('tf-event-panel');
+      if (panel) {
+        panel.style.right = DEFAULT_POS.right + 'px';
+        panel.style.bottom = DEFAULT_POS.bottom + 'px';
+        panel.style.left = 'auto';
+        panel.style.top = 'auto';
+      }
+    });
+  }
+
+  function init() {
+    applyPanelPos();
+    initDrag();
+    initRestartBtn();
+    initResetBtn();
+    updatePanel();
+    setInterval(updatePanel, 3000);
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
+})();
+</script>

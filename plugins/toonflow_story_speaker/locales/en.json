@@ -1,0 +1,10 @@
+{
+  "plugin.name": "Toonflow-Speaker",
+  "plugin.description": "Generate dialogue for group chat characters.",
+  "sidebar.test": "Test Speech",
+  "sidebar.char": "Characters",
+  "settings.info": "Read character settings, generate natural dialogue.",
+  "settings.enabled": "Enable",
+  "settings.temperature": "Temperature",
+  "settings.maxTokens": "Max Tokens"
+}

@@ -2,8 +2,8 @@
   "specVersion": 2,
   "id": "com.toonflow.story-memory-manager",
   "name": { "$t": "plugin.name" },
-  "version": "1.0.2",
-  "minAppVersion": "1.0.2",
+  "version": "1.0.0",
+  "minAppVersion": "1.0.0",
   "entry": "entry.js",
   "author": "viaco",
   "description": { "$t": "plugin.description" },
@@ -18,40 +18,22 @@
   "permissions": ["input", "message", "generate", "variable", "file"],
   "contributes": {
     "sidebar": [
-      { "id": "refresh-memory", "label": { "$t": "sidebar.refresh" } },
-      { "id": "inspect-memory", "label": { "$t": "sidebar.inspect" } },
-      { "id": "export-memory", "label": { "$t": "sidebar.export" } },
-      { "id": "writeback-cards", "label": { "$t": "sidebar.writeback" } }
+      { "id": "tmm-refresh", "label": { "$t": "sidebar.refresh" } },
+      { "id": "tmm-inspect", "label": { "$t": "sidebar.inspect" } },
+      { "id": "tmm-export", "label": { "$t": "sidebar.export" } }
     ],
     "htmlFragments": [
-      { "id": "memory-panel", "src": "ui/panel.html", "mount": "/chat/body/end" }
+      { "id": "tmm-panel", "src": "ui/panel.html", "mount": "/chat/body/end" }
     ],
     "settings": {
       "schema": [
         { "type": "info", "text": { "$t": "settings.info" }, "icon": "info" },
         { "key": "enabled", "type": "switch", "label": { "$t": "settings.enabled" }, "default": true },
-        {
-          "key": "payloadMode", "type": "select",
-          "label": { "$t": "settings.payloadMode.label" },
-          "default": "compact",
-          "options": [
-            { "value": "compact", "label": { "$t": "settings.payloadMode.compact" } },
-            { "value": "full", "label": { "$t": "settings.payloadMode.full" } }
-          ]
-        },
         { "key": "refreshInterval", "type": "slider", "label": { "$t": "settings.refreshInterval" }, "min": 1, "max": 10, "step": 1, "default": 3 },
-        { "key": "dialogueWindow", "type": "slider", "label": { "$t": "settings.dialogueWindow" }, "min": 2, "max": 20, "step": 1, "default": 6 },
-        { "key": "factCap", "type": "slider", "label": { "$t": "settings.factCap" }, "min": 4, "max": 40, "step": 1, "default": 12 },
-        { "key": "tagCap", "type": "slider", "label": { "$t": "settings.tagCap" }, "min": 2, "max": 20, "step": 1, "default": 8 },
-        { "type": "break" },
+        { "key": "factCap", "type": "slider", "label": { "$t": "settings.factCap" }, "min": 5, "max": 30, "step": 1, "default": 12 },
+        { "key": "tagCap", "type": "slider", "label": { "$t": "settings.tagCap" }, "min": 3, "max": 20, "step": 1, "default": 8 },
         { "key": "injectEnabled", "type": "switch", "label": { "$t": "settings.injectEnabled" }, "default": true },
-        { "key": "injectBudget", "type": "slider", "label": { "$t": "settings.injectBudget" }, "min": 100, "max": 1500, "step": 50, "default": 400 },
-        { "key": "syncHostMemory", "type": "switch", "label": { "$t": "settings.syncHostMemory" }, "default": false },
-        { "key": "snapshotEnabled", "type": "switch", "label": { "$t": "settings.snapshotEnabled" }, "default": false },
-        { "type": "break" },
-        { "key": "triggerKeywords", "type": "textarea", "label": { "$t": "settings.triggerKeywords" }, "default": { "$t": "settings.triggerKeywords.default" } },
-        { "key": "worldSetting", "type": "textarea", "label": { "$t": "settings.worldSetting" }, "default": "" },
-        { "key": "systemPromptOverride", "type": "textarea", "label": { "$t": "settings.systemPromptOverride" }, "default": "" }
+        { "key": "worldSetting", "type": "textarea", "label": { "$t": "settings.worldSetting" }, "default": "" }
       ]
     }
   }

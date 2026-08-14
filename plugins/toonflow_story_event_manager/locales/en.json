@@ -1,0 +1,23 @@
+{
+  "plugin.name": "Toonflow-Event Manager",
+  "plugin.description": "Story event manager: tracks chapter progress, evaluates completion conditions, auto-advances chapters. Works with worldbooks.",
+  "sidebar.progress": "Story Progress",
+  "sidebar.restart": "Restart Story",
+  "settings.info": "Track story chapter progress and auto-advance when conditions are met.",
+  "settings.enabled": "Enable Event Manager",
+  "settings.autoAdvance": "Auto-advance Chapters",
+  "settings.showPanel": "Show Story Panel",
+  "runtime.chapterCompleted": "Chapter 「{chapter}」 completed!",
+  "runtime.chapterAdvanced": "Entered chapter 「{chapter}」",
+  "runtime.storyCompleted": "Story completed!",
+  "runtime.storyRestarted": "Story restarted",
+  "runtime.noStory": "No story bound to current chat",
+  "runtime.evaluating": "Evaluating conditions...",
+  "panel.title": "Story Progress",
+  "panel.chapter": "Current Chapter",
+  "panel.progress": "Progress",
+  "panel.condition": "Completion Condition",
+  "panel.completed": "Completed",
+  "panel.noConditions": "No specific conditions",
+  "panel.restart": "Restart"
+}
