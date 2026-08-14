@@ -60,6 +60,23 @@ curl -X POST "https://hub.tavo.cc/api/v1/creator/plugins/check-package?lang=zh-C
   ...
 }
 ```
+### 发布插件,不发布就等于不上传。没有记录的
+curl 'https://hub.tavo.cc/api/v1/creator/plugins?lang=zh-CN' \
+  -H 'accept: */*' \
+  -H 'accept-language: zh-CN,zh;q=0.9' \
+  -H 'content-type: multipart/form-data; boundary=----WebKitFormBoundary03ZAJAKbklBLI9e6' \
+  -H 'origin: https://hub.tavoai.dev' \
+  -H 'priority: u=1, i' \
+  -H 'referer: https://hub.tavoai.dev/account/plugins/new' \
+  -H 'sec-ch-ua: "Not A(Brand";v="8", "Chromium";v="132", "Google Chrome";v="132"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' \
+  -H 'sec-fetch-dest: empty' \
+  -H 'sec-fetch-mode: cors' \
+  -H 'sec-fetch-site: cross-site' \
+  -H 'user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36' \
+  -H 'x-sid: {sid}' \
+  --data-raw $'------WebKitFormBoundary03ZAJAKbklBLI9e6\r\nContent-Disposition: form-data; name="metadata"\r\n\r\n{"name":"Toonflow-角色编排","external_url":null,"description":"基于群聊的场景模式编排，动态指定发言者。"}\r\n------WebKitFormBoundary03ZAJAKbklBLI9e6\r\nContent-Disposition: form-data; name="plugin_file"; filename="toonflow_story_multi_character_stage.tpg"\r\nContent-Type: application/octet-stream\r\n\r\n\r\n------WebKitFormBoundary03ZAJAKbklBLI9e6--\r\n'
 
 ### 常见错误
 
