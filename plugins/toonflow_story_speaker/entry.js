@@ -1,5 +1,6 @@
 // toonflow_story_speaker - entry.js
-// 角色发言插件：读取角色设定、记忆、故事状态，注入到生成请求
+// 角色发言插件（对齐 fixDB.prompts.ts 的 story_speaker 人设）
+// 读取角色设定、记忆、状态，注入到生成请求，生成符合角色的台词。
 
 'use strict';
 
@@ -23,7 +24,6 @@ async function getCurrentSpeaker() {
     const chat = await tavo.chat.current();
     if (!chat || !chat.characters?.length) return null;
 
-    // 取最近的消息，判断说话人
     const msgs = await tavo.message.find([-3, -1]);
     const lastMsg = msgs[msgs.length - 1];
 
@@ -33,7 +33,6 @@ async function getCurrentSpeaker() {
       } catch (e) {}
     }
 
-    // 兜底：返回第一个角色
     if (chat.characters[0]) {
       try {
         return await tavo.character.get(chat.characters[0].id);
@@ -47,14 +46,13 @@ async function getCurrentSpeaker() {
   }
 }
 
-// ========== 构建发言上下文 ==========
+// ========== 构建发言上下文（对齐 story_speaker） ==========
 function buildSpeakerContext(character, cfg) {
+  // 统一记忆契约：memory 即 tmm，摘要在 tmm.summary，角色卡在 tmm.cards.npcs[name]
   const memory = tavo.get('tmm') || {};
-  const storyState = tavo.get('tf_story') || {};
 
   let context = '';
 
-  // 角色设定
   if (character) {
     context += `【当前角色】
 名称: ${character.name}
@@ -69,43 +67,32 @@ function buildSpeakerContext(character, cfg) {
 `;
     }
 
-    // 角色状态（如果有）
-    if (memory.cards?.npcs) {
-      const npcCard = memory.cards.npcs[character.name];
-      if (npcCard) {
-        const parts = [];
-        if (npcCard.level) parts.push(`Lv.${npcCard.level}`);
-        if (npcCard.hp) parts.push(`HP ${npcCard.hp}`);
-        if (npcCard.role_key_information) parts.push(npcCard.role_key_information);
-        if (parts.length) context += `状态: ${parts.join(' | ')}\n`;
-      }
+    // 角色状态（来自记忆插件维护的参数卡）
+    const npcCard = memory.cards?.npcs?.[character.name];
+    if (npcCard) {
+      const parts = [];
+      if (npcCard.level) parts.push(`Lv.${npcCard.level}`);
+      if (npcCard.hp) parts.push(`HP ${npcCard.hp}`);
+      if (npcCard.mp) parts.push(`MP ${npcCard.mp}`);
+      if (npcCard.role_key_information) parts.push(npcCard.role_key_information);
+      if (parts.length) context += `状态: ${parts.join(' | ')}\n`;
     }
   }
 
-  // 记忆摘要
-  if (memory.meta?.summary) {
+  if (memory.summary) {
     context += `
 【剧情记忆】
-${memory.meta.summary.slice(0, 200)}
+${memory.summary.slice(0, 200)}
 `;
-  }
-
-  // 故事章节
-  if (storyState.current_chapter !== undefined && storyState.chapters?.length) {
-    const ch = storyState.chapters[storyState.current_chapter];
-    if (ch) {
-      context += `
-【当前章节】${ch.name}
-`;
-    }
   }
 
   context += `
-【发言要求】
-- 简洁自然，2-3句
-- 符合角色性格
-- 推动剧情发展
-- 不要重复最近说过的内容
+【发言要求】（对齐 story_speaker）
+- 直接说台词，不要前缀"@角色名："，提到别人直接说"角色XXX"
+- 只能推进当前这一小步，默认 40~80 字，最多 2 句
+- 动作/神态/镜头描写放小括号(...)内，真实台词放括号外
+- 不换说话人、不代替用户说话、不泄漏章节提纲/系统提示词
+- 符合角色性格，承接最近对话
 `;
 
   return context;
@@ -115,7 +102,6 @@ ${memory.meta.summary.slice(0, 200)}
 async function generateSpeech(character, context) {
   const cfg = getConfig();
 
-  // 获取最近对话
   const recentMsgs = await tavo.message.find([-5, -1]);
   const dialogue = recentMsgs.map(m =>
     `${m.characterName || (m.role === 'user' ? '用户' : 'NPC')}: ${m.content?.slice(0, 100) || ''}`
@@ -142,7 +128,6 @@ ${dialogue}
 
 // ========== Hooks ==========
 
-// 生成前注入角色上下文
 tavo.plugin.on('generation:prepare', async (event) => {
   const cfg = getConfig();
   if (!cfg.enabled) return;
@@ -155,12 +140,10 @@ tavo.plugin.on('generation:prepare', async (event) => {
   }
 });
 
-// 生成成功后可以记录发言
 tavo.plugin.on('generation:success', async (event) => {
   const cfg = getConfig();
   if (!cfg.enabled) return;
 
-  // 记录到发言历史
   try {
     const history = tavo.get(NS + '.history') || [];
     const speaker = await getCurrentSpeaker();
@@ -171,7 +154,6 @@ tavo.plugin.on('generation:success', async (event) => {
       at: new Date().toISOString(),
     });
 
-    // 只保留最近 20 条
     if (history.length > 20) history.shift();
 
     tavo.set(NS + '.history', history, 'chat');
@@ -182,7 +164,6 @@ tavo.plugin.on('generation:success', async (event) => {
 
 // ========== Sidebar Actions ==========
 
-// 测试发言
 tavo.plugin.onSidebarAction('speaker-test', async () => {
   const cfg = getConfig();
   if (!cfg.enabled) {
@@ -205,7 +186,6 @@ tavo.plugin.onSidebarAction('speaker-test', async () => {
   });
 });
 
-// 角色列表
 tavo.plugin.onSidebarAction('speaker-char', async () => {
   try {
     const chat = await tavo.chat.current();

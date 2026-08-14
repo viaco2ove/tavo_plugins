@@ -1,4 +1,4 @@
-<!-- toonflow_story_event_manager - story progress panel -->
+<!-- toonflow_story_event_manager - story status panel (只读，对齐设计图：世界书=上下文注入) -->
 <style>
   #tf-event-panel {
     position: fixed;
@@ -50,66 +50,21 @@
     color: var(--text-muted, #888);
     padding: 20px 0;
   }
-  .tf-event-chapter {
-    margin-bottom: 12px;
-  }
-  .tf-event-chapter-title {
-    font-weight: 600;
-    color: var(--accent-color, #7cb3ff);
-    margin-bottom: 4px;
-  }
-  .tf-event-progress-bar {
-    width: 100%;
-    height: 6px;
-    background: var(--bg-tertiary, #333);
-    border-radius: 3px;
-    overflow: hidden;
-    margin: 6px 0;
-  }
-  .tf-event-progress-fill {
-    height: 100%;
-    background: var(--accent-color, #7cb3ff);
-    transition: width 0.3s;
-  }
-  .tf-event-chapters {
-    list-style: none;
-    padding: 0;
-    margin: 8px 0 0;
-  }
-  .tf-event-chapters li {
-    padding: 4px 0;
+  .tf-event-row {
     display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 11px;
+    justify-content: space-between;
+    padding: 4px 0;
+    font-size: 12px;
   }
-  .tf-event-chapters li.completed {
-    color: var(--text-muted, #888);
-    text-decoration: line-through;
-  }
-  .tf-event-chapters li.current {
-    color: var(--accent-color, #7cb3ff);
-    font-weight: 600;
-  }
-  .tf-event-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--border-color, #444);
-  }
-  .tf-event-chapters li.completed .tf-event-dot {
-    background: #4caf50;
-  }
-  .tf-event-chapters li.current .tf-event-dot {
-    background: var(--accent-color, #7cb3ff);
-  }
+  .tf-event-row .k { color: var(--text-muted, #888); }
+  .tf-event-row .v { color: var(--accent-color, #7cb3ff); font-weight: 600; }
   #tf-event-panel-footer {
     padding: 6px 12px;
     border-top: 1px solid var(--border-color, #444);
     font-size: 10px;
     color: var(--text-muted, #666);
     display: flex;
-    justify-content: space-between;
+    justify-content: flex-end;
   }
   #tf-event-restart-btn {
     background: var(--bg-tertiary, #333);
@@ -129,50 +84,29 @@
 
 <div id="tf-event-panel">
   <div id="tf-event-panel-header">
-    <span id="tf-event-panel-title">故事进度</span>
+    <span id="tf-event-panel-title">故事状态</span>
     <div id="tf-event-panel-actions">
       <button id="tf-event-reset-btn" title="重置位置">↺</button>
     </div>
   </div>
   <div id="tf-event-panel-content">
-    <div id="tf-event-panel-empty">未绑定故事</div>
+    <div id="tf-event-panel-empty">未绑定聊天</div>
     <div id="tf-event-panel-body" style="display: none;">
-      <div class="tf-event-chapter">
-        <div class="tf-event-chapter-title" id="tf-event-current-chapter">第一章</div>
-        <div class="tf-event-progress-bar">
-          <div class="tf-event-progress-fill" id="tf-event-progress-fill" style="width: 0%"></div>
-        </div>
-        <div id="tf-event-progress-text">0%</div>
-      </div>
-      <ul class="tf-event-chapters" id="tf-event-chapters-list"></ul>
+      <div class="tf-event-row"><span class="k">发言模式</span><span class="v" id="tf-event-mode">-</span></div>
+      <div class="tf-event-row"><span class="k">绑定世界书</span><span class="v" id="tf-event-lorebook">-</span></div>
+      <div class="tf-event-row"><span class="k">在场角色</span><span class="v" id="tf-event-chars">-</span></div>
+      <div class="tf-event-row" style="color: var(--text-muted,#888); font-size: 11px; padding-top: 8px;">世界书为上下文注入，不自动推进章节</div>
     </div>
   </div>
   <div id="tf-event-panel-footer">
-    <span id="tf-event-footer-info"></span>
-    <button id="tf-event-restart-btn">重新开始</button>
+    <button id="tf-event-restart-btn">刷新</button>
   </div>
 </div>
 
 <script>
 (function() {
-  const NS = 'tf_story';
+  const NS = 'tf_event';
   const DEFAULT_POS = { right: 20, bottom: 50 };
-
-  const DEFAULT_I18N = {
-    'panel.title': '故事进度',
-    'panel.chapter': '章节',
-    'panel.progress': '进度',
-    'panel.completed': '已完成',
-    'panel.noConditions': '无明确条件',
-    'panel.restart': '重新开始',
-  };
-
-  function t(key, params) {
-    if (window.tavo && window.tavo.plugin && window.tavo.plugin.i18n) {
-      return window.tavo.plugin.i18n.t(key, params) || DEFAULT_I18N[key] || key;
-    }
-    return DEFAULT_I18N[key] || key;
-  }
 
   function getPanelPos() {
     try {
@@ -186,9 +120,7 @@
 
   function savePanelPos(pos) {
     try {
-      if (window.tavo) {
-        window.tavo.update(NS + '.panelPos', pos, 'chat');
-      }
+      if (window.tavo) window.tavo.update(NS + '.panelPos', pos, 'chat');
     } catch (e) {}
   }
 
@@ -202,14 +134,12 @@
     panel.style.top = 'auto';
   }
 
-  let isDragging = false;
-  let dragStartX, dragStartY, panelStartRight, panelStartBottom;
+  let isDragging = false, dragStartX, dragStartY, panelStartRight, panelStartBottom;
 
   function initDrag() {
     const panel = document.getElementById('tf-event-panel');
     const header = document.getElementById('tf-event-panel-header');
     if (!panel || !header) return;
-
     header.addEventListener('mousedown', function(e) {
       if (e.target.closest('#tf-event-panel-actions')) return;
       isDragging = true;
@@ -220,7 +150,6 @@
       panelStartBottom = pos.bottom || DEFAULT_POS.bottom;
       e.preventDefault();
     });
-
     document.addEventListener('mousemove', function(e) {
       if (!isDragging) return;
       panel.style.right = (panelStartRight + (dragStartX - e.clientX)) + 'px';
@@ -228,68 +157,34 @@
       panel.style.left = 'auto';
       panel.style.top = 'auto';
     });
-
     document.addEventListener('mouseup', function() {
       if (!isDragging) return;
       isDragging = false;
       const rect = panel.getBoundingClientRect();
-      savePanelPos({
-        right: window.innerWidth - rect.right,
-        bottom: window.innerHeight - rect.bottom,
-      });
+      savePanelPos({ right: window.innerWidth - rect.right, bottom: window.innerHeight - rect.bottom });
     });
   }
 
   function updatePanel() {
     let state = null;
-    try {
-      if (window.tavo) {
-        state = window.tavo.get(NS);
-      }
-    } catch (e) {}
-
+    try { if (window.tavo) state = window.tavo.get(NS); } catch (e) {}
     const emptyEl = document.getElementById('tf-event-panel-empty');
     const bodyEl = document.getElementById('tf-event-panel-body');
-
-    if (!state || !state.chapters?.length) {
+    if (!state || state.lorebook_count === undefined) {
       emptyEl.style.display = 'block';
       bodyEl.style.display = 'none';
       return;
     }
-
     emptyEl.style.display = 'none';
     bodyEl.style.display = 'block';
-
-    // Current chapter
-    const currentChapter = state.chapters[state.current_chapter];
-    document.getElementById('tf-event-current-chapter').textContent =
-      currentChapter?.name || '未知章节';
-
-    // Progress
-    const progress = state.progress || 0;
-    document.getElementById('tf-event-progress-fill').style.width = progress + '%';
-    document.getElementById('tf-event-progress-text').textContent =
-      `${state.current_chapter + 1}/${state.chapters.length} (${progress}%)`;
-
-    // Chapter list
-    const listEl = document.getElementById('tf-event-chapters-list');
-    listEl.innerHTML = state.chapters.map((ch, i) => {
-      let cls = '';
-      if (ch.completed) cls = 'completed';
-      else if (i === state.current_chapter) cls = 'current';
-      return `<li class="${cls}"><span class="tf-event-dot"></span>${ch.name}</li>`;
-    }).join('');
-
-    // Footer
-    document.getElementById('tf-event-footer-info').textContent =
-      state.completed ? '故事已完成' : '';
+    document.getElementById('tf-event-mode').textContent = state.responseMode || '-';
+    document.getElementById('tf-event-lorebook').textContent = (state.lorebook_count || 0) + ' 个';
+    document.getElementById('tf-event-chars').textContent = (state.character_count || 0) + ' 个';
   }
 
   function initRestartBtn() {
     document.getElementById('tf-event-restart-btn').addEventListener('click', function() {
-      if (window.tavo && window.tavo.plugin) {
-        window.tavo.plugin.emit('sidebar:action', 'tf-story-restart');
-      }
+      if (window.tavo && window.tavo.plugin) window.tavo.plugin.emit('sidebar:action', 'tf-story-restart');
     });
   }
 

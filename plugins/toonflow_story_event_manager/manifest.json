@@ -27,9 +27,7 @@
     "settings": {
       "schema": [
         { "type": "info", "text": { "$t": "settings.info" }, "icon": "info" },
-        { "key": "enabled", "type": "switch", "label": { "$t": "settings.enabled" }, "default": true },
-        { "key": "autoAdvance", "type": "switch", "label": { "$t": "settings.autoAdvance" }, "default": true },
-        { "key": "showPanel", "type": "switch", "label": { "$t": "settings.showPanel" }, "default": true }
+        { "key": "enabled", "type": "switch", "label": { "$t": "settings.enabled" }, "default": true }
       ]
     }
   }
