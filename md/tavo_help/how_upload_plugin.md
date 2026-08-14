@@ -131,7 +131,7 @@ curl 'https://hub.tavo.cc/api/v1/creator/plugins/6a7f0cbd4364bff66349c0fe/check-
   --data-raw $'------WebKitFormBoundaryozpfa3B7r569qBn5\r\nContent-Disposition: form-data; name="plugin_file"; filename="toonflow_story_style.tpg"\r\nContent-Type: application/octet-stream\r\n\r\n\r\n------WebKitFormBoundaryozpfa3B7r569qBn5--\r\n'
 
 
-### 更新后的保存需改
+### 更新后的保存修改
 curl 'https://hub.tavo.cc/api/v1/creator/plugins/6a7f0cbd4364bff66349c0fe/publish?lang=zh-CN' \
   -X 'PATCH' \
   -H 'accept: */*' \
