@@ -1,5 +1,5 @@
 // toonflow_story_event_manager - entry.js
-// 故事事件管理器（对齐设计图约束 #1：世界书 = 上下文注入，不是章节脚本）
+// 故事信息面板与事件管理器（对齐设计图约束 #1：世界书 = 上下文注入，不是章节脚本）
 //
 // UI 形态（参照 toonflow-game 的「故事信息」面板，非浮动）：
 // - 触发按钮直接画在聊天页顶部（ui/story_panel.html，挂载 /chat/body/start），非浮动、始终可见

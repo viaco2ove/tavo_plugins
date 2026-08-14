@@ -1,0 +1,241 @@
+<!-- toonflow_story_style - 气泡样式控制面板 -->
+<!-- 形态：聊天页底部一行紧凑触发器（气泡样式 + ›）；点击展开全屏居中模态，调单条/多条模式与气泡透明度。 -->
+<style>
+  #tf-style-tab {
+    margin: 12px 10px 6px;
+    padding: 9px 14px;
+    background: var(--bg-tertiary, rgba(40,40,40,0.75));
+    border: 1px solid var(--border-color, #333);
+    border-radius: 10px;
+    cursor: pointer;
+    user-select: none;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    color: var(--text-primary, #e8e8e8);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    box-sizing: border-box;
+    transition: border-color 0.15s ease, transform 0.1s ease;
+  }
+  #tf-style-tab:hover { border-color: var(--accent-color, #7cb3ff); }
+  #tf-style-tab:active { transform: scale(0.985); }
+  .tf-style-tab-name { flex: 1; font-weight: 500; }
+  .tf-style-chevron { color: var(--accent-warm, #ff9966); font-size: 18px; font-weight: 700; line-height: 1; }
+
+  #tf-style-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.62);
+    z-index: 1000; display: none; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  }
+  #tf-style-overlay.open { display: block; }
+  .tf-style-modal {
+    background: var(--bg-secondary, #1f1f23); color: var(--text-primary, #e8e8e8);
+    border-radius: 14px; width: min(560px, 92vw); margin: 28px auto;
+    box-shadow: 0 16px 56px rgba(0,0,0,0.55);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif; overflow: hidden; box-sizing: border-box;
+  }
+  .tf-style-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 20px; border-bottom: 1px solid var(--border-color, #2a2a30);
+    position: sticky; top: 0; background: var(--bg-secondary, #1f1f23); z-index: 1;
+  }
+  .tf-style-head h2 { margin: 0; font-size: 16px; font-weight: 600; }
+  .tf-style-close {
+    background: var(--bg-quaternary, #333); border: 1px solid var(--border-color, #444);
+    color: var(--text-secondary, #bbb); border-radius: 8px; padding: 5px 14px; font-size: 12px; cursor: pointer;
+  }
+  .tf-style-close:hover { color: var(--accent-color, #7cb3ff); border-color: var(--accent-color, #7cb3ff); }
+  .tf-style-body { padding: 18px 20px 24px; }
+
+  .tf-row { margin-bottom: 20px; }
+  .tf-row-label { font-size: 13px; color: var(--text-secondary, #bbb); font-weight: 600; margin-bottom: 10px; }
+  .tf-seg { display: flex; gap: 10px; }
+  .tf-seg button {
+    flex: 1; padding: 10px; border-radius: 9px; cursor: pointer; font-size: 13px;
+    background: var(--bg-tertiary, #26262c); border: 1px solid var(--border-color, #333); color: var(--text-secondary, #ccc);
+  }
+  .tf-seg button.active { border-color: var(--accent-color, #7cb3ff); color: var(--text-primary, #fff); background: rgba(124,179,255,0.12); }
+
+  .tf-slider-wrap { display: flex; align-items: center; gap: 12px; }
+  .tf-slider-wrap input[type=range] { flex: 1; accent-color: var(--accent-color, #7cb3ff); }
+  .tf-slider-val { width: 48px; text-align: right; font-size: 13px; color: var(--text-primary, #e8e8e8); font-variant-numeric: tabular-nums; }
+
+  .tf-apply {
+    width: 100%; padding: 11px; border-radius: 10px; cursor: pointer; font-size: 14px; font-weight: 600;
+    background: var(--accent-color, #7cb3ff); color: #08121f; border: none; margin-top: 4px;
+  }
+  .tf-apply:hover { filter: brightness(1.06); }
+  .tf-hint { font-size: 12px; color: var(--text-muted, #888); line-height: 1.6; margin-top: 14px; }
+  .tf-status { font-size: 12px; color: var(--accent-color, #9ec5ff); min-height: 18px; margin-top: 10px; }
+</style>
+
+<div id="tf-style-tab">
+  <span class="tf-style-tab-name">气泡样式</span>
+  <span class="tf-style-chevron">›</span>
+</div>
+
+<div id="tf-style-overlay">
+  <div class="tf-style-modal">
+    <div class="tf-style-head">
+      <h2>气泡样式</h2>
+      <button class="tf-style-close" id="tf-style-close">关闭</button>
+    </div>
+    <div class="tf-style-body">
+      <div class="tf-row">
+        <div class="tf-row-label">显示模式</div>
+        <div class="tf-seg">
+          <button id="tf-mode-single" data-mode="single">单条（仅显示最新台词）</button>
+          <button id="tf-mode-multi" data-mode="multi">多条（默认）</button>
+        </div>
+      </div>
+
+      <div class="tf-row">
+        <div class="tf-row-label">气泡透明度</div>
+        <div class="tf-slider-wrap">
+          <input type="range" id="tf-opacity" min="0" max="100" value="35">
+          <span class="tf-slider-val" id="tf-opacity-val">35%</span>
+        </div>
+      </div>
+
+      <button class="tf-apply" id="tf-style-apply">应用</button>
+      <div class="tf-status" id="tf-style-status"></div>
+      <div class="tf-hint">
+        透明度作用于<b>当前聊天主题</b>的气泡填充色（8 位色值的 Alpha 通道），其他样式（背景色 / 字体色 / 对齐 / 圆角）保持跟随主题。<br>
+        「单条」模式会隐藏历史消息（仅最新一条可见）。隐藏的消息数据仍在，切回「多条」即可恢复显示；注意隐藏的消息不会进入 AI 上下文。
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var T = (typeof tavo !== 'undefined') ? tavo : (window.tavo || null);
+  var _mode = 'single';      // 当前模式（内存态；页面刷新后回到默认 single）
+  var _opacity = 35;         // 当前透明度 %
+  var _applying = false;
+
+  function alphaToHex(pct) {
+    var a = Math.max(0, Math.min(100, pct)) / 100;
+    return Math.round(a * 255).toString(16).toUpperCase().padStart(2, '0');
+  }
+  // 保留原 RGB，仅替换 Alpha（8 位 #AARRGGBB；若为 6 位则补 FF）
+  function patchAlpha(hex8, pct) {
+    hex8 = (hex8 || '').replace('#', '');
+    if (hex8.length === 6) hex8 = 'FF' + hex8;
+    if (hex8.length !== 8) hex8 = 'FF202028';
+    return '#' + alphaToHex(pct) + hex8.slice(2);
+  }
+
+  async function getChat() {
+    try { return T && T.chat ? await T.chat.current() : null; } catch (e) { return null; }
+  }
+
+  // 把气泡透明度写入「当前聊天主题」：只 patch userBubble/characterBubble 的 color，其他字段不动（跟随主题）
+  async function applyOpacity(pct) {
+    var chat = await getChat();
+    if (!chat) throw new Error('未打开聊天');
+    var themeId = chat.theme && (chat.theme.id != null ? chat.theme.id : chat.theme);
+    var theme = themeId ? await T.theme.get(themeId) : null;
+    var ubColor = (theme && theme.userBubble && theme.userBubble.color) || null;
+    var cbColor = (theme && theme.characterBubble && theme.characterBubble.color) || null;
+    var ubNew = patchAlpha(ubColor, pct);
+    var cbNew = patchAlpha(cbColor, pct);
+    if (!themeId) {
+      themeId = await T.theme.create({ name: 'toonflow-story-style', userBubble: { color: ubNew }, characterBubble: { color: cbNew } });
+      await T.chat.update({ theme: themeId });
+    } else {
+      await T.theme.update(themeId, { userBubble: { color: ubNew }, characterBubble: { color: cbNew } });
+    }
+  }
+
+  // 单条模式：隐藏除最后一条外的所有消息
+  async function applySingle() {
+    var count = await T.message.count();
+    for (var i = 0; i < count - 1; i++) {
+      var arr = await T.message.find(i);
+      var m = arr && arr[0];
+      if (m && !m.hidden) { m.hidden = true; await T.message.update(m); }
+    }
+    var lastArr = await T.message.find(-1);
+    var last = lastArr && lastArr[0];
+    if (last && last.hidden) { last.hidden = false; await T.message.update(last); }
+  }
+
+  // 多条模式：全部显示
+  async function applyMulti() {
+    var count = await T.message.count();
+    for (var i = 0; i < count; i++) {
+      var arr = await T.message.find(i);
+      var m = arr && arr[0];
+      if (m && m.hidden) { m.hidden = false; await T.message.update(m); }
+    }
+  }
+
+  async function applyAll() {
+    if (_applying) return;
+    _applying = true;
+    var status = document.getElementById('tf-style-status');
+    try {
+      await applyOpacity(_opacity);
+      if (_mode === 'single') await applySingle(); else await applyMulti();
+      if (status) status.textContent = '已应用：' + (_mode === 'single' ? '单条' : '多条') + ' · 透明度 ' + _opacity + '%';
+    } catch (e) {
+      if (status) status.textContent = '应用失败：' + (e && e.message ? e.message : e);
+    } finally {
+      _applying = false;
+    }
+  }
+
+  function setMode(mode) {
+    _mode = mode;
+    var s = document.getElementById('tf-mode-single');
+    var m = document.getElementById('tf-mode-multi');
+    if (s) s.classList.toggle('active', mode === 'single');
+    if (m) m.classList.toggle('active', mode === 'multi');
+  }
+
+  function openModal() {
+    var o = document.getElementById('tf-style-overlay');
+    if (o) o.classList.add('open');
+  }
+  function closeModal() {
+    var o = document.getElementById('tf-style-overlay');
+    if (o) o.classList.remove('open');
+  }
+
+  // 初始化 UI 默认值
+  setMode(_mode);
+  var slider = document.getElementById('tf-opacity');
+  var sliderVal = document.getElementById('tf-opacity-val');
+  if (slider) {
+    slider.value = _opacity;
+    if (sliderVal) sliderVal.textContent = _opacity + '%';
+    slider.addEventListener('input', function () {
+      _opacity = parseInt(slider.value, 10);
+      if (sliderVal) sliderVal.textContent = _opacity + '%';
+    });
+  }
+
+  // 绑定事件
+  var tab = document.getElementById('tf-style-tab');
+  var overlay = document.getElementById('tf-style-overlay');
+  var closeBtn = document.getElementById('tf-style-close');
+  var applyBtn = document.getElementById('tf-style-apply');
+  if (tab) tab.addEventListener('click', openModal);
+  if (overlay) overlay.addEventListener('click', function (e) { if (e.target === overlay) closeModal(); });
+  if (closeBtn) closeBtn.addEventListener('click', closeModal);
+  if (applyBtn) applyBtn.addEventListener('click', applyAll);
+  var bs = document.getElementById('tf-mode-single'); if (bs) bs.addEventListener('click', function () { setMode('single'); });
+  var bm = document.getElementById('tf-mode-multi'); if (bm) bm.addEventListener('click', function () { setMode('multi'); });
+
+  // 单条模式：聊天更新（含新消息到达）时实时把上一条隐藏
+  if (T && T.plugin && T.plugin.on) {
+    try {
+      T.plugin.on('chat:updated', function () {
+        if (_mode === 'single' && !_applying) { applySingle().catch(function () {}); }
+      });
+    } catch (e) {}
+  }
+})();
+</script>

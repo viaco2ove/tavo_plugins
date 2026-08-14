@@ -268,31 +268,57 @@
     return pairs;
   }
 
-  function avatarInner(d, name) {
-    var ava = d && d.avatar || '';
-    if (ava) {
-      return '<img src="' + esc(ava) + '" onerror="this.style.display=\'none\'">';
+  // 把已解析出的「可渲染 URL」渲染成头像节点；为空则显示名字首字
+  function avatarInner(url, name) {
+    if (url) {
+      return '<img src="' + esc(url) + '" alt="' + esc(name) + '" onerror="this.style.display=\'none\'">';
     }
     return esc((name || '?').slice(0, 1));
   }
 
-  function chipHtml(c, idx) {
+  // 解析头像为「保证可渲染」的 dataUrl。
+  // 1) 优先用 chat.characters[i].data.avatar；没有则逐个 tavo.character.get(id) 拉完整数据
+  // 2) 用 tavo.file.load(path, {encoding:'dataUrl'}) 读回 dataUrl（任何 webview 都能渲染），
+  //    兜底再试 tavo.file.url 虚拟路径，最后直用原值
+  async function resolveAvatarUrl(c) {
+    if (!T || !T.file) return '';
+    var d = c.data || {};
+    var path = d.avatar || '';
+    var id = c.id;
+    if (!path && id != null) {
+      try {
+        var full = await T.character.get(id);
+        if (full && full.data) path = full.data.avatar || '';
+      } catch (e) {}
+    }
+    if (!path) return '';
+    try {
+      var du = await T.file.load(path, { encoding: 'dataUrl' });
+      if (du) return du;
+    } catch (e) {}
+    try { return T.file.url(path); } catch (e) {}
+    return path;
+  }
+
+  function chipHtml(c, idx, avatars) {
     var d = c.data || {};
     var name = c.name || d.name || '未命名';
+    var url = (avatars && avatars[idx]) || '';
     return '<div class="tf-char-chip" data-idx="' + idx + '">'
-      + '<div class="tf-char-chip-ava">' + avatarInner(d, name) + '</div>'
+      + '<div class="tf-char-chip-ava">' + avatarInner(url, name) + '</div>'
       + '<div class="tf-char-chip-name">' + esc(name) + '</div>'
       + '</div>';
   }
 
-  function charDetailHtml(c) {
+  function charDetailHtml(c, idx, avatars) {
     var d = c.data || {};
     var name = c.name || d.name || '未命名';
     var desc = d.description || d.personality || '';
     var role = (d.tags && d.tags[0]) || '';
+    var url = (avatars && avatars[idx]) || '';
     var fields = parseFields(desc);
     var head = '<div class="tf-char-head">'
-      + '<div class="tf-char-head-ava">' + avatarInner(d, name) + '</div>'
+      + '<div class="tf-char-head-ava">' + avatarInner(url, name) + '</div>'
       + '<div class="tf-char-head-name">' + esc(name) + '</div>'
       + (role ? '<span class="tf-char-head-role">' + esc(role) + '</span>' : '')
       + '</div>';
@@ -312,6 +338,7 @@
   }
 
   var _chatCache = null;
+  var _avatars = []; // 角色按 idx 解析出的可渲染 URL
 
   async function loadChat() {
     if (_chatCache) return _chatCache;
@@ -352,6 +379,13 @@
     if (titleEl) titleEl.textContent = chatName;
     if (tabName) tabName.textContent = chatName;
 
+    // 先解析所有角色头像（dataUrl，最稳）
+    try {
+      _avatars = await Promise.all(chars.map(function (c) { return resolveAvatarUrl(c); }));
+    } catch (e) {
+      _avatars = [];
+    }
+
     var html = '';
 
     // 故事简介
@@ -369,7 +403,7 @@
       html += '<div class="tf-empty">本聊天未绑定角色</div>';
     } else {
       html += '<div class="tf-char-chips" id="tf-char-chips">';
-      chars.forEach(function (c, i) { html += chipHtml(c, i); });
+      chars.forEach(function (c, i) { html += chipHtml(c, i, _avatars); });
       html += '</div>';
     }
     html += '</section>';
@@ -377,7 +411,7 @@
     // 角色详情
     html += '<section class="tf-section"><div class="tf-char-detail" id="tf-char-detail">';
     if (chars.length > 0) {
-      html += charDetailHtml(chars[0]);
+      html += charDetailHtml(chars[0], 0, _avatars);
     } else {
       html += '<div class="tf-empty">请先选择一个角色</div>';
     }
@@ -394,7 +428,7 @@
         chip.classList.add('active');
         var idx = parseInt(chip.getAttribute('data-idx'), 10);
         if (detailEl && chars[idx]) {
-          detailEl.innerHTML = charDetailHtml(chars[idx]);
+          detailEl.innerHTML = charDetailHtml(chars[idx], idx, _avatars);
         }
       });
     });

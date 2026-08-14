@@ -1,0 +1,28 @@
+{
+  "specVersion": 2,
+  "id": "com.toonflow.story-style",
+  "name": { "$t": "plugin.name" },
+  "version": "1.0.0",
+  "minAppVersion": "1.0.0",
+  "author": "viaco",
+  "description": { "$t": "plugin.description" },
+  "localization": {
+    "defaultLocale": "zh-CN",
+    "resources": {
+      "en": "locales/en.json",
+      "zh-CN": "locales/zh-CN.json"
+    }
+  },
+  "permissions": ["input", "message", "generate", "variable", "lorebook", "chat", "theme"],
+  "contributes": {
+    "htmlFragments": [
+      { "id": "tf-style-trigger", "src": "ui/story_style_panel.html", "mount": "/chat/body/end" }
+    ],
+    "settings": {
+      "schema": [
+        { "type": "info", "text": "气泡样式：点击聊天页底部的「气泡样式 ›」按钮调整单条/多条模式与透明度。改聊天 UI 需在设置开启「高级渲染」。", "icon": "info" },
+        { "key": "enabled", "type": "switch", "label": "启用", "default": true }
+      ]
+    }
+  }
+}
