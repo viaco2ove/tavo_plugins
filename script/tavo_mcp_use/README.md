@@ -2,6 +2,7 @@
 
 通过 tavo MCP Server 操作 tavo 的命令行工具。
 
+[mcp_help](../../md/tavo_help/mcp_help)
 ## 使用前提
 
 1. 在 tavo 中开启 MCP Server：`设置` -> `MCP Server` -> 启用

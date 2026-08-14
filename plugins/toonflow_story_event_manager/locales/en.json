@@ -1,6 +1,6 @@
 {
   "plugin.name": "Toonflow-Event Manager",
-  "plugin.description": "Story event manager: tracks chapter progress, evaluates completion conditions, auto-advances chapters. Works with worldbooks.",
+  "plugin.description": "Story event manager: tracks chapter progress, evaluates completion conditions, auto-advances chapters. Works with worldbooks. \n https://github.com/viaco2ove/tavo_plugins.git",
   "sidebar.progress": "Story Progress",
   "sidebar.restart": "Restart Story",
   "settings.info": "Track story chapter progress and auto-advance when conditions are met.",
