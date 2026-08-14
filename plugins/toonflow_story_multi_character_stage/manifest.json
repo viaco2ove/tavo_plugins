@@ -1,0 +1,45 @@
+{
+  "specVersion": 2,
+  "id": "com.toonflow.multi-character-stage",
+  "name": { "$t": "plugin.name" },
+  "version": "1.0.0",
+  "minAppVersion": "1.0.0",
+  "entry": "entry.js",
+  "author": "viaco",
+  "description": { "$t": "plugin.description" },
+  "localization": {
+    "defaultLocale": "zh-CN",
+    "resources": {
+      "en": "locales/en.json",
+      "zh-CN": "locales/zh-CN.json"
+    }
+  },
+  "cover": "cover.png",
+  "permissions": ["input", "message", "generate", "variable", "file"],
+  "contributes": {
+    "sidebar": [
+      { "id": "mcs-toggle", "label": { "$t": "sidebar.toggle" } },
+      { "id": "mcs-area", "label": { "$t": "sidebar.area" } },
+      { "id": "mcs-status", "label": { "$t": "sidebar.status" } }
+    ],
+    "htmlFragments": [
+      { "id": "mcs-panel", "src": "ui/panel.html", "mount": "/chat/body/end" }
+    ],
+    "settings": {
+      "schema": [
+        { "type": "info", "text": { "$t": "settings.info" }, "icon": "info" },
+        { "key": "enabled", "type": "switch", "label": { "$t": "settings.enabled" }, "default": true },
+        { "key": "npcAutoTurn", "type": "switch", "label": { "$t": "settings.npcAutoTurn" }, "default": true },
+        { "key": "npcAutoInterval", "type": "slider", "label": { "$t": "settings.npcAutoInterval" }, "min": 1, "max": 10, "step": 1, "default": 3 },
+        { "key": "memoryIntegration", "type": "switch", "label": { "$t": "settings.memoryIntegration" }, "default": true },
+        { "key": "speakerMode", "type": "select", "label": { "$t": "settings.speakerMode.label" }, "default": "auto",
+          "options": [
+            { "value": "auto", "label": { "$t": "settings.speakerMode.auto" } },
+            { "value": "manual", "label": { "$t": "settings.speakerMode.manual" } }
+          ]
+        },
+        { "key": "dialogueHistoryLimit", "type": "slider", "label": { "$t": "settings.dialogueHistoryLimit" }, "min": 5, "max": 50, "step": 5, "default": 20 }
+      ]
+    }
+  }
+}
