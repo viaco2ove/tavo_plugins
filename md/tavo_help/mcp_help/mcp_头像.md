@@ -7,7 +7,7 @@
 - **`tavo_character_update` 存不进头像。** 无论传「裸 CC 兼容 data」还是「完整 CCv3 wrapper」，都只同步文本字段，`avatar` 永远不会持久化（连 1×1 极小 data URI 也写不进，返回 ok 但 `get` 仍 `null`）。
 - **`tavo_character_import_card` 是唯一能存头像的路径**，而且它是**整卡替换**：必须传「完整 `data` 对象 + `avatar`」，只传 `{name, avatar}` 会丢掉性格/对白等字段。
 - 该工具按 `name` **新建而非覆盖** → 会产重复卡。正确流程 = **导入新卡 → 重绑群聊 → 删旧卡**。
-
+正确做法：先把图片作为文件上传（落到 charaCard/...png），再把 data.avatar 设成那个路径再导入。而不能是base64 图片
 ## 工具实测对比
 
 | 工具 | 能否存 `avatar` | 行为 | 备注 |
