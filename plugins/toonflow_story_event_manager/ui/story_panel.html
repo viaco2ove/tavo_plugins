@@ -1,219 +1,449 @@
-<!-- toonflow_story_event_manager - story status panel (只读，对齐设计图：世界书=上下文注入) -->
+<!-- toonflow_story_event_manager - 故事信息面板（参照 toonflow-game 形态） -->
+<!-- 形态：聊天页底部一行紧凑触发器（{故事名} + ›）；点击展开全屏居中模态，含简介/角色列表/角色详情。 -->
 <style>
-  #tf-event-panel {
-    position: fixed;
-    width: 260px;
-    background: var(--bg-secondary, #2a2a2a);
-    border: 1px solid var(--border-color, #444);
-    border-radius: 8px;
-    box-shadow: 0 4px 12px rgba(0,0,0,0.3);
-    z-index: 1000;
-    font-family: system-ui, -apple-system, sans-serif;
-    font-size: 12px;
-    color: var(--text-primary, #e0e0e0);
-    overflow: hidden;
+  /* === 底部触发器：模仿 tavo 原生 tab === */
+  #tf-story-tab {
+    margin: 14px 10px 6px;
+    padding: 9px 14px;
+    background: var(--bg-tertiary, rgba(40,40,40,0.75));
+    border: 1px solid var(--border-color, #333);
+    border-radius: 10px;
+    cursor: pointer;
+    user-select: none;
     display: flex;
-    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    color: var(--text-primary, #e8e8e8);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    box-sizing: border-box;
+    transition: border-color 0.15s ease, transform 0.1s ease;
   }
-  #tf-event-panel-header {
+  #tf-story-tab:hover { border-color: var(--accent-color, #7cb3ff); }
+  #tf-story-tab:active { transform: scale(0.985); }
+  .tf-tab-name {
+    flex: 1;
+    font-weight: 500;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .tf-tab-chevron {
+    color: var(--accent-warm, #ff9966);
+    font-size: 18px;
+    font-weight: 700;
+    line-height: 1;
+  }
+
+  /* === 全屏模态 === */
+  #tf-story-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.62);
+    z-index: 1000;
+    display: none;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  #tf-story-overlay.open { display: block; }
+  .tf-modal {
+    background: var(--bg-secondary, #1f1f23);
+    color: var(--text-primary, #e8e8e8);
+    border-radius: 14px;
+    width: min(720px, 92vw);
+    margin: 28px auto;
+    box-shadow: 0 16px 56px rgba(0, 0, 0, 0.55);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+    overflow: hidden;
+    box-sizing: border-box;
+  }
+  .tf-modal-head {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 8px 12px;
-    background: var(--bg-tertiary, #333);
-    border-bottom: 1px solid var(--border-color, #444);
-    cursor: move;
-    user-select: none;
+    padding: 14px 20px;
+    border-bottom: 1px solid var(--border-color, #2a2a30);
+    position: sticky;
+    top: 0;
+    background: var(--bg-secondary, #1f1f23);
+    z-index: 1;
   }
-  #tf-event-panel-title {
+  .tf-modal-head h2 {
+    margin: 0;
+    font-size: 16px;
     font-weight: 600;
-    font-size: 13px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 75%;
   }
-  #tf-event-panel-actions {
-    display: flex;
-    gap: 4px;
-  }
-  #tf-event-panel-actions button {
-    background: transparent;
-    border: 1px solid var(--border-color, #555);
-    color: var(--text-secondary, #aaa);
-    border-radius: 4px;
-    padding: 2px 6px;
-    cursor: pointer;
-    font-size: 11px;
-  }
-  #tf-event-panel-content {
-    padding: 10px 12px;
-  }
-  #tf-event-panel-empty {
-    text-align: center;
-    color: var(--text-muted, #888);
-    padding: 20px 0;
-  }
-  .tf-event-row {
-    display: flex;
-    justify-content: space-between;
-    padding: 4px 0;
-    font-size: 12px;
-  }
-  .tf-event-row .k { color: var(--text-muted, #888); }
-  .tf-event-row .v { color: var(--accent-color, #7cb3ff); font-weight: 600; }
-  #tf-event-panel-footer {
-    padding: 6px 12px;
-    border-top: 1px solid var(--border-color, #444);
-    font-size: 10px;
-    color: var(--text-muted, #666);
-    display: flex;
-    justify-content: flex-end;
-  }
-  #tf-event-restart-btn {
-    background: var(--bg-tertiary, #333);
+  .tf-modal-close {
+    background: var(--bg-quaternary, #333);
     border: 1px solid var(--border-color, #444);
-    color: var(--text-secondary, #aaa);
-    border-radius: 4px;
-    padding: 3px 10px;
+    color: var(--text-secondary, #bbb);
+    border-radius: 8px;
+    padding: 5px 14px;
+    font-size: 12px;
     cursor: pointer;
-    font-size: 11px;
+    flex: 0 0 auto;
   }
-  #tf-event-restart-btn:hover {
-    background: var(--accent-bg, rgba(124, 179, 255, 0.2));
+  .tf-modal-close:hover { color: var(--accent-color, #7cb3ff); border-color: var(--accent-color, #7cb3ff); }
+  .tf-modal-body { padding: 16px 20px 28px; }
+
+  .tf-section { margin-bottom: 22px; }
+  .tf-section h3 {
+    margin: 0 0 10px;
+    font-size: 13px;
+    color: var(--text-secondary, #bbb);
+    font-weight: 600;
+  }
+  .tf-synopsis {
+    background: var(--bg-tertiary, #26262c);
+    border: 1px solid var(--border-color, #303036);
+    border-radius: 10px;
+    padding: 12px 14px;
+    line-height: 1.7;
+    color: var(--text-secondary, #d0d0d0);
+    font-size: 13px;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  /* 角色列表（横滚头像芯片） */
+  .tf-char-chips {
+    display: flex;
+    gap: 12px;
+    overflow-x: auto;
+    padding: 4px 2px 8px;
+    scrollbar-width: thin;
+  }
+  .tf-char-chip {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    cursor: pointer;
+    flex: 0 0 auto;
+    width: 64px;
+  }
+  .tf-char-chip-ava {
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    background: var(--bg-quaternary, #333);
+    border: 2px solid var(--border-color, #444);
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted, #888);
+    font-size: 18px;
+    transition: border-color 0.15s ease;
+  }
+  .tf-char-chip.active .tf-char-chip-ava {
     border-color: var(--accent-color, #7cb3ff);
-    color: var(--accent-color, #7cb3ff);
+    box-shadow: 0 0 0 2px rgba(124, 179, 255, 0.18);
+  }
+  .tf-char-chip-ava img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .tf-char-chip-name {
+    font-size: 12px;
+    color: var(--text-secondary, #ccc);
+    text-align: center;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  /* 角色详情：两栏键值卡 */
+  .tf-char-detail {
+    background: var(--bg-tertiary, #26262c);
+    border: 1px solid var(--border-color, #303036);
+    border-radius: 10px;
+    padding: 14px;
+  }
+  .tf-char-head {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin-bottom: 14px;
+    padding-bottom: 12px;
+    border-bottom: 1px solid var(--border-color, #333);
+  }
+  .tf-char-head-ava {
+    width: 48px;
+    height: 48px;
+    border-radius: 50%;
+    background: var(--bg-quaternary, #333);
+    overflow: hidden;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--text-muted, #888);
+    flex: 0 0 auto;
+  }
+  .tf-char-head-ava img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .tf-char-head-name { font-weight: 600; font-size: 15px; }
+  .tf-char-head-role {
+    font-size: 11px;
+    color: var(--accent-color, #9ec5ff);
+    margin-left: auto;
+    padding: 2px 8px;
+    background: rgba(124, 179, 255, 0.12);
+    border-radius: 4px;
+  }
+  .tf-kv-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+  }
+  .tf-kv {
+    background: var(--bg-quaternary, #2f2f35);
+    border: 1px solid var(--border-color, #38383f);
+    border-radius: 8px;
+    padding: 10px 12px;
+    min-width: 0;
+  }
+  .tf-kv-label {
+    font-size: 11px;
+    color: var(--text-muted, #888);
+    margin-bottom: 5px;
+  }
+  .tf-kv-value {
+    font-size: 13px;
+    color: var(--text-primary, #e8e8e8);
+    line-height: 1.55;
+    word-break: break-word;
+  }
+  .tf-kv-full { grid-column: 1 / -1; }
+  .tf-empty {
+    color: var(--text-muted, #888);
+    padding: 14px;
+    text-align: center;
+    font-size: 13px;
   }
 </style>
 
-<div id="tf-event-panel">
-  <div id="tf-event-panel-header">
-    <span id="tf-event-panel-title">故事状态</span>
-    <div id="tf-event-panel-actions">
-      <button id="tf-event-reset-btn" title="重置位置">↺</button>
+<!-- 底部触发器 -->
+<div id="tf-story-tab">
+  <span class="tf-tab-name" id="tf-tab-name">故事信息</span>
+  <span class="tf-tab-chevron">›</span>
+</div>
+
+<!-- 全屏模态 -->
+<div id="tf-story-overlay">
+  <div class="tf-modal">
+    <div class="tf-modal-head">
+      <h2 id="tf-modal-title">故事信息</h2>
+      <button class="tf-modal-close" id="tf-modal-close">关闭</button>
     </div>
-  </div>
-  <div id="tf-event-panel-content">
-    <div id="tf-event-panel-empty">未绑定聊天</div>
-    <div id="tf-event-panel-body" style="display: none;">
-      <div class="tf-event-row"><span class="k">发言模式</span><span class="v" id="tf-event-mode">-</span></div>
-      <div class="tf-event-row"><span class="k">绑定世界书</span><span class="v" id="tf-event-lorebook">-</span></div>
-      <div class="tf-event-row"><span class="k">在场角色</span><span class="v" id="tf-event-chars">-</span></div>
-      <div class="tf-event-row" style="color: var(--text-muted,#888); font-size: 11px; padding-top: 8px;">世界书为上下文注入，不自动推进章节</div>
+    <div class="tf-modal-body" id="tf-modal-body">
+      <div class="tf-empty">正在加载…</div>
     </div>
-  </div>
-  <div id="tf-event-panel-footer">
-    <button id="tf-event-restart-btn">刷新</button>
   </div>
 </div>
 
 <script>
-(function() {
-  const NS = 'tf_event';
-  const DEFAULT_POS = { right: 20, bottom: 50 };
+(function () {
+  var T = (typeof tavo !== 'undefined') ? tavo : (window.tavo || null);
 
-  function getPanelPos() {
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (m) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m];
+    });
+  }
+
+  // 从角色描述里解析 "**字段**：值" 序列
+  function parseFields(text) {
+    if (!text) return [];
+    var pairs = [];
+    var re = /\*\*([^*\n]+?)\*\*\s*[：:]\s*([^**]+?)(?=\s*\*\*|$)/g;
+    var m;
+    while ((m = re.exec(text)) !== null) {
+      var k = m[1].trim();
+      var v = m[2].trim().replace(/\s+$/, '');
+      if (k && v) pairs.push({ k: k, v: v });
+    }
+    return pairs;
+  }
+
+  function avatarInner(d, name) {
+    var ava = d && d.avatar || '';
+    if (ava) {
+      return '<img src="' + esc(ava) + '" onerror="this.style.display=\'none\'">';
+    }
+    return esc((name || '?').slice(0, 1));
+  }
+
+  function chipHtml(c, idx) {
+    var d = c.data || {};
+    var name = c.name || d.name || '未命名';
+    return '<div class="tf-char-chip" data-idx="' + idx + '">'
+      + '<div class="tf-char-chip-ava">' + avatarInner(d, name) + '</div>'
+      + '<div class="tf-char-chip-name">' + esc(name) + '</div>'
+      + '</div>';
+  }
+
+  function charDetailHtml(c) {
+    var d = c.data || {};
+    var name = c.name || d.name || '未命名';
+    var desc = d.description || d.personality || '';
+    var role = (d.tags && d.tags[0]) || '';
+    var fields = parseFields(desc);
+    var head = '<div class="tf-char-head">'
+      + '<div class="tf-char-head-ava">' + avatarInner(d, name) + '</div>'
+      + '<div class="tf-char-head-name">' + esc(name) + '</div>'
+      + (role ? '<span class="tf-char-head-role">' + esc(role) + '</span>' : '')
+      + '</div>';
+    if (fields.length === 0) {
+      return head + '<div class="tf-empty">该角色暂无结构化字段信息</div>';
+    }
+    var grid = '<div class="tf-kv-grid">';
+    fields.forEach(function (f) {
+      var cls = (f.v.length > 36) ? 'tf-kv tf-kv-full' : 'tf-kv';
+      grid += '<div class="' + cls + '">'
+        + '<div class="tf-kv-label">' + esc(f.k) + '</div>'
+        + '<div class="tf-kv-value">' + esc(f.v) + '</div>'
+        + '</div>';
+    });
+    grid += '</div>';
+    return head + grid;
+  }
+
+  var _chatCache = null;
+
+  async function loadChat() {
+    if (_chatCache) return _chatCache;
     try {
-      if (window.tavo) {
-        const pos = window.tavo.get(NS + '.panelPos');
-        if (pos && typeof pos === 'object') return pos;
-      }
-    } catch (e) {}
-    return DEFAULT_POS;
+      if (T && T.chat) _chatCache = await T.chat.current();
+    } catch (e) {
+      _chatCache = null;
+    }
+    return _chatCache;
   }
 
-  function savePanelPos(pos) {
-    try {
-      if (window.tavo) window.tavo.update(NS + '.panelPos', pos, 'chat');
-    } catch (e) {}
-  }
+  async function renderModal() {
+    var body = document.getElementById('tf-modal-body');
+    var titleEl = document.getElementById('tf-modal-title');
+    var tabName = document.getElementById('tf-tab-name');
+    if (!body) return;
 
-  function applyPanelPos() {
-    const panel = document.getElementById('tf-event-panel');
-    if (!panel) return;
-    const pos = getPanelPos();
-    panel.style.right = (pos.right || DEFAULT_POS.right) + 'px';
-    panel.style.bottom = (pos.bottom || DEFAULT_POS.bottom) + 'px';
-    panel.style.left = 'auto';
-    panel.style.top = 'auto';
-  }
-
-  let isDragging = false, dragStartX, dragStartY, panelStartRight, panelStartBottom;
-
-  function initDrag() {
-    const panel = document.getElementById('tf-event-panel');
-    const header = document.getElementById('tf-event-panel-header');
-    if (!panel || !header) return;
-    header.addEventListener('mousedown', function(e) {
-      if (e.target.closest('#tf-event-panel-actions')) return;
-      isDragging = true;
-      dragStartX = e.clientX;
-      dragStartY = e.clientY;
-      const pos = getPanelPos();
-      panelStartRight = pos.right || DEFAULT_POS.right;
-      panelStartBottom = pos.bottom || DEFAULT_POS.bottom;
-      e.preventDefault();
-    });
-    document.addEventListener('mousemove', function(e) {
-      if (!isDragging) return;
-      panel.style.right = (panelStartRight + (dragStartX - e.clientX)) + 'px';
-      panel.style.bottom = (panelStartBottom + (dragStartY - e.clientY)) + 'px';
-      panel.style.left = 'auto';
-      panel.style.top = 'auto';
-    });
-    document.addEventListener('mouseup', function() {
-      if (!isDragging) return;
-      isDragging = false;
-      const rect = panel.getBoundingClientRect();
-      savePanelPos({ right: window.innerWidth - rect.right, bottom: window.innerHeight - rect.bottom });
-    });
-  }
-
-  function updatePanel() {
-    let state = null;
-    try { if (window.tavo) state = window.tavo.get(NS); } catch (e) {}
-    const emptyEl = document.getElementById('tf-event-panel-empty');
-    const bodyEl = document.getElementById('tf-event-panel-body');
-    if (!state || state.lorebook_count === undefined) {
-      emptyEl.style.display = 'block';
-      bodyEl.style.display = 'none';
+    var chat = await loadChat();
+    if (!chat) {
+      body.innerHTML = '<div class="tf-empty">未能读取当前聊天，请确认已打开一个聊天。</div>';
+      if (titleEl) titleEl.textContent = '故事信息';
+      if (tabName) tabName.textContent = '故事信息';
       return;
     }
-    emptyEl.style.display = 'none';
-    bodyEl.style.display = 'block';
-    document.getElementById('tf-event-mode').textContent = state.responseMode || '-';
-    document.getElementById('tf-event-lorebook').textContent = (state.lorebook_count || 0) + ' 个';
-    document.getElementById('tf-event-chars').textContent = (state.character_count || 0) + ' 个';
-  }
 
-  function initRestartBtn() {
-    document.getElementById('tf-event-restart-btn').addEventListener('click', function() {
-      if (window.tavo && window.tavo.plugin) window.tavo.plugin.emit('sidebar:action', 'tf-story-restart');
-    });
-  }
-
-  function initResetBtn() {
-    document.getElementById('tf-event-reset-btn').addEventListener('click', function() {
-      savePanelPos(DEFAULT_POS);
-      const panel = document.getElementById('tf-event-panel');
-      if (panel) {
-        panel.style.right = DEFAULT_POS.right + 'px';
-        panel.style.bottom = DEFAULT_POS.bottom + 'px';
-        panel.style.left = 'auto';
-        panel.style.top = 'auto';
+    var chars = chat.characters || [];
+    var books = chat.lorebooks || [];
+    var synopsis = chat.description || chat.synopsis || '';
+    if (!synopsis && books.length) {
+      var firstBook = books[0];
+      var entries = firstBook && firstBook.entries;
+      if (entries && entries.length && entries[0] && entries[0].content) {
+        synopsis = entries[0].content;
       }
+    }
+    var chatName = chat.name || '故事信息';
+
+    if (titleEl) titleEl.textContent = chatName;
+    if (tabName) tabName.textContent = chatName;
+
+    var html = '';
+
+    // 故事简介
+    html += '<section class="tf-section"><h3>故事简介</h3>';
+    if (synopsis) {
+      html += '<div class="tf-synopsis">' + esc(String(synopsis).slice(0, 800)) + '</div>';
+    } else {
+      html += '<div class="tf-empty">暂无故事简介</div>';
+    }
+    html += '</section>';
+
+    // 角色列表
+    html += '<section class="tf-section"><h3>角色列表</h3>';
+    if (chars.length === 0) {
+      html += '<div class="tf-empty">本聊天未绑定角色</div>';
+    } else {
+      html += '<div class="tf-char-chips" id="tf-char-chips">';
+      chars.forEach(function (c, i) { html += chipHtml(c, i); });
+      html += '</div>';
+    }
+    html += '</section>';
+
+    // 角色详情
+    html += '<section class="tf-section"><div class="tf-char-detail" id="tf-char-detail">';
+    if (chars.length > 0) {
+      html += charDetailHtml(chars[0]);
+    } else {
+      html += '<div class="tf-empty">请先选择一个角色</div>';
+    }
+    html += '</div></section>';
+
+    body.innerHTML = html;
+
+    // 绑定芯片点击
+    var chips = body.querySelectorAll('.tf-char-chip');
+    var detailEl = body.querySelector('#tf-char-detail');
+    chips.forEach(function (chip) {
+      chip.addEventListener('click', function () {
+        chips.forEach(function (c) { c.classList.remove('active'); });
+        chip.classList.add('active');
+        var idx = parseInt(chip.getAttribute('data-idx'), 10);
+        if (detailEl && chars[idx]) {
+          detailEl.innerHTML = charDetailHtml(chars[idx]);
+        }
+      });
     });
+    if (chips[0]) chips[0].classList.add('active');
   }
 
-  function init() {
-    applyPanelPos();
-    initDrag();
-    initRestartBtn();
-    initResetBtn();
-    updatePanel();
-    setInterval(updatePanel, 3000);
+  function openModal() {
+    var overlay = document.getElementById('tf-story-overlay');
+    if (!overlay) return;
+    overlay.classList.add('open');
+    renderModal();
+  }
+  function closeModal() {
+    var overlay = document.getElementById('tf-story-overlay');
+    if (!overlay) return;
+    overlay.classList.remove('open');
   }
 
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
-  } else {
-    init();
+  // 启动时：更新 tab 名
+  (async function init() {
+    try {
+      var chat = await loadChat();
+      var tabName = document.getElementById('tf-tab-name');
+      if (chat && chat.name && tabName) tabName.textContent = chat.name;
+    } catch (e) {}
+  })();
+
+  // 绑定事件
+  var tab = document.getElementById('tf-story-tab');
+  var overlay = document.getElementById('tf-story-overlay');
+  var closeBtn = document.getElementById('tf-modal-close');
+  if (tab) tab.addEventListener('click', openModal);
+  if (overlay) overlay.addEventListener('click', function (e) { if (e.target === overlay) closeModal(); });
+  if (closeBtn) closeBtn.addEventListener('click', closeModal);
+
+  // 聊天切换时刷新缓存并更新 tab
+  if (T && T.plugin && T.plugin.on) {
+    try {
+      T.plugin.on('chat:updated', function () {
+        _chatCache = null;
+        loadChat().then(function (chat) {
+          var tabName = document.getElementById('tf-tab-name');
+          if (chat && chat.name && tabName) tabName.textContent = chat.name;
+        });
+      });
+      T.plugin.on('chat:opened', function () {
+        _chatCache = null;
+      });
+    } catch (e) {}
   }
 })();
 </script>
