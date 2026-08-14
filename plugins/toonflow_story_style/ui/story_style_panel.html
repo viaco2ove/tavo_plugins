@@ -1,8 +1,13 @@
 <!-- toonflow_story_style - 气泡样式控制面板 -->
 <!-- 形态：聊天页底部一行紧凑触发器（气泡样式 + ›）；点击展开全屏居中模态，调单条/多条模式与气泡透明度。 -->
 <style>
+  /* 触发器：固定到屏幕（视口）左上角，不随消息滚动 */
   #tf-style-tab {
-    margin: 12px 10px 6px;
+    position: fixed;
+    top: 8px;
+    left: 8px;
+    margin: 0;
+    z-index: 9990;
     padding: 9px 14px;
     background: var(--bg-tertiary, rgba(40,40,40,0.75));
     border: 1px solid var(--border-color, #333);
@@ -26,7 +31,7 @@
 
   #tf-style-overlay {
     position: fixed; inset: 0; background: rgba(0,0,0,0.62);
-    z-index: 1000; display: none; overflow-y: auto; -webkit-overflow-scrolling: touch;
+    z-index: 10000; display: none; overflow-y: auto; -webkit-overflow-scrolling: touch;
   }
   #tf-style-overlay.open { display: block; }
   .tf-style-modal {
@@ -111,6 +116,20 @@
 <script>
 (function () {
   var T = (typeof tavo !== 'undefined') ? tavo : (window.tavo || null);
+
+  // 把元素钉到 document.body（避免被聊天滚动容器 / transform 祖先影响，确保 fixed 相对视口）
+  function pinToBody(id) {
+    var el = document.getElementById(id);
+    if (!el) return null;
+    var prev = window['__pin_' + id];
+    if (prev && prev !== el && prev.parentNode) prev.parentNode.removeChild(prev);
+    if (el.parentNode !== document.body) document.body.appendChild(el);
+    window['__pin_' + id] = el;
+    return el;
+  }
+  pinToBody('tf-style-tab');
+  pinToBody('tf-style-overlay');
+
   var _mode = 'single';      // 当前模式（内存态；页面刷新后回到默认 single）
   var _opacity = 35;         // 当前透明度 %
   var _applying = false;

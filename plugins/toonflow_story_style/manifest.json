@@ -16,7 +16,7 @@
   "permissions": ["input", "message", "generate", "variable", "lorebook", "chat", "theme"],
   "contributes": {
     "htmlFragments": [
-      { "id": "tf-style-trigger", "src": "ui/story_style_panel.html", "mount": "/chat/body/end" }
+      { "id": "tf-style-trigger", "src": "ui/story_style_panel.html", "mount": "/chat/body/start" }
     ],
     "settings": {
       "schema": [

@@ -23,7 +23,7 @@
       { "id": "tmm-export", "label": { "$t": "sidebar.export" } }
     ],
     "htmlFragments": [
-      { "id": "tmm-panel", "src": "ui/panel.html", "mount": "/chat/body/end" }
+      { "id": "tmm-panel", "src": "ui/panel.html", "mount": "/chat/head/end" }
     ],
     "settings": {
       "schema": [

@@ -1,48 +1,171 @@
+<!-- toonflow_story_memory_manager - 记忆面板（底部 tab + 全屏模态，对齐 event_manager / style 形态） -->
 <style>
-#tmm-panel{position:fixed;width:240px;background:var(--bg-secondary,#2a2a2a);border:1px solid var(--border-color,#444);border-radius:8px;box-shadow:0 4px 12px rgba(0,0,0,.3);z-index:1000;font-family:system-ui,sans-serif;font-size:12px;color:var(--text-primary,#e0e0e0)}
-#tmm-panel-header{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--bg-tertiary,#333);border-bottom:1px solid var(--border-color,#444);cursor:move;user-select:none}
-#tmm-panel-title{font-weight:600}
-#tmm-panel-content{padding:10px 12px}
-#tmm-panel-empty{text-align:center;color:var(--text-muted,#888);padding:20px 0}
-.tmm-section{margin-bottom:10px}
-.tmm-label{font-weight:600;color:var(--accent-color,#7cb3ff);font-size:11px;text-transform:uppercase}
-.tmm-content{font-size:12px;line-height:1.5;word-break:break-word}
-.tmm-tags{display:flex;flex-wrap:wrap;gap:4px}
-.tmm-tag{background:rgba(124,179,255,.2);color:#7cb3ff;padding:2px 8px;border-radius:10px;font-size:11px}
-#tmm-panel-footer{padding:6px 12px;border-top:1px solid var(--border-color,#444);display:flex;justify-content:space-between;font-size:10px;color:var(--text-muted,#666)}
-#tmm-refresh-btn{background:rgba(124,179,255,.2);border:1px solid #7cb3ff;color:#7cb3ff;border-radius:4px;padding:3px 10px;cursor:pointer;font-size:11px}
-#tmm-refresh-btn:hover{background:#7cb3ff;color:#1a1a1a}
+  /* 触发器：固定到屏幕（视口）右上角，不随消息滚动 */
+  #tmm-tab {
+    position: fixed;
+    top: 8px;
+    right: 8px;
+    margin: 0;
+    z-index: 9990;
+    padding: 9px 14px;
+    background: var(--bg-tertiary, rgba(40,40,40,0.75));
+    border: 1px solid var(--border-color, #333);
+    border-radius: 10px;
+    cursor: pointer;
+    user-select: none;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 13px;
+    color: var(--text-primary, #e8e8e8);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    box-sizing: border-box;
+    transition: border-color 0.15s ease, transform 0.1s ease;
+  }
+  #tmm-tab:hover { border-color: var(--accent-color, #7cb3ff); }
+  #tmm-tab:active { transform: scale(0.985); }
+  .tmm-tab-name { flex: 1; font-weight: 500; }
+  .tmm-chevron { color: var(--accent-warm, #ff9966); font-size: 18px; font-weight: 700; line-height: 1; }
+
+  #tmm-overlay {
+    position: fixed; inset: 0; background: rgba(0,0,0,0.62);
+    z-index: 10000; display: none; overflow-y: auto; -webkit-overflow-scrolling: touch;
+  }
+  #tmm-overlay.open { display: block; }
+  .tmm-modal {
+    background: var(--bg-secondary, #1f1f23); color: var(--text-primary, #e8e8e8);
+    border-radius: 14px; width: min(640px, 92vw); margin: 28px auto;
+    box-shadow: 0 16px 56px rgba(0,0,0,0.55);
+    font-family: system-ui, -apple-system, "Segoe UI", sans-serif; overflow: hidden; box-sizing: border-box;
+  }
+  .tmm-head {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 20px; border-bottom: 1px solid var(--border-color, #2a2a30);
+    position: sticky; top: 0; background: var(--bg-secondary, #1f1f23); z-index: 1;
+  }
+  .tmm-head h2 { margin: 0; font-size: 16px; font-weight: 600; }
+  .tmm-close {
+    background: var(--bg-quaternary, #333); border: 1px solid var(--border-color, #444);
+    color: var(--text-secondary, #bbb); border-radius: 8px; padding: 5px 14px; font-size: 12px; cursor: pointer;
+  }
+  .tmm-close:hover { color: var(--accent-color, #7cb3ff); border-color: var(--accent-color, #7cb3ff); }
+  .tmm-body { padding: 16px 20px 28px; }
+
+  .tmm-section { margin-bottom: 18px; }
+  .tmm-section h3 { margin: 0 0 8px; font-size: 13px; color: var(--text-secondary, #bbb); font-weight: 600; }
+  .tmm-box {
+    background: var(--bg-tertiary, #26262c); border: 1px solid var(--border-color, #303036);
+    border-radius: 10px; padding: 12px 14px; line-height: 1.7; color: var(--text-secondary, #d0d0d0);
+    font-size: 13px; white-space: pre-wrap; word-break: break-word;
+  }
+  .tmm-tags { display: flex; flex-wrap: wrap; gap: 6px; }
+  .tmm-tag { background: rgba(124,179,255,0.18); color: var(--accent-color, #9ec5ff); padding: 3px 10px; border-radius: 10px; font-size: 12px; }
+  .tmm-card { background: var(--bg-tertiary, #26262c); border: 1px solid var(--border-color, #303036); border-radius: 10px; padding: 12px; margin-bottom: 10px; }
+  .tmm-card-name { font-weight: 600; font-size: 14px; margin-bottom: 8px; color: var(--text-primary, #e8e8e8); }
+  .tmm-kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: 13px; margin: 0; }
+  .tmm-kv dt { color: var(--text-muted, #888); }
+  .tmm-kv dd { margin: 0; color: var(--text-primary, #e8e8e8); word-break: break-word; }
+  .tmm-empty { color: var(--text-muted, #888); padding: 14px; text-align: center; font-size: 13px; }
 </style>
-<div id="tmm-panel">
-<div id="tmm-panel-header"><span id="tmm-panel-title">记忆</span></div>
-<div id="tmm-panel-content">
-<div id="tmm-panel-empty">暂无记忆</div>
-<div id="tmm-panel-body" style="display:none">
-<div class="tmm-section"><div class="tmm-label">摘要</div><div class="tmm-content" id="tmm-summary"></div></div>
-<div class="tmm-section" id="tmm-facts-section"><div class="tmm-label">事实</div><div class="tmm-content" id="tmm-facts"></div></div>
-<div class="tmm-section" id="tmm-tags-section"><div class="tmm-label">标签</div><div class="tmm-tags" id="tmm-tags"></div></div>
+
+<div id="tmm-tab">
+  <span class="tmm-tab-name">记忆</span>
+  <span class="tmm-chevron">›</span>
 </div>
+
+<div id="tmm-overlay">
+  <div class="tmm-modal">
+    <div class="tmm-head">
+      <h2>故事记忆</h2>
+      <button class="tmm-close" id="tmm-close">关闭</button>
+    </div>
+    <div class="tmm-body" id="tmm-body"><div class="tmm-empty">正在加载…</div></div>
+  </div>
 </div>
-<div id="tmm-panel-footer"><span id="tmm-turns"></span><button id="tmm-refresh-btn">刷新</button></div>
-</div>
+
 <script>
-(function(){
-const NS='tmm';
-function update(){
-let s=null;try{s=window.tavo.get(NS)}catch(e){}
-document.getElementById('tmm-panel-empty').style.display=s&&s.summary?'none':'block';
-document.getElementById('tmm-panel-body').style.display=s&&s.summary?'block':'none';
-if(s&&s.summary){
-document.getElementById('tmm-summary').textContent=s.summary;
-document.getElementById('tmm-facts').textContent=(s.facts||[]).join('; ');
-document.getElementById('tmm-tags').innerHTML=(s.tags||[]).map(t=>'<span class="tmm-tag">'+t+'</span>').join('');
-document.getElementById('tmm-turns').textContent='已对话'+(s.turnsSinceRefresh||0)+'轮';
-}}
-document.getElementById('tmm-refresh-btn').onclick=function(){window.tavo.plugin.emit('sidebar:action','tmm-refresh')};
-update();setInterval(update,3000);
-var isDrag=false,startX,startY,startR,startB;
-document.getElementById('tmm-panel-header').onmousedown=function(e){isDrag=true;startX=e.clientX;startY=e.clientY;var p=window.tavo.get(NS+'.pos')||{right:20,bottom:50};startR=p.right||20;startB=p.bottom||50};
-document.addEventListener('mousemove',function(e){if(!isDrag)return;var panel=document.getElementById('tmm-panel');panel.style.right=(startR+(startX-e.clientX))+'px';panel.style.bottom=(startB+(startY-e.clientY))+'px'});
-document.addEventListener('mouseup',function(){if(!isDrag)return;isDrag=false;var panel=document.getElementById('tmm-panel');var rect=panel.getBoundingClientRect();window.tavo.update(NS+'.pos',{right:window.innerWidth-rect.right,bottom:window.innerHeight-rect.bottom},'chat')});
+(function () {
+  var T = (typeof tavo !== 'undefined') ? tavo : (window.tavo || null);
+
+  // 把元素钉到 document.body（避免被聊天滚动容器 / transform 祖先影响，确保 fixed 相对视口）
+  function pinToBody(id) {
+    var el = document.getElementById(id);
+    if (!el) return null;
+    var prev = window['__pin_' + id];
+    if (prev && prev !== el && prev.parentNode) prev.parentNode.removeChild(prev);
+    if (el.parentNode !== document.body) document.body.appendChild(el);
+    window['__pin_' + id] = el;
+    return el;
+  }
+  pinToBody('tmm-tab');
+  pinToBody('tmm-overlay');
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (m) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m];
+    });
+  }
+
+  function cardHtml(title, card) {
+    if (!card || !Object.keys(card).length) return '';
+    var html = '<div class="tmm-card"><div class="tmm-card-name">' + esc(title) + '</div><dl class="tmm-kv">';
+    Object.keys(card).forEach(function (k) {
+      var v = card[k];
+      if (v == null || v === '') return;
+      if (typeof v === 'object') v = JSON.stringify(v);
+      html += '<dt>' + esc(k) + '</dt><dd>' + esc(v) + '</dd>';
+    });
+    html += '</dl></div>';
+    return html;
+  }
+
+  function render(state) {
+    var body = document.getElementById('tmm-body');
+    if (!body) return;
+    if (!state) { body.innerHTML = '<div class="tmm-empty">暂无记忆数据（对话后将自动生成）</div>'; return; }
+    var html = '';
+    html += '<section class="tmm-section"><h3>摘要</h3><div class="tmm-box">' + (state.summary ? esc(state.summary) : '（空）') + '</div></section>';
+    html += '<section class="tmm-section"><h3>事实</h3>'
+      + (state.facts && state.facts.length ? '<div class="tmm-box">' + esc(state.facts.join('；')) + '</div>' : '<div class="tmm-empty">无</div>')
+      + '</section>';
+    html += '<section class="tmm-section"><h3>标签</h3>'
+      + (state.tags && state.tags.length ? '<div class="tmm-tags">' + state.tags.map(function (t) { return '<span class="tmm-tag">' + esc(t) + '</span>'; }).join('') + '</div>' : '<div class="tmm-empty">无</div>')
+      + '</section>';
+    var cards = state.cards || {};
+    var player = cards.player || {};
+    var npcs = cards.npcs || {};
+    var npcNames = Object.keys(npcs);
+    var cardSec = '<section class="tmm-section"><h3>角色参数卡</h3>';
+    if (!Object.keys(player).length && !npcNames.length) {
+      cardSec += '<div class="tmm-empty">暂无</div>';
+    } else {
+      if (Object.keys(player).length) cardSec += cardHtml('玩家', player);
+      npcNames.forEach(function (n) { cardSec += cardHtml(n, npcs[n]); });
+    }
+    cardSec += '</section>';
+    html += cardSec;
+    if (state.dynamic_world_global_background) {
+      html += '<section class="tmm-section"><h3>动态全局背景</h3><div class="tmm-box">' + esc(state.dynamic_world_global_background) + '</div></section>';
+    }
+    body.innerHTML = html;
+  }
+
+  function load() {
+    if (!T || !T.get) return;
+    try { render(T.get('tmm')); } catch (e) { render(null); }
+  }
+  function openModal() { var o = document.getElementById('tmm-overlay'); if (o) o.classList.add('open'); load(); }
+  function closeModal() { var o = document.getElementById('tmm-overlay'); if (o) o.classList.remove('open'); }
+
+  var tab = document.getElementById('tmm-tab');
+  var overlay = document.getElementById('tmm-overlay');
+  var closeBtn = document.getElementById('tmm-close');
+  if (tab) tab.addEventListener('click', openModal);
+  if (overlay) overlay.addEventListener('click', function (e) { if (e.target === overlay) closeModal(); });
+  if (closeBtn) closeBtn.addEventListener('click', closeModal);
+
+  load();
+  setInterval(load, 3000);
 })();
 </script>
