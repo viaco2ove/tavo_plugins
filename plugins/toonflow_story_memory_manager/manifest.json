@@ -1,12 +1,16 @@
 {
   "specVersion": 2,
   "id": "com.toonflow.story-memory-manager",
-  "name": { "$t": "plugin.name" },
-  "version": "1.0.0",
+  "name": {
+    "$t": "plugin.name"
+  },
+  "version": "1.0.1",
   "minAppVersion": "1.0.0",
   "entry": "entry.js",
   "author": "viaco",
-  "description": { "$t": "plugin.description" },
+  "description": {
+    "$t": "plugin.description"
+  },
   "localization": {
     "defaultLocale": "zh-CN",
     "resources": {
@@ -15,25 +19,107 @@
     }
   },
   "cover": "cover.png",
-  "permissions": ["input", "message", "generate", "variable", "file"],
+  "permissions": [
+    "input",
+    "message",
+    "generate",
+    "variable",
+    "file"
+  ],
   "contributes": {
     "sidebar": [
-      { "id": "tmm-refresh", "label": { "$t": "sidebar.refresh" } },
-      { "id": "tmm-inspect", "label": { "$t": "sidebar.inspect" } },
-      { "id": "tmm-export", "label": { "$t": "sidebar.export" } }
+      {
+        "id": "tmm-refresh",
+        "label": {
+          "$t": "sidebar.refresh"
+        }
+      },
+      {
+        "id": "tmm-inspect",
+        "label": {
+          "$t": "sidebar.inspect"
+        }
+      },
+      {
+        "id": "tmm-export",
+        "label": {
+          "$t": "sidebar.export"
+        }
+      }
     ],
     "htmlFragments": [
-      { "id": "tmm-panel", "src": "ui/panel.html", "mount": "/chat/head/end" }
+      {
+        "id": "tmm-panel",
+        "src": "ui/panel.html",
+        "mount": "/chat/head/end"
+      }
     ],
     "settings": {
       "schema": [
-        { "type": "info", "text": { "$t": "settings.info" }, "icon": "info" },
-        { "key": "enabled", "type": "switch", "label": { "$t": "settings.enabled" }, "default": true },
-        { "key": "refreshInterval", "type": "slider", "label": { "$t": "settings.refreshInterval" }, "min": 1, "max": 10, "step": 1, "default": 3 },
-        { "key": "factCap", "type": "slider", "label": { "$t": "settings.factCap" }, "min": 5, "max": 30, "step": 1, "default": 12 },
-        { "key": "tagCap", "type": "slider", "label": { "$t": "settings.tagCap" }, "min": 3, "max": 20, "step": 1, "default": 8 },
-        { "key": "injectEnabled", "type": "switch", "label": { "$t": "settings.injectEnabled" }, "default": true },
-        { "key": "worldSetting", "type": "textarea", "label": { "$t": "settings.worldSetting" }, "default": "" }
+        {
+          "type": "info",
+          "text": {
+            "$t": "settings.info"
+          },
+          "icon": "info"
+        },
+        {
+          "key": "enabled",
+          "type": "switch",
+          "label": {
+            "$t": "settings.enabled"
+          },
+          "default": true
+        },
+        {
+          "key": "refreshInterval",
+          "type": "slider",
+          "label": {
+            "$t": "settings.refreshInterval"
+          },
+          "min": 1,
+          "max": 10,
+          "step": 1,
+          "default": 3
+        },
+        {
+          "key": "factCap",
+          "type": "slider",
+          "label": {
+            "$t": "settings.factCap"
+          },
+          "min": 5,
+          "max": 30,
+          "step": 1,
+          "default": 12
+        },
+        {
+          "key": "tagCap",
+          "type": "slider",
+          "label": {
+            "$t": "settings.tagCap"
+          },
+          "min": 3,
+          "max": 20,
+          "step": 1,
+          "default": 8
+        },
+        {
+          "key": "injectEnabled",
+          "type": "switch",
+          "label": {
+            "$t": "settings.injectEnabled"
+          },
+          "default": true
+        },
+        {
+          "key": "worldSetting",
+          "type": "textarea",
+          "label": {
+            "$t": "settings.worldSetting"
+          },
+          "default": ""
+        }
       ]
     }
   }

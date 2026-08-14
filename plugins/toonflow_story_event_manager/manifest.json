@@ -1,11 +1,15 @@
 {
   "specVersion": 2,
   "id": "com.toonflow.story-event-manager",
-  "name": { "$t": "plugin.name" },
-  "version": "1.0.3",
+  "name": {
+    "$t": "plugin.name"
+  },
+  "version": "1.0.4",
   "minAppVersion": "1.0.0",
   "author": "viaco",
-  "description": { "$t": "plugin.description" },
+  "description": {
+    "$t": "plugin.description"
+  },
   "localization": {
     "defaultLocale": "zh-CN",
     "resources": {
@@ -14,15 +18,34 @@
     }
   },
   "cover": "cover.png",
-  "permissions": ["input", "message", "generate", "variable", "lorebook"],
+  "permissions": [
+    "input",
+    "message",
+    "generate",
+    "variable",
+    "lorebook"
+  ],
   "contributes": {
     "htmlFragments": [
-      { "id": "tf-story-trigger", "src": "ui/story_panel.html", "mount": "/chat/body/end" }
+      {
+        "id": "tf-story-trigger",
+        "src": "ui/story_panel.html",
+        "mount": "/chat/body/end"
+      }
     ],
     "settings": {
       "schema": [
-        { "type": "info", "text": "故事信息面板：点击聊天页底部的「{故事名} ›」按钮展开查看。", "icon": "info" },
-        { "key": "enabled", "type": "switch", "label": "启用", "default": true }
+        {
+          "type": "info",
+          "text": "故事信息面板：点击聊天页底部的「{故事名} ›」按钮展开查看。",
+          "icon": "info"
+        },
+        {
+          "key": "enabled",
+          "type": "switch",
+          "label": "启用",
+          "default": true
+        }
       ]
     }
   }

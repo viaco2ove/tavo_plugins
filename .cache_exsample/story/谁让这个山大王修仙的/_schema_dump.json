@@ -1,0 +1,1063 @@
+{
+  "tavo_character_create": {
+    "type": "object",
+    "properties": {
+      "character": {
+        "description": "Prefer a bare CCv3 data object. Full CCv2/CCv3 cards and SillyTavern character wrappers are also accepted.",
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "description": {
+                "type": "string"
+              },
+              "first_mes": {
+                "type": "string"
+              },
+              "personality": {
+                "type": "string"
+              },
+              "scenario": {
+                "type": "string"
+              },
+              "mes_example": {
+                "type": "string"
+              },
+              "creator_notes": {
+                "type": "string"
+              },
+              "system_prompt": {
+                "type": "string"
+              },
+              "post_history_instructions": {
+                "type": "string"
+              },
+              "alternate_greetings": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "tags": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "creator": {
+                "type": "string"
+              },
+              "character_version": {
+                "type": "string"
+              },
+              "nickname": {
+                "type": "string"
+              },
+              "character_book": {
+                "type": "object",
+                "additionalProperties": true
+              },
+              "extensions": {
+                "type": "object",
+                "additionalProperties": true
+              }
+            },
+            "required": [
+              "name",
+              "description",
+              "first_mes"
+            ],
+            "additionalProperties": true
+          },
+          {
+            "type": "object",
+            "properties": {
+              "spec": {
+                "type": "string",
+                "enum": [
+                  "chara_card_v2",
+                  "chara_card_v3"
+                ]
+              },
+              "spec_version": {
+                "type": "string"
+              },
+              "data": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "first_mes": {
+                    "type": "string"
+                  },
+                  "personality": {
+                    "type": "string"
+                  },
+                  "scenario": {
+                    "type": "string"
+                  },
+                  "mes_example": {
+                    "type": "string"
+                  },
+                  "creator_notes": {
+                    "type": "string"
+                  },
+                  "system_prompt": {
+                    "type": "string"
+                  },
+                  "post_history_instructions": {
+                    "type": "string"
+                  },
+                  "alternate_greetings": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "tags": {
+                    "type": "array",
+                    "items": {
+                      "type": "string"
+                    }
+                  },
+                  "creator": {
+                    "type": "string"
+                  },
+                  "character_version": {
+                    "type": "string"
+                  },
+                  "nickname": {
+                    "type": "string"
+                  },
+                  "character_book": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "extensions": {
+                    "type": "object",
+                    "additionalProperties": true
+                  }
+                },
+                "required": [
+                  "name",
+                  "description",
+                  "first_mes"
+                ],
+                "additionalProperties": true
+              }
+            },
+            "required": [
+              "spec",
+              "data"
+            ],
+            "additionalProperties": true
+          },
+          {
+            "type": "object",
+            "properties": {
+              "character": {
+                "type": "object",
+                "description": "SillyTavern-compatible character card object.",
+                "additionalProperties": true
+              }
+            },
+            "required": [
+              "character"
+            ],
+            "additionalProperties": true
+          }
+        ]
+      },
+      "dryRun": {
+        "type": "boolean",
+        "description": "Preview the diff without saving."
+      },
+      "expectedRevision": {
+        "type": "string",
+        "description": "Reject the write if the current asset revision differs."
+      },
+      "clientRequestId": {
+        "type": "string",
+        "description": "Idempotency key for retrying non-dry-run writes."
+      }
+    },
+    "required": [
+      "character"
+    ],
+    "additionalProperties": false
+  },
+  "tavo_lorebook_create": {
+    "type": "object",
+    "properties": {
+      "lorebook": {
+        "description": "Prefer a bare CCv3 Lorebook. Standalone lorebook_v3 and SillyTavern World Info JSON are also accepted.",
+        "anyOf": [
+          {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string",
+                "minLength": 1
+              },
+              "description": {
+                "type": "string"
+              },
+              "scan_depth": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "token_budget": {
+                "type": "integer",
+                "minimum": 0
+              },
+              "recursive_scanning": {
+                "type": "boolean"
+              },
+              "extensions": {
+                "type": "object",
+                "additionalProperties": true
+              },
+              "entries": {
+                "description": "Prefer a CCv3 entry array. A SillyTavern entries object keyed by uid is also accepted.",
+                "anyOf": [
+                  {
+                    "type": "array",
+                    "items": {
+                      "description": "Prefer the CCv3 shape with keys and content. Tavo-native and SillyTavern entry fields are also accepted.",
+                      "anyOf": [
+                        {
+                          "type": "object",
+                          "properties": {
+                            "name": {
+                              "type": "string"
+                            },
+                            "comment": {
+                              "type": "string"
+                            },
+                            "content": {
+                              "type": "string"
+                            },
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "probability": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 100
+                            },
+                            "id": {},
+                            "keys": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "secondary_keys": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "constant": {
+                              "type": "boolean"
+                            },
+                            "use_regex": {
+                              "type": "boolean"
+                            },
+                            "selective": {
+                              "type": "boolean"
+                            },
+                            "insertion_order": {
+                              "type": "integer"
+                            },
+                            "position": {
+                              "type": "string",
+                              "enum": [
+                                "before_char",
+                                "after_char",
+                                "before",
+                                "after"
+                              ]
+                            },
+                            "case_sensitive": {
+                              "type": "boolean"
+                            },
+                            "extensions": {
+                              "type": "object",
+                              "additionalProperties": true
+                            }
+                          },
+                          "required": [
+                            "keys",
+                            "content"
+                          ],
+                          "additionalProperties": true
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "name": {
+                              "type": "string"
+                            },
+                            "comment": {
+                              "type": "string"
+                            },
+                            "content": {
+                              "type": "string"
+                            },
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "probability": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 100
+                            },
+                            "identifier": {
+                              "type": "string",
+                              "minLength": 1
+                            },
+                            "strategy": {
+                              "type": "string",
+                              "enum": [
+                                "constant",
+                                "keyword"
+                              ]
+                            },
+                            "keywords": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "secondaryKeywords": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "injectionPosition": {
+                              "type": "string"
+                            }
+                          },
+                          "required": [
+                            "identifier",
+                            "content",
+                            "strategy"
+                          ],
+                          "additionalProperties": true
+                        },
+                        {
+                          "type": "object",
+                          "properties": {
+                            "name": {
+                              "type": "string"
+                            },
+                            "comment": {
+                              "type": "string"
+                            },
+                            "content": {
+                              "type": "string"
+                            },
+                            "enabled": {
+                              "type": "boolean"
+                            },
+                            "probability": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 100
+                            },
+                            "uid": {
+                              "type": [
+                                "integer",
+                                "string"
+                              ]
+                            },
+                            "key": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "keysecondary": {
+                              "type": "array",
+                              "items": {
+                                "type": "string"
+                              }
+                            },
+                            "constant": {
+                              "type": "boolean"
+                            },
+                            "disable": {
+                              "type": "boolean"
+                            },
+                            "order": {
+                              "type": "integer"
+                            }
+                          },
+                          "required": [
+                            "key",
+                            "content"
+                          ],
+                          "additionalProperties": true
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "type": "object",
+                    "additionalProperties": {
+                      "type": "object",
+                      "description": "SillyTavern World Info entry.",
+                      "additionalProperties": true
+                    }
+                  }
+                ]
+              }
+            },
+            "required": [
+              "name"
+            ],
+            "additionalProperties": true
+          },
+          {
+            "type": "object",
+            "properties": {
+              "spec": {
+                "type": "string",
+                "const": "lorebook_v3"
+              },
+              "data": {
+                "type": "object",
+                "properties": {
+                  "name": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "description": {
+                    "type": "string"
+                  },
+                  "scan_depth": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "token_budget": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "recursive_scanning": {
+                    "type": "boolean"
+                  },
+                  "extensions": {
+                    "type": "object",
+                    "additionalProperties": true
+                  },
+                  "entries": {
+                    "description": "Prefer a CCv3 entry array. A SillyTavern entries object keyed by uid is also accepted.",
+                    "anyOf": [
+                      {
+                        "type": "array",
+                        "items": {
+                          "description": "Prefer the CCv3 shape with keys and content. Tavo-native and SillyTavern entry fields are also accepted.",
+                          "anyOf": [
+                            {
+                              "type": "object",
+                              "properties": {
+                                "name": {
+                                  "type": "string"
+                                },
+                                "comment": {
+                                  "type": "string"
+                                },
+                                "content": {
+                                  "type": "string"
+                                },
+                                "enabled": {
+                                  "type": "boolean"
+                                },
+                                "probability": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 100
+                                },
+                                "id": {},
+                                "keys": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                },
+                                "secondary_keys": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                },
+                                "constant": {
+                                  "type": "boolean"
+                                },
+                                "use_regex": {
+                                  "type": "boolean"
+                                },
+                                "selective": {
+                                  "type": "boolean"
+                                },
+                                "insertion_order": {
+                                  "type": "integer"
+                                },
+                                "position": {
+                                  "type": "string",
+                                  "enum": [
+                                    "before_char",
+                                    "after_char",
+                                    "before",
+                                    "after"
+                                  ]
+                                },
+                                "case_sensitive": {
+                                  "type": "boolean"
+                                },
+                                "extensions": {
+                                  "type": "object",
+                                  "additionalProperties": true
+                                }
+                              },
+                              "required": [
+                                "keys",
+                                "content"
+                              ],
+                              "additionalProperties": true
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "name": {
+                                  "type": "string"
+                                },
+                                "comment": {
+                                  "type": "string"
+                                },
+                                "content": {
+                                  "type": "string"
+                                },
+                                "enabled": {
+                                  "type": "boolean"
+                                },
+                                "probability": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 100
+                                },
+                                "identifier": {
+                                  "type": "string",
+                                  "minLength": 1
+                                },
+                                "strategy": {
+                                  "type": "string",
+                                  "enum": [
+                                    "constant",
+                                    "keyword"
+                                  ]
+                                },
+                                "keywords": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                },
+                                "secondaryKeywords": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                },
+                                "injectionPosition": {
+                                  "type": "string"
+                                }
+                              },
+                              "required": [
+                                "identifier",
+                                "content",
+                                "strategy"
+                              ],
+                              "additionalProperties": true
+                            },
+                            {
+                              "type": "object",
+                              "properties": {
+                                "name": {
+                                  "type": "string"
+                                },
+                                "comment": {
+                                  "type": "string"
+                                },
+                                "content": {
+                                  "type": "string"
+                                },
+                                "enabled": {
+                                  "type": "boolean"
+                                },
+                                "probability": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 100
+                                },
+                                "uid": {
+                                  "type": [
+                                    "integer",
+                                    "string"
+                                  ]
+                                },
+                                "key": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                },
+                                "keysecondary": {
+                                  "type": "array",
+                                  "items": {
+                                    "type": "string"
+                                  }
+                                },
+                                "constant": {
+                                  "type": "boolean"
+                                },
+                                "disable": {
+                                  "type": "boolean"
+                                },
+                                "order": {
+                                  "type": "integer"
+                                }
+                              },
+                              "required": [
+                                "key",
+                                "content"
+                              ],
+                              "additionalProperties": true
+                            }
+                          ]
+                        }
+                      },
+                      {
+                        "type": "object",
+                        "additionalProperties": {
+                          "type": "object",
+                          "description": "SillyTavern World Info entry.",
+                          "additionalProperties": true
+                        }
+                      }
+                    ]
+                  }
+                },
+                "required": [
+                  "name"
+                ],
+                "additionalProperties": true
+              }
+            },
+            "required": [
+              "spec",
+              "data"
+            ],
+            "additionalProperties": true
+          }
+        ]
+      },
+      "dryRun": {
+        "type": "boolean",
+        "description": "Preview the diff without saving."
+      },
+      "expectedRevision": {
+        "type": "string",
+        "description": "Reject the write if the current asset revision differs."
+      },
+      "clientRequestId": {
+        "type": "string",
+        "description": "Idempotency key for retrying non-dry-run writes."
+      }
+    },
+    "required": [
+      "lorebook"
+    ],
+    "additionalProperties": false
+  },
+  "tavo_chat_create": {
+    "type": "object",
+    "properties": {
+      "chat": {
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Alias for title."
+          },
+          "characterIds": {
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "integer",
+                      "minimum": 1
+                    }
+                  },
+                  "required": [
+                    "id"
+                  ],
+                  "additionalProperties": true
+                }
+              ]
+            },
+            "minItems": 1
+          },
+          "characters": {
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "integer",
+                      "minimum": 1
+                    }
+                  },
+                  "required": [
+                    "id"
+                  ],
+                  "additionalProperties": true
+                }
+              ]
+            },
+            "minItems": 1
+          },
+          "personaId": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "integer",
+                        "minimum": 1
+                      }
+                    },
+                    "required": [
+                      "id"
+                    ],
+                    "additionalProperties": true
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "persona": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "integer",
+                        "minimum": 1
+                      }
+                    },
+                    "required": [
+                      "id"
+                    ],
+                    "additionalProperties": true
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "presetId": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "integer",
+                        "minimum": 1
+                      }
+                    },
+                    "required": [
+                      "id"
+                    ],
+                    "additionalProperties": true
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "preset": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "integer",
+                        "minimum": 1
+                      }
+                    },
+                    "required": [
+                      "id"
+                    ],
+                    "additionalProperties": true
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "themeId": {
+            "anyOf": [
+              {
+                "anyOf": [
+                  {
+                    "type": "integer",
+                    "minimum": 1
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "integer",
+                        "minimum": 1
+                      }
+                    },
+                    "required": [
+                      "id"
+                    ],
+                    "additionalProperties": true
+                  }
+                ]
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lorebookIds": {
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "integer",
+                      "minimum": 1
+                    }
+                  },
+                  "required": [
+                    "id"
+                  ],
+                  "additionalProperties": true
+                }
+              ]
+            }
+          },
+          "lorebooks": {
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "integer",
+                      "minimum": 1
+                    }
+                  },
+                  "required": [
+                    "id"
+                  ],
+                  "additionalProperties": true
+                }
+              ]
+            }
+          },
+          "regexIds": {
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "integer",
+                      "minimum": 1
+                    }
+                  },
+                  "required": [
+                    "id"
+                  ],
+                  "additionalProperties": true
+                }
+              ]
+            }
+          },
+          "regexes": {
+            "type": "array",
+            "items": {
+              "anyOf": [
+                {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                {
+                  "type": "object",
+                  "properties": {
+                    "id": {
+                      "type": "integer",
+                      "minimum": 1
+                    }
+                  },
+                  "required": [
+                    "id"
+                  ],
+                  "additionalProperties": true
+                }
+              ]
+            }
+          },
+          "pinned": {
+            "type": "boolean"
+          },
+          "responseMode": {
+            "anyOf": [
+              {
+                "type": "string",
+                "enum": [
+                  "natural",
+                  "everyone",
+                  "manual",
+                  "scenario"
+                ]
+              },
+              {
+                "type": "integer",
+                "minimum": 0,
+                "maximum": 3
+              }
+            ]
+          },
+          "allowSelfResponses": {
+            "type": "boolean"
+          },
+          "overrideScenario": {
+            "type": "string"
+          },
+          "mutedCharacterIds": {
+            "type": "array",
+            "items": {
+              "type": "integer",
+              "minimum": 1
+            }
+          }
+        },
+        "additionalProperties": false,
+        "anyOf": [
+          {
+            "required": [
+              "characterIds"
+            ]
+          },
+          {
+            "required": [
+              "characters"
+            ]
+          }
+        ]
+      },
+      "dryRun": {
+        "type": "boolean"
+      },
+      "expectedRevision": {
+        "type": "string"
+      },
+      "clientRequestId": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "chat"
+    ],
+    "additionalProperties": false
+  }
+}

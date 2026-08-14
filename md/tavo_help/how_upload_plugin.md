@@ -92,3 +92,95 @@ curl 'https://hub.tavo.cc/api/v1/creator/plugins?lang=zh-CN' \
 
 - 插件安装后可在 tavo 设置中查看日志输出
 - 修改插件后需要重新安装（先卸载再安装）
+
+
+## 其他接口
+### 获得插件信息
+curl 'https://hub.tavo.cc/api/v1/creator/plugins/6a7f0cbd4364bff66349c0fe?lang=zh-CN' \
+  -H 'accept: */*' \
+  -H 'accept-language: zh-CN,zh;q=0.9' \
+  -H 'origin: https://hub.tavoai.dev' \
+  -H 'priority: u=1, i' \
+  -H 'referer: https://hub.tavoai.dev/account/plugins/6a7f0cbd4364bff66349c0fe/edit' \
+  -H 'sec-ch-ua: "Not A(Brand";v="8", "Chromium";v="132", "Google Chrome";v="132"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' \
+  -H 'sec-fetch-dest: empty' \
+  -H 'sec-fetch-mode: cors' \
+  -H 'sec-fetch-site: cross-site' \
+  -H 'user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36' \
+  -H 'x-sid: {sid}'
+
+
+### 更新版本（版本需大于已发布版本）
+curl 'https://hub.tavo.cc/api/v1/creator/plugins/6a7f0cbd4364bff66349c0fe/check-package?lang=zh-CN' \
+  -H 'accept: */*' \
+  -H 'accept-language: zh-CN,zh;q=0.9' \
+  -H 'content-type: multipart/form-data; boundary=----WebKitFormBoundaryozpfa3B7r569qBn5' \
+  -H 'origin: https://hub.tavoai.dev' \
+  -H 'priority: u=1, i' \
+  -H 'referer: https://hub.tavoai.dev/account/plugins/6a7f0cbd4364bff66349c0fe/edit' \
+  -H 'sec-ch-ua: "Not A(Brand";v="8", "Chromium";v="132", "Google Chrome";v="132"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' \
+  -H 'sec-fetch-dest: empty' \
+  -H 'sec-fetch-mode: cors' \
+  -H 'sec-fetch-site: cross-site' \
+  -H 'user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36' \
+  -H 'x-sid: {sid}' \
+  --data-raw $'------WebKitFormBoundaryozpfa3B7r569qBn5\r\nContent-Disposition: form-data; name="plugin_file"; filename="toonflow_story_style.tpg"\r\nContent-Type: application/octet-stream\r\n\r\n\r\n------WebKitFormBoundaryozpfa3B7r569qBn5--\r\n'
+
+
+### 更新后的保存需改
+curl 'https://hub.tavo.cc/api/v1/creator/plugins/6a7f0cbd4364bff66349c0fe/publish?lang=zh-CN' \
+  -X 'PATCH' \
+  -H 'accept: */*' \
+  -H 'accept-language: zh-CN,zh;q=0.9' \
+  -H 'content-type: multipart/form-data; boundary=----WebKitFormBoundaryEQpAU8jk9dKSAtuT' \
+  -H 'origin: https://hub.tavoai.dev' \
+  -H 'priority: u=1, i' \
+  -H 'referer: https://hub.tavoai.dev/account/plugins/6a7f0cbd4364bff66349c0fe/edit' \
+  -H 'sec-ch-ua: "Not A(Brand";v="8", "Chromium";v="132", "Google Chrome";v="132"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' \
+  -H 'sec-fetch-dest: empty' \
+  -H 'sec-fetch-mode: cors' \
+  -H 'sec-fetch-site: cross-site' \
+  -H 'user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36' \
+  -H 'x-sid: {sid}' \
+  --data-raw $'------WebKitFormBoundaryEQpAU8jk9dKSAtuT\r\nContent-Disposition: form-data; name="metadata"\r\n\r\n{"name":"气泡样式","external_url":null,"description":"单条/多条显示模式 + 气泡透明度调节；其他样式跟随聊天主题。"}\r\n------WebKitFormBoundaryEQpAU8jk9dKSAtuT\r\nContent-Disposition: form-data; name="plugin_file"; filename="toonflow_story_style.tpg"\r\nContent-Type: application/octet-stream\r\n\r\n\r\n------WebKitFormBoundaryEQpAU8jk9dKSAtuT--\r\n'
+
+### 下架插件（不想更新版本那就下架然后删除再上传发布）
+curl 'https://hub.tavo.cc/api/v1/creator/plugins/6a7f0cbd4364bff66349c0fe/unpublish?lang=zh-CN' \
+  -X 'POST' \
+  -H 'accept: */*' \
+  -H 'accept-language: zh-CN,zh;q=0.9' \
+  -H 'content-length: 0' \
+  -H 'origin: https://hub.tavoai.dev' \
+  -H 'priority: u=1, i' \
+  -H 'referer: https://hub.tavoai.dev/account/plugins/6a7f0cbd4364bff66349c0fe/edit' \
+  -H 'sec-ch-ua: "Not A(Brand";v="8", "Chromium";v="132", "Google Chrome";v="132"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' \
+  -H 'sec-fetch-dest: empty' \
+  -H 'sec-fetch-mode: cors' \
+  -H 'sec-fetch-site: cross-site' \
+  -H 'user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36' \
+  -H 'x-sid: {sid}'
+
+### 删除插件
+curl 'https://hub.tavo.cc/api/v1/creator/plugins/6a7f0cbd4364bff66349c0fe?lang=zh-CN' \
+  -X 'DELETE' \
+  -H 'accept: */*' \
+  -H 'accept-language: zh-CN,zh;q=0.9' \
+  -H 'origin: https://hub.tavoai.dev' \
+  -H 'priority: u=1, i' \
+  -H 'referer: https://hub.tavoai.dev/account/plugins/6a7f0cbd4364bff66349c0fe/edit' \
+  -H 'sec-ch-ua: "Not A(Brand";v="8", "Chromium";v="132", "Google Chrome";v="132"' \
+  -H 'sec-ch-ua-mobile: ?0' \
+  -H 'sec-ch-ua-platform: "Windows"' \
+  -H 'sec-fetch-dest: empty' \
+  -H 'sec-fetch-mode: cors' \
+  -H 'sec-fetch-site: cross-site' \
+  -H 'user-agent: Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/132.0.0.0 Safari/537.36' \
+  -H 'x-sid: {sid}'

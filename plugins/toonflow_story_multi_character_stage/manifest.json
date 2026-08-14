@@ -1,12 +1,16 @@
 {
   "specVersion": 2,
   "id": "com.toonflow.multi-character-stage",
-  "name": { "$t": "plugin.name" },
-  "version": "1.0.0",
+  "name": {
+    "$t": "plugin.name"
+  },
+  "version": "1.0.1",
   "minAppVersion": "1.0.0",
   "entry": "entry.js",
   "author": "viaco",
-  "description": { "$t": "plugin.description" },
+  "description": {
+    "$t": "plugin.description"
+  },
   "localization": {
     "defaultLocale": "zh-CN",
     "resources": {
@@ -15,24 +19,74 @@
     }
   },
   "cover": "cover.png",
-  "permissions": ["input", "message", "generate", "variable"],
+  "permissions": [
+    "input",
+    "message",
+    "generate",
+    "variable"
+  ],
   "contributes": {
     "sidebar": [
-      { "id": "mcs-toggle", "label": { "$t": "sidebar.toggle" } },
-      { "id": "mcs-area", "label": { "$t": "sidebar.area" } }
+      {
+        "id": "mcs-toggle",
+        "label": {
+          "$t": "sidebar.toggle"
+        }
+      },
+      {
+        "id": "mcs-area",
+        "label": {
+          "$t": "sidebar.area"
+        }
+      }
     ],
     "settings": {
       "schema": [
-        { "type": "info", "text": { "$t": "settings.info" }, "icon": "info" },
-        { "key": "enabled", "type": "switch", "label": { "$t": "settings.enabled" }, "default": true },
-        { "key": "responseMode", "type": "select", "label": { "$t": "settings.responseMode" }, "default": "scenario",
+        {
+          "type": "info",
+          "text": {
+            "$t": "settings.info"
+          },
+          "icon": "info"
+        },
+        {
+          "key": "enabled",
+          "type": "switch",
+          "label": {
+            "$t": "settings.enabled"
+          },
+          "default": true
+        },
+        {
+          "key": "responseMode",
+          "type": "select",
+          "label": {
+            "$t": "settings.responseMode"
+          },
+          "default": "scenario",
           "options": [
-            { "value": "scenario", "label": "场景模式" },
-            { "value": "natural", "label": "自然模式" },
-            { "value": "manual", "label": "手动模式" }
+            {
+              "value": "scenario",
+              "label": "场景模式"
+            },
+            {
+              "value": "natural",
+              "label": "自然模式"
+            },
+            {
+              "value": "manual",
+              "label": "手动模式"
+            }
           ]
         },
-        { "key": "npcAuto", "type": "switch", "label": { "$t": "settings.npcAuto" }, "default": true }
+        {
+          "key": "npcAuto",
+          "type": "switch",
+          "label": {
+            "$t": "settings.npcAuto"
+          },
+          "default": true
+        }
       ]
     }
   }

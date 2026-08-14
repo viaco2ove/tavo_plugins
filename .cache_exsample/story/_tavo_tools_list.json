@@ -1,0 +1,382 @@
+[
+  {
+    "name": "tavo_status",
+    "description": "Return Tavo MCP server status and data-library asset counts."
+  },
+  {
+    "name": "tavo_app_version",
+    "description": "Read the public Tavo app version string."
+  },
+  {
+    "name": "tavo_app_version_number",
+    "description": "Read the numeric Tavo app build number."
+  },
+  {
+    "name": "tavo_file_save",
+    "description": "Save file content in chat-scoped or global Tavo storage."
+  },
+  {
+    "name": "tavo_file_load",
+    "description": "Load file content from chat-scoped or global Tavo storage."
+  },
+  {
+    "name": "tavo_file_delete",
+    "description": "Delete a file from chat-scoped or global Tavo storage."
+  },
+  {
+    "name": "tavo_file_exists",
+    "description": "Check whether a file exists in chat-scoped or global Tavo storage."
+  },
+  {
+    "name": "tavo_file_list",
+    "description": "List paginated file metadata from chat-scoped or global Tavo storage."
+  },
+  {
+    "name": "tavo_character_search",
+    "description": "Search Tavo assets by name. Use this before get/update when the id is unknown."
+  },
+  {
+    "name": "tavo_character_get",
+    "description": "Read one Tavo asset by id. Call this before updating so unknown fields can be preserved."
+  },
+  {
+    "name": "tavo_character_create",
+    "description": "Create a Tavo character from CCv3-compatible character data or a full CCv2/CCv3/SillyTavern card."
+  },
+  {
+    "name": "tavo_character_update",
+    "description": "Update a Tavo character with CCv3-compatible fields. Read it first to preserve fields not being changed."
+  },
+  {
+    "name": "tavo_character_import_card",
+    "description": "Import a full CCv2/CCv3 or SillyTavern-compatible character card and its embedded lorebook or regex data."
+  },
+  {
+    "name": "tavo_character_delete",
+    "description": "Write a Tavo data-library asset. Supports dryRun, expectedRevision, and clientRequestId."
+  },
+  {
+    "name": "tavo_lorebook_search",
+    "description": "Search Tavo assets by name. Use this before get/update when the id is unknown."
+  },
+  {
+    "name": "tavo_lorebook_get",
+    "description": "Read one Tavo asset by id. Call this before updating so unknown fields can be preserved."
+  },
+  {
+    "name": "tavo_lorebook_create",
+    "description": "Create a lorebook from CCv3 Lorebook data or SillyTavern World Info JSON."
+  },
+  {
+    "name": "tavo_lorebook_update",
+    "description": "Update a lorebook using CCv3 Lorebook or SillyTavern World Info fields."
+  },
+  {
+    "name": "tavo_lorebook_import",
+    "description": "Import a bare CCv3 Lorebook, standalone lorebook_v3 JSON, or SillyTavern World Info JSON."
+  },
+  {
+    "name": "tavo_lorebook_delete",
+    "description": "Write a Tavo data-library asset. Supports dryRun, expectedRevision, and clientRequestId."
+  },
+  {
+    "name": "tavo_lorebook_entry_upsert",
+    "description": "Create or replace one lorebook entry in Tavo, CCv3, or SillyTavern shape."
+  },
+  {
+    "name": "tavo_lorebook_entry_delete",
+    "description": "Write a Tavo data-library asset. Supports dryRun, expectedRevision, and clientRequestId."
+  },
+  {
+    "name": "tavo_regex_search",
+    "description": "Search Tavo assets by name. Use this before get/update when the id is unknown."
+  },
+  {
+    "name": "tavo_regex_get",
+    "description": "Read one Tavo asset by id. Call this before updating so unknown fields can be preserved."
+  },
+  {
+    "name": "tavo_regex_create",
+    "description": "Write a Tavo data-library asset. Supports dryRun, expectedRevision, and clientRequestId."
+  },
+  {
+    "name": "tavo_regex_update",
+    "description": "Write a Tavo data-library asset. Supports dryRun, expectedRevision, and clientRequestId."
+  },
+  {
+    "name": "tavo_regex_import",
+    "description": "Write a Tavo data-library asset. Supports dryRun, expectedRevision, and clientRequestId."
+  },
+  {
+    "name": "tavo_regex_delete",
+    "description": "Write a Tavo data-library asset. Supports dryRun, expectedRevision, and clientRequestId."
+  },
+  {
+    "name": "tavo_regex_entry_upsert",
+    "description": "Write a Tavo data-library asset. Supports dryRun, expectedRevision, and clientRequestId."
+  },
+  {
+    "name": "tavo_regex_entry_delete",
+    "description": "Write a Tavo data-library asset. Supports dryRun, expectedRevision, and clientRequestId."
+  },
+  {
+    "name": "tavo_regex_test",
+    "description": "Write a Tavo data-library asset. Supports dryRun, expectedRevision, and clientRequestId."
+  },
+  {
+    "name": "tavo_preset_search",
+    "description": "Search Tavo assets by name. Use this before get/update when the id is unknown."
+  },
+  {
+    "name": "tavo_preset_get",
+    "description": "Read one Tavo asset by id. Call this before updating so unknown fields can be preserved."
+  },
+  {
+    "name": "tavo_preset_create",
+    "description": "Write a Tavo data-library asset. Supports dryRun, expectedRevision, and clientRequestId."
+  },
+  {
+    "name": "tavo_preset_update",
+    "description": "Write a Tavo data-library asset. Supports dryRun, expectedRevision, and clientRequestId."
+  },
+  {
+    "name": "tavo_preset_import",
+    "description": "Write a Tavo data-library asset. Supports dryRun, expectedRevision, and clientRequestId."
+  },
+  {
+    "name": "tavo_preset_delete",
+    "description": "Write a Tavo data-library asset. Supports dryRun, expectedRevision, and clientRequestId."
+  },
+  {
+    "name": "tavo_preset_entry_upsert",
+    "description": "Write a Tavo data-library asset. Supports dryRun, expectedRevision, and clientRequestId."
+  },
+  {
+    "name": "tavo_preset_entry_delete",
+    "description": "Write a Tavo data-library asset. Supports dryRun, expectedRevision, and clientRequestId."
+  },
+  {
+    "name": "tavo_preset_set_active",
+    "description": "Write a Tavo data-library asset. Supports dryRun, expectedRevision, and clientRequestId."
+  },
+  {
+    "name": "tavo_persona_search",
+    "description": "Search Tavo assets by name. Use this before get/update when the id is unknown."
+  },
+  {
+    "name": "tavo_persona_get",
+    "description": "Read one Tavo asset by id. Call this before updating so unknown fields can be preserved."
+  },
+  {
+    "name": "tavo_persona_create",
+    "description": "Write a Tavo data-library asset. Supports dryRun, expectedRevision, and clientRequestId."
+  },
+  {
+    "name": "tavo_persona_update",
+    "description": "Write a Tavo data-library asset. Supports dryRun, expectedRevision, and clientRequestId."
+  },
+  {
+    "name": "tavo_persona_delete",
+    "description": "Write a Tavo data-library asset. Supports dryRun, expectedRevision, and clientRequestId."
+  },
+  {
+    "name": "tavo_persona_set_active",
+    "description": "Write a Tavo data-library asset. Supports dryRun, expectedRevision, and clientRequestId."
+  },
+  {
+    "name": "tavo_chat_search",
+    "description": "Search Tavo chats by display title."
+  },
+  {
+    "name": "tavo_chat_get",
+    "description": "Read one Tavo chat by id."
+  },
+  {
+    "name": "tavo_chat_create",
+    "description": "Create a Tavo chat from character/persona ids."
+  },
+  {
+    "name": "tavo_chat_update",
+    "description": "Update chat metadata, members, and overrides."
+  },
+  {
+    "name": "tavo_chat_delete",
+    "description": "Delete a Tavo chat through provider cleanup."
+  },
+  {
+    "name": "tavo_chat_copy",
+    "description": "Copy a Tavo chat through provider clone logic."
+  },
+  {
+    "name": "tavo_chat_reset",
+    "description": "Reset a Tavo chat messages/state."
+  },
+  {
+    "name": "tavo_current_chat_get",
+    "description": "Read the current active Tavo chat."
+  },
+  {
+    "name": "tavo_current_chat_set",
+    "description": "Set the current active Tavo chat."
+  },
+  {
+    "name": "tavo_theme_search",
+    "description": "Search or list chat themes."
+  },
+  {
+    "name": "tavo_theme_get",
+    "description": "Read one complete chat theme by id."
+  },
+  {
+    "name": "tavo_theme_create",
+    "description": "Create a custom chat theme."
+  },
+  {
+    "name": "tavo_theme_update",
+    "description": "Recursively patch a custom chat theme."
+  },
+  {
+    "name": "tavo_theme_import",
+    "description": "Import a chat-scoped .thm archive with explicit conflict behavior."
+  },
+  {
+    "name": "tavo_theme_export",
+    "description": "Export a chat theme to the specified chat internal file store."
+  },
+  {
+    "name": "tavo_theme_delete",
+    "description": "Delete a custom chat theme with explicit confirmation retry."
+  },
+  {
+    "name": "tavo_message_find",
+    "description": "Find messages by inclusive range and role, visibility, speaker, or content filters."
+  },
+  {
+    "name": "tavo_message_get",
+    "description": "Read one message by stable id or drifting index. Id wins."
+  },
+  {
+    "name": "tavo_message_count",
+    "description": "Count messages in a Tavo chat."
+  },
+  {
+    "name": "tavo_message_append",
+    "description": "Append a user or assistant message with required content."
+  },
+  {
+    "name": "tavo_message_update",
+    "description": "Update message content, reasoning, or visibility by stable id or index."
+  },
+  {
+    "name": "tavo_message_delete",
+    "description": "Delete a message by stable id or index."
+  },
+  {
+    "name": "tavo_variable_list",
+    "description": "List the complete variable tree for one explicit global, chat, or message scope."
+  },
+  {
+    "name": "tavo_variable_get",
+    "description": "Read a variable by path from one explicit global, chat, or message scope."
+  },
+  {
+    "name": "tavo_variable_set",
+    "description": "Set a raw JSON variable value in one explicit scope."
+  },
+  {
+    "name": "tavo_variable_update",
+    "description": "Shallow-merge object variables, or replace other values, in one explicit scope."
+  },
+  {
+    "name": "tavo_variable_unset",
+    "description": "Remove a variable path from one explicit scope."
+  },
+  {
+    "name": "tavo_memory_get",
+    "description": "Read long-term memory for a Tavo chat, including whether injection is enabled."
+  },
+  {
+    "name": "tavo_memory_update",
+    "description": "Update the enabled state and/or replace the long-term memory entries for a Tavo chat."
+  },
+  {
+    "name": "tavo_memory_append",
+    "description": "Append one or more long-term memory entries without replacing existing entries."
+  },
+  {
+    "name": "tavo_input_get",
+    "description": "Read the current active chat input box text."
+  },
+  {
+    "name": "tavo_input_set",
+    "description": "Replace the current active chat input box text."
+  },
+  {
+    "name": "tavo_input_append",
+    "description": "Append text to the current active chat input box."
+  },
+  {
+    "name": "tavo_input_clear",
+    "description": "Clear the current active chat input box."
+  },
+  {
+    "name": "tavo_input_send",
+    "description": "Send the current active chat input through input hooks and the normal chat flow. Returns when accepted, cancelled, busy, or rejected; it does not wait for generation."
+  },
+  {
+    "name": "tavo_generate",
+    "description": "Run one non-streaming text generation for a Tavo chat. MCP generation does not show a confirmation dialog."
+  },
+  {
+    "name": "tavo_image_generate",
+    "description": "Generate an image for a Tavo chat and save it as a durable Tavo file. MCP image generation does not show a confirmation dialog."
+  },
+  {
+    "name": "tavo_tts_play",
+    "description": "Play text with an explicit configured character or persona voice. Returns after the app shared TTS queue accepts playback, not after playback completes. MCP playback does not show a confirmation dialog."
+  },
+  {
+    "name": "tavo_tts_stop",
+    "description": "Stop active playback and clear the app shared global TTS queue."
+  },
+  {
+    "name": "tavo_plugin_search",
+    "description": "Search installed Tavo plugins by id, name, or description."
+  },
+  {
+    "name": "tavo_plugin_get",
+    "description": "Read one installed Tavo plugin, including manifest and config."
+  },
+  {
+    "name": "tavo_plugin_package",
+    "description": "Package plugin source files into an installable zip."
+  },
+  {
+    "name": "tavo_plugin_install",
+    "description": "Install a Tavo plugin from zipBase64 or a local zipPath."
+  },
+  {
+    "name": "tavo_plugin_uninstall",
+    "description": "Uninstall an installed Tavo plugin."
+  },
+  {
+    "name": "tavo_plugin_set_enabled",
+    "description": "Enable or disable an installed plugin."
+  },
+  {
+    "name": "tavo_plugin_set_config",
+    "description": "Set one plugin configuration value."
+  },
+  {
+    "name": "tavo_plugin_reset_config",
+    "description": "Reset one plugin configuration to manifest defaults."
+  },
+  {
+    "name": "tavo_plugin_validate_manifest",
+    "description": "Validate a plugin manifest object before packaging or installing."
+  },
+  {
+    "name": "tavo_plugin_get_runtime_contributions",
+    "description": "List enabled plugin runtime contributions exposed to Tavo."
+  }
+]
