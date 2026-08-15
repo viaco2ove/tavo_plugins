@@ -1,0 +1,361 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Tavo 插件调试台</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+      background: #1a1a1e; color: #e8e8e8; min-height: 100vh; display: flex;
+    }
+    /* 左侧控制面板 */
+    #control-panel {
+      width: 300px; min-width: 300px; background: #141418; border-right: 1px solid #2a2a30;
+      padding: 16px; overflow-y: auto; height: 100vh; position: sticky; top: 0;
+    }
+    #control-panel h1 { font-size: 15px; margin-bottom: 4px; }
+    #control-panel .sub { font-size: 11px; color: #666; margin-bottom: 16px; }
+    .ctrl-group { margin-bottom: 18px; }
+    .ctrl-label { font-size: 11px; color: #999; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 6px; }
+    .ctrl-group select, .ctrl-group input[type=text], .ctrl-group input[type=range] {
+      width: 100%; background: #222; border: 1px solid #333; color: #e8e8e8;
+      padding: 7px 10px; border-radius: 6px; font-size: 13px;
+    }
+    .ctrl-group select:focus { outline: none; border-color: #7cb3ff; }
+    .btn {
+      padding: 7px 14px; border-radius: 6px; border: 1px solid #333; background: #222;
+      color: #ccc; font-size: 12px; cursor: pointer; transition: all 0.15s; margin-right: 6px; margin-bottom: 6px;
+    }
+    .btn:hover { border-color: #7cb3ff; color: #7cb3ff; }
+    .btn.primary { background: #2d4a7b; border-color: #3b6bb5; color: #fff; }
+    .btn.danger { background: #4a2d2d; border-color: #b53b3b; color: #ff9999; }
+    .btn-row { display: flex; flex-wrap: wrap; }
+    .msg-preview {
+      background: #111; border: 1px solid #2a2a30; border-radius: 6px; padding: 8px 10px;
+      font-size: 12px; margin-bottom: 4px; max-height: 200px; overflow-y: auto;
+    }
+    .msg-preview .msg-item { padding: 3px 0; border-bottom: 1px solid #1a1a1e; }
+    .msg-preview .msg-role { font-weight: 600; }
+    .msg-preview .msg-role.user { color: #7cb3ff; }
+    .msg-preview .msg-role.character { color: #ff9966; }
+    .msg-preview .msg-role.system { color: #888; }
+    .msg-preview .msg-hidden { text-decoration: line-through; opacity: 0.5; }
+
+    /* 右侧插件渲染区（模拟 Tavo 聊天页） */
+    #plugin-stage {
+      flex: 1; position: relative; background: #0f0f12; overflow: hidden;
+    }
+    #plugin-stage .tavo-chat-bg {
+      position: absolute; inset: 0;
+      background: linear-gradient(180deg, #1a1a22 0%, #121218 100%);
+    }
+    #plugin-stage .tavo-chat-placeholder {
+      position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);
+      color: #333; font-size: 14px; text-align: center; pointer-events: none;
+    }
+    /* 模拟 Tavo 聊天消息流 */
+    #plugin-stage .tavo-msg-list {
+      position: absolute; inset: 0; padding: 60px 20px 20px; overflow-y: auto;
+    }
+    #plugin-stage .tavo-bubble {
+      max-width: 70%; padding: 10px 14px; border-radius: 12px; margin-bottom: 10px;
+      font-size: 14px; word-break: break-word;
+    }
+    #plugin-stage .tavo-bubble.user {
+      background: rgba(123,104,238,0.9); color: #fff; margin-left: auto; text-align: right;
+    }
+    #plugin-stage .tavo-bubble.character {
+      background: rgba(255,107,107,0.9); color: #fff; margin-right: auto;
+    }
+
+    /* 插件 HTML 挂载容器 */
+    #plugin-mount { position: relative; z-index: 10; }
+
+    /* 状态栏 */
+    #status-bar {
+      position: fixed; bottom: 0; left: 300px; right: 0; height: 28px;
+      background: #0d0d10; border-top: 1px solid #222; display: flex;
+      align-items: center; padding: 0 14px; font-size: 11px; color: #555;
+      font-family: ui-monospace, "Cascadia Code", monospace; z-index: 99999;
+    }
+    #status-bar .dot { width: 6px; height: 6px; border-radius: 50%; margin-right: 6px; }
+    #status-bar .dot.ok { background: #4caf50; }
+    #status-bar .dot.err { background: #f44336; }
+    #status-bar span { margin-right: 16px; }
+  </style>
+</head>
+<body>
+  <!-- 左侧控制面板 -->
+  <div id="control-panel">
+    <h1>Tavo 插件调试台</h1>
+    <div class="sub">模拟 Tavo WebView 环境 + 独立测试插件 UI</div>
+
+    <div class="ctrl-group">
+      <div class="ctrl-label">加载插件</div>
+      <select id="plugin-select">
+        <option value="">-- 选择插件 --</option>
+      </select>
+      <div class="btn-row" style="margin-top:8px">
+        <button class="btn primary" id="btn-load">加载插件</button>
+        <button class="btn" id="btn-reload">重新加载</button>
+      </div>
+    </div>
+
+    <div class="ctrl-group">
+      <div class="ctrl-label">注入 Eruda 调试面板</div>
+      <div class="btn-row">
+        <button class="btn" id="btn-eruda">注入 Eruda</button>
+      </div>
+    </div>
+
+    <div class="ctrl-group">
+      <div class="ctrl-label">模拟消息</div>
+      <input type="text" id="msg-role" value="character" placeholder="user / character / system" style="margin-bottom:6px">
+      <input type="text" id="msg-text" value="这是模拟的消息内容" placeholder="消息文本">
+      <div class="btn-row" style="margin-top:8px">
+        <button class="btn primary" id="btn-addmsg">添加消息</button>
+        <button class="btn danger" id="btn-clearmsg">清空消息</button>
+      </div>
+    </div>
+
+    <div class="ctrl-group">
+      <div class="ctrl-label">模拟事件</div>
+      <select id="event-select">
+        <option value="chat:opened">chat:opened</option>
+        <option value="message:added">message:added</option>
+        <option value="message:changed">message:changed</option>
+        <option value="generation:prepare">generation:prepare</option>
+      </select>
+      <div class="btn-row" style="margin-top:8px">
+        <button class="btn" id="btn-fire">触发事件</button>
+      </div>
+    </div>
+
+    <div class="ctrl-group">
+      <div class="ctrl-label">Mock 数据</div>
+      <div class="btn-row">
+        <button class="btn" id="btn-showvars">查看变量</button>
+        <button class="btn danger" id="btn-reset">重置全部</button>
+      </div>
+      <div class="msg-preview" id="var-preview" style="margin-top:6px"></div>
+    </div>
+
+    <div class="ctrl-group">
+      <div class="ctrl-label">消息列表</div>
+      <div class="msg-preview" id="msg-preview"></div>
+    </div>
+  </div>
+
+  <!-- 右侧插件渲染区 -->
+  <div id="plugin-stage">
+    <div class="tavo-chat-bg"></div>
+    <div class="tavo-chat-placeholder">
+      ← 选择插件并点击「加载插件」<br>插件 UI 将渲染在这里
+    </div>
+    <!-- 模拟 Tavo 消息气泡（让插件的颜色标记逻辑能工作） -->
+    <div class="tavo-msg-list" id="tavo-msg-list"></div>
+    <!-- 插件 HTML 挂载点 -->
+    <div id="plugin-mount"></div>
+  </div>
+
+  <!-- 状态栏 -->
+  <div id="status-bar">
+    <div class="dot ok" id="status-dot"></div>
+    <span id="status-text">Ready</span>
+    <span id="status-plugin"></span>
+    <span id="status-msgs">0 messages</span>
+  </div>
+
+  <!-- 1. 先加载 Mock Tavo API -->
+  <script src="mock_tavo.js"></script>
+  <script>
+  'use strict';
+
+  var loadedPlugin = null;
+
+  // ===== 初始化插件下拉列表 =====
+  var PLUGINS = {
+    'toonflow_story_style': {
+      name: '气泡样式',
+      html: '../plugins/toonflow_story_style/ui/story_style_panel.html',
+      manifest: '../plugins/toonflow_story_style/manifest.json'
+    },
+    'toonflow_story_event_manager': {
+      name: '事件管理器',
+      html: '../plugins/toonflow_story_event_manager/ui/event_panel.html',
+      manifest: '../plugins/toonflow_story_event_manager/manifest.json'
+    },
+    'toonflow_story_memory_manager': {
+      name: '记忆管理器',
+      html: '../plugins/toonflow_story_memory_manager/ui/panel.html',
+      manifest: '../plugins/toonflow_story_memory_manager/manifest.json'
+    },
+    'toonflow_story_speaker': {
+      name: '发言器',
+      html: '../plugins/toonflow_story_speaker/ui/speaker_panel.html',
+      manifest: '../plugins/toonflow_story_speaker/manifest.json'
+    },
+    'toonflow_story_multi_character_stage': {
+      name: '多角色舞台',
+      html: '../plugins/toonflow_story_multi_character_stage/ui/stage_panel.html',
+      manifest: '../plugins/toonflow_story_multi_character_stage/manifest.json'
+    }
+  };
+
+  var sel = document.getElementById('plugin-select');
+  Object.keys(PLUGINS).forEach(function(id) {
+    var opt = document.createElement('option');
+    opt.value = id;
+    opt.textContent = PLUGINS[id].name + ' (' + id + ')';
+    sel.appendChild(opt);
+  });
+
+  // ===== 加载插件 HTML =====
+  document.getElementById('btn-load').addEventListener('click', async function () {
+    var pluginId = sel.value;
+    if (!pluginId) { alert('请先选择插件'); return; }
+    var plugin = PLUGINS[pluginId];
+    try {
+      var resp = await fetch(plugin.html);
+      if (!resp.ok) throw new Error('HTTP ' + resp.status);
+      var html = await resp.text();
+
+      // 清空挂载区
+      var mount = document.getElementById('plugin-mount');
+      mount.innerHTML = '';
+
+      // 注入插件 HTML
+      var container = document.createElement('div');
+      container.innerHTML = html;
+      mount.appendChild(container);
+
+      // 执行其中的 <script> 标签（innerHTML 不会自动执行 script）
+      var scripts = container.querySelectorAll('script');
+      scripts.forEach(function (oldScript) {
+        var newScript = document.createElement('script');
+        if (oldScript.src) {
+          newScript.src = oldScript.src;
+        } else {
+          newScript.textContent = oldScript.textContent;
+        }
+        oldScript.parentNode.replaceChild(newScript, oldScript);
+      });
+
+      loadedPlugin = pluginId;
+      document.getElementById('status-plugin').textContent = 'Plugin: ' + pluginId;
+      document.getElementById('status-text').textContent = 'Plugin loaded';
+      document.querySelector('.tavo-chat-placeholder').style.display = 'none';
+      console.log('[harness] 插件已加载:', pluginId);
+    } catch (e) {
+      console.error('[harness] 加载失败:', e);
+      document.getElementById('status-text').textContent = 'Load failed: ' + e.message;
+      document.getElementById('status-dot').className = 'dot err';
+    }
+  });
+
+  // ===== 重新加载 =====
+  document.getElementById('btn-reload').addEventListener('click', function () {
+    if (loadedPlugin) {
+      document.getElementById('plugin-mount').innerHTML = '';
+      setTimeout(function () {
+        document.getElementById('btn-load').click();
+      }, 100);
+    }
+  });
+
+  // ===== 注入 Eruda =====
+  document.getElementById('btn-eruda').addEventListener('click', function () {
+    if (window.eruda) {
+      eruda.show();
+      return;
+    }
+    var s = document.createElement('script');
+    s.src = 'https://cdn.jsdelivr.net/npm/eruda@3.4.1/eruda.min.js';
+    s.onload = function () {
+      eruda.init({ tool: ['console', 'elements', 'network', 'resources', 'info'] });
+      console.log('[harness] Eruda 已注入');
+    };
+    document.head.appendChild(s);
+  });
+
+  // ===== 模拟消息 =====
+  async function renderMsgList() {
+    var msgs = tavo.__mock.getMessages();
+    var list = document.getElementById('tavo-msg-list');
+    list.innerHTML = '';
+    msgs.forEach(function (m) {
+      var div = document.createElement('div');
+      div.className = 'tavo-bubble ' + (m.role || 'character');
+      if (m.hidden) div.style.opacity = '0.3';
+      div.textContent = m.text || '(empty)';
+      list.appendChild(div);
+    });
+    document.getElementById('status-msgs').textContent = msgs.length + ' messages';
+    // 刷新消息预览
+    var preview = document.getElementById('msg-preview');
+    preview.innerHTML = '';
+    msgs.forEach(function (m) {
+      var item = document.createElement('div');
+      item.className = 'msg-item';
+      if (m.hidden) item.className += ' msg-hidden';
+      item.innerHTML = '<span class="msg-role ' + m.role + '">' + (m.role || '?') + '</span>: ' + (m.text || '').substring(0, 50);
+      preview.appendChild(item);
+    });
+  }
+
+  document.getElementById('btn-addmsg').addEventListener('click', async function () {
+    var role = document.getElementById('msg-role').value.trim();
+    var text = document.getElementById('msg-text').value.trim();
+    await tavo.__mock.addMessage(role, text);
+    renderMsgList();
+  });
+
+  document.getElementById('btn-clearmsg').addEventListener('click', function () {
+    tavo.__mock.reset();
+    renderMsgList();
+    document.getElementById('status-text').textContent = 'Reset';
+  });
+
+  // ===== 触发事件 =====
+  document.getElementById('btn-fire').addEventListener('click', function () {
+    var evt = document.getElementById('event-select').value;
+    var msg = { id: 'evt_' + Date.now(), role: 'character', text: 'event-triggered', hidden: false };
+    tavo.__mock.fireEvent(evt, { message: msg, text: 'event text', chat: { id: 'mock' } });
+    console.log('[harness] 事件已触发:', evt);
+  });
+
+  // ===== 查看变量 =====
+  document.getElementById('btn-showvars').addEventListener('click', function () {
+    var store = tavo.__mock.getStore();
+    var preview = document.getElementById('var-preview');
+    preview.innerHTML = '';
+    Object.keys(store).forEach(function (k) {
+      var v = store[k];
+      var vStr = typeof v === 'object' ? JSON.stringify(v) : String(v);
+      if (vStr && vStr.length > 100) vStr = vStr.substring(0, 100) + '...';
+      var item = document.createElement('div');
+      item.className = 'msg-item';
+      item.innerHTML = '<span style="color:#7cb3ff">' + k + '</span>: ' + vStr;
+      preview.appendChild(item);
+    });
+    if (!Object.keys(store).length) preview.innerHTML = '<div class="msg-item" style="color:#555">(empty)</div>';
+  });
+
+  // ===== 重置 =====
+  document.getElementById('btn-reset').addEventListener('click', function () {
+    tavo.__mock.reset();
+    document.getElementById('plugin-mount').innerHTML = '';
+    renderMsgList();
+    document.getElementById('status-text').textContent = 'All reset';
+    document.getElementById('status-plugin').textContent = '';
+    document.querySelector('.tavo-chat-placeholder').style.display = 'block';
+  });
+
+  // 初始化
+  renderMsgList();
+  console.log('[harness] 调试台已就绪。选择插件 → 加载 → 测试');
+  </script>
+</body>
+</html>

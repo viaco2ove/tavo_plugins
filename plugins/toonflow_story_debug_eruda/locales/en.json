@@ -1,0 +1,4 @@
+{
+  "plugin.name": "Toonflow-Eruda Debug Panel",
+  "plugin.description": "Inject Eruda devtools into chat page to debug plugins and inspect the whole WebView (host chat + all plugins)."
+}

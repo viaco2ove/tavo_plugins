@@ -1,0 +1,31 @@
+{
+  "specVersion": 2,
+  "id": "com.toonflow.story-debug-eruda",
+  "name": {
+    "$t": "plugin.name"
+  },
+  "version": "1.0.0",
+  "minAppVersion": "1.0.0",
+  "entry": "entry.js",
+  "author": "viaco",
+  "description": {
+    "$t": "plugin.description"
+  },
+  "localization": {
+    "defaultLocale": "zh-CN",
+    "resources": {
+      "en": "locales/en.json",
+      "zh-CN": "locales/zh-CN.json"
+    }
+  },
+  "permissions": [],
+  "contributes": {
+    "htmlFragments": [
+      {
+        "id": "eruda-debug-panel",
+        "src": "ui/eruda_debug.html",
+        "mount": "/chat/body/start"
+      }
+    ]
+  }
+}

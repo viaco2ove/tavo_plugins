@@ -2,7 +2,7 @@
 
 ## tavo MCP 推送流程（Toonflow-game 故事）
 - 连接配置在 `tavo_plugins/.env`：`tavo_mcp_url` / `tavo_mcp_toekn`（注意键名是 **toekn** 拼写）。
-- tavo 桌面端需「设置 → MCP Server → 启用」才会监听端口；本机可直连 `10.10.2.208:7347`（同 10.10.x 段）。
+- tavo 是移动端 App（iOS/Android），开发者 Bitbear Limited；文档仅提到 "Dart"（格式转换层），未提及 Flutter。需「设置 → MCP Server → 启用」才会监听端口（7347）。**手机 IP 随 WiFi 变化**：换网后先 `adb shell ip addr show wlan0 | grep inet` 查当前 IP，再更新 `.env` 的 `tavo_mcp_url`。曾用过 10.10.2.208（公司段）/ 192.168.31.219（家庭段）。
 - 推送脚本：`tavo_plugins/.cache/story/<故事名>/push_to_tavo.py`，支持 `--check`(连通自检) / `--dry`(dryRun 预演) / 正式推送；角色+世界书均先 search 复用、否则 create，**可安全重跑不重复**。
 - **tavo 字段约定（务必遵守）**：
   - chat 对象用 camelCase：`characterIds`、`lorebookIds`、`responseMode`(enum natural/everyone/manual/scenario)、`title`(或 name 别名)。

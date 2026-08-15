@@ -1,0 +1,4 @@
+{
+  "plugin.name": "Toonflow-Eruda 调试面板",
+  "plugin.description": "在聊天页注入 Eruda 开发者工具，用于调试插件与查看 WebView 内容（宿主聊天页 + 所有插件）。"
+}

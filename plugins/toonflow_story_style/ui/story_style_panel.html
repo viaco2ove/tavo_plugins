@@ -120,7 +120,8 @@
 
   var _mode = 'multi';
   var _opacity = 100;          // 0-100，100=完全不透明
-  var _bubbleRGB = null;       // 缓存气泡原色 [r,g,b]，只读不改
+  var _bubbleRGBs = [];        // 气泡原色 RGB 列表（从主题读，可能 user/character 两种）
+  var _tagged = false;         // 是否已给气泡元素打标记
   var INJECT_ID = 'tf-bubble-inject';
 
   function readMode() {
@@ -132,45 +133,71 @@
     catch (e) { return 100; }
   }
 
-  /* ===== 透明度：纯 CSS 注入 ===== */
+  /* ===== 透明度：精准标记 + CSS 注入 ===== */
 
-  // 从 DOM 读一个气泡的当前背景色，缓存 RGB（只读，不改主题）
-  function sniffBubbleRGB() {
-    if (_bubbleRGB) return _bubbleRGB;
-    // 候选选择器：覆盖常见气泡结构，取第一个能拿到非透明背景的
-    var sels = [
-      '[class*="bubble" i]:not([class*="input" i])',
-      '[class*="message" i] [class*="content" i]',
-      '[class*="chat" i] [class*="item" i]'
-    ];
-    for (var s = 0; s < sels.length; s++) {
-      var nodes = document.querySelectorAll(sels[s]);
-      for (var i = 0; i < nodes.length; i++) {
-        var bg = getComputedStyle(nodes[i]).backgroundColor;
-        var m = bg && bg.match(/rgba?\(([^)]+)\)/);
-        if (m) {
-          var parts = m[1].split(',').map(function (x) { return parseFloat(x); });
-          if (parts.length >= 3 && (parts.length < 4 || parts[3] > 0)) {
-            _bubbleRGB = [parts[0], parts[1], parts[2]];
-            return _bubbleRGB;
-          }
+  // 解析 8 位 #AARRGGBB 或 6 位 #RRGGBB -> [r,g,b]
+  function parseHex(h) {
+    h = (h || '').replace('#', '');
+    if (h.length === 8) h = h.slice(2);   // 去 AA
+    if (h.length !== 6) return null;
+    return [parseInt(h.slice(0,2),16), parseInt(h.slice(2,4),16), parseInt(h.slice(4,6),16)];
+  }
+
+  // 从主题读气泡原色（user + character 两种），缓存
+  async function loadBubbleRGBs() {
+    if (_bubbleRGBs.length) return _bubbleRGBs;
+    try {
+      var chat = await T.chat.current();
+      var tid = chat && chat.theme && (chat.theme.id != null ? chat.theme.id : chat.theme);
+      var th = tid ? await T.theme.get(tid) : null;
+      var list = [];
+      if (th) {
+        if (th.userBubble && th.userBubble.color) { var u = parseHex(th.userBubble.color); if (u) list.push(u); }
+        if (th.characterBubble && th.characterBubble.color) { var c = parseHex(th.characterBubble.color); if (c) list.push(c); }
+      }
+      if (list.length) _bubbleRGBs = list;
+    } catch (e) {}
+    return _bubbleRGBs;
+  }
+
+  // 颜色相等比较（容差，忽略 alpha 通道差异）
+  function colorEq(rgbStr, target) {
+    var m = rgbStr && rgbStr.match(/rgba?\(([^)]+)\)/);
+    if (!m) return false;
+    var p = m[1].split(',').map(function(x){return parseFloat(x);});
+    return Math.abs(p[0]-target[0])<=2 && Math.abs(p[1]-target[1])<=2 && Math.abs(p[2]-target[2])<=2;
+  }
+
+  // 扫描 DOM，给"当前背景色等于主题气泡色"的元素打标记（transparent 容器永远不会被选中）
+  async function tagBubbles() {
+    var targets = await loadBubbleRGBs();
+    if (!targets.length) return;
+    // 先清旧标记
+    var old = document.querySelectorAll('[data-tf-bubble]');
+    for (var i = 0; i < old.length; i++) old[i].removeAttribute('data-tf-bubble');
+
+    // 候选范围：只在聊天消息流里找，避免扫全页
+    var roots = document.querySelectorAll('[class*="message" i], [class*="bubble" i], [class*="chat" i] [class*="item" i]');
+    var hit = 0;
+    for (var i = 0; i < roots.length; i++) {
+      var el = roots[i];
+      var bg = getComputedStyle(el).backgroundColor;
+      for (var t = 0; t < targets.length; t++) {
+        if (colorEq(bg, targets[t])) {
+          el.setAttribute('data-tf-bubble', '');
+          hit++;
+          break;
         }
       }
     }
-    return null;
+    _tagged = hit > 0;
   }
 
-  // 写入/更新注入的 <style>：覆盖气泡背景色为 rgba(rgb, alpha)
+  // 写入/更新注入的 <style>：只命中带标记的气泡
   function injectBubbleCSS() {
     var alpha = Math.max(0, Math.min(100, _opacity)) / 100;
-    var rgb = sniffBubbleRGB();
-    // 没读到原色就用中性灰兜底，绝不改主题
-    var r = rgb ? rgb[0] : 40, g = rgb ? rgb[1] : 40, b = rgb ? rgb[2] : 46;
-    var css = ''
-      + '[class*="bubble" i]:not([class*="input" i]),'
-      + '[class*="message" i] [class*="content" i]{'
-      + 'background-color:rgba(' + r + ',' + g + ',' + b + ',' + alpha + ') !important;'
-      + '}';
+    var rgb = _bubbleRGBs[0] || [40,40,46];
+    var css = '[data-tf-bubble]{background-color:rgba(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ',' + alpha + ') !important;}';
     var tag = document.getElementById(INJECT_ID);
     if (!tag) {
       tag = document.createElement('style');
@@ -185,11 +212,12 @@
     if (tag && tag.parentNode) tag.parentNode.removeChild(tag);
   }
 
-  function setOpacity(pct) {
+  // 先标记气泡，再注入（标记失败就不注入，避免误伤）
+  async function applyOpacity(pct) {
     _opacity = pct;
     try { T.set(NS + '.opacity', pct, 'chat'); } catch (e) {}
-    if (pct >= 100) { removeBubbleCSS(); }      // 100% = 不注入，还原主题
-    else { injectBubbleCSS(); }
+    if (pct >= 100) { removeBubbleCSS(); }      // 100% = 还原主题
+    else { await tagBubbles(); injectBubbleCSS(); }
     var v = document.getElementById('tf-opacity-val');
     if (v) v.textContent = pct + '%';
   }
@@ -241,17 +269,19 @@
     // 拖动实时改 CSS（零 API），松手才存变量
     slider.addEventListener('input', function () {
       _opacity = parseInt(slider.value, 10);
-      if (_opacity >= 100) removeBubbleCSS(); else injectBubbleCSS();
       if (sliderVal) sliderVal.textContent = _opacity + '%';
+      // 拖动时实时改 CSS（标记已在首次 applyOpacity 打好，直接改 alpha）
+      if (_opacity >= 100) removeBubbleCSS();
+      else if (_tagged) injectBubbleCSS();
     });
     slider.addEventListener('change', function () {
-      try { T.set(NS + '.opacity', _opacity, 'chat'); } catch (e) {}
+      // 松手才完整重跑（重新标记 + 存变量）
+      applyOpacity(_opacity);
     });
   }
-  // 首次注入（若非 100%）
+  // 首次应用（若非 100%）：先读主题色 + 标记 + 注入
   if (_opacity < 100) {
-    // 等 DOM 渲染好再 sniff 原色
-    setTimeout(injectBubbleCSS, 300);
+    setTimeout(function () { applyOpacity(_opacity); }, 400);
   }
 
   /* ===== 事件 ===== */
@@ -264,9 +294,9 @@
   var bs = document.getElementById('tf-mode-single'); if (bs) bs.addEventListener('click', function () { applyMode('single'); });
   var bm = document.getElementById('tf-mode-multi'); if (bm) bm.addEventListener('click', function () { applyMode('multi'); });
 
-  // 聊天切换/新消息后原色可能变，重 sniff 一次再重注入
+  // 新消息到达：重标记再重注入（新气泡也要被打标）
   if (T && T.plugin && T.plugin.on) {
-    try { T.plugin.on('message:changed', function () { if (_opacity < 100) { _bubbleRGB = null; injectBubbleCSS(); } }); } catch (e) {}
+    try { T.plugin.on('message:changed', function () { if (_opacity < 100) { _bubbleRGBs = []; applyOpacity(_opacity); } }); } catch (e) {}
   }
 })();
 </script>
