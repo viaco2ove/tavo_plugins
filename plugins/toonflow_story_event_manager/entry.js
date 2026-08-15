@@ -29,15 +29,34 @@ async function isStageInstalled() {
   } catch (e) { return true; }
 }
 
+// 群聊编排：读 tf_story.edit.orchestration（'system' 跟随系统 / 'plugin' 角色编排插件）
+// 缺省时根据是否安装编排器决定默认：装了 → 角色编排插件，没装 → 跟随系统
 async function applyOrchestrationMode() {
   const enabled = cfgGet('enabled', true) !== false;
-  const useCustom = cfgGet('useCustomOrchestration', true) !== false;
-  if (!enabled || !useCustom) return;
+  if (!enabled) return;
+  const edit = getEdit();
+  let orch = edit.orchestration;
   const installed = await isStageInstalled();
-  if (!installed) {
+  if (!orch) {
+    orch = installed ? 'plugin' : 'system';
+    edit.orchestration = orch;
+    setEdit(edit);
+  }
+  if (orch === 'system') {
+    try {
+      await tavo.chat.update({ responseMode: 'natural', overrideScenario: '' });
+      tavo.utils.toast('群聊编排：跟随系统（Tavo 原生）');
+    } catch (e) {}
+    return;
+  }
+  // 角色编排插件模式：交由 multi_character_stage 接管 scenario + overrideScenario
+  if (installed) {
+    tavo.utils.toast('群聊编排：角色编排插件 → 角色发言插件');
+  } else {
     try {
       await tavo.chat.update({ responseMode: 'natural', overrideScenario: '' });
     } catch (e) {}
+    tavo.utils.toast('⚠️ 未检测到角色编排器，已回退跟随系统');
   }
 }
 
@@ -375,19 +394,26 @@ function isValidChapter(ch) {
 tavo.plugin.on('chat:opened', async () => {
   await applyOrchestrationMode();
 
-  // 章节清理
+  // 章节修复（仅补全缺失字段，绝不清空/丢弃已有章节 —— 静态故事数据受保护）
   const cur = getEdit();
+  let repaired = false;
   if (cur.chapters && cur.chapters.length) {
-    const valid = cur.chapters.filter(isValidChapter);
-    if (valid.length !== cur.chapters.length) {
-      cur.chapters = valid.length ? valid : defaultEditData().chapters;
-      setEdit(cur);
-    }
+    cur.chapters = cur.chapters.map((ch) => {
+      const c = (ch && typeof ch === 'object') ? { ...ch } : { title: '未命名章节' };
+      if (typeof c.title !== 'string' || !c.title) { c.title = '未命名章节'; repaired = true; }
+      if (typeof c.content !== 'string') { c.content = ''; repaired = true; }
+      if (typeof c.openingRole !== 'string') { c.openingRole = '旁白'; repaired = true; }
+      if (typeof c.openingLine !== 'string') c.openingLine = '';
+      if (typeof c.successCondition !== 'string') c.successCondition = '';
+      if (typeof c.background !== 'string') c.background = '';
+      if (!Array.isArray(c.events)) c.events = [];
+      return c;
+    });
+    if (repaired) setEdit(cur);
   }
 
-  // 进度清理（聊天切换后重置）
+  // 进度时间戳更新（不重置章节进度等动态数值，仅刷新时间）
   const progress = getProgress();
-  progress.startedAt = Date.now();
   progress.updatedAt = Date.now();
   setProgress(progress);
 });

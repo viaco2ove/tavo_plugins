@@ -193,6 +193,17 @@ def avatar_path_for(url, token, chat_id, name, avatar_rel, story_dir, dry=False)
     return file_save(url, token, chat_id, fname, b64, scope="global", dry=dry)
 
 
+def chapter_bg_path_for(url, token, chat_id, base, story_dir, dry=False):
+    """按命名约定 image/<base>_background.<ext> 找章节背景图，上传并返回 files/global 引用。"""
+    for ext in ("png", "jpg", "jpeg", "webp"):
+        rel = "image/%s_background.%s" % (base, ext)
+        abs_p = os.path.join(story_dir, rel)
+        if os.path.isfile(abs_p):
+            b64 = b64_of(abs_p)
+            return file_save(url, token, chat_id, "%s_background.%s" % (base, ext), b64, scope="global", dry=dry)
+    return None
+
+
 # ---------------------------------------------------------------------------
 # 世界书
 # ---------------------------------------------------------------------------
@@ -511,8 +522,13 @@ def ensure_chapters(cfg, url, token, chat_id, name_to_id, dry, force_chapters):
 # 章节编辑变量：把 chapters/<x>.json 同步到 chat 变量 tf_story.edit
 # 这样 toonflow_story_event_manager 的章节结局判定器 / 事件进度判定器才能读到。
 # ---------------------------------------------------------------------------
-def build_edit_from_chapters(cfg, story_dir):
-    """读取 chapters 目录，返回 {intro, globalBackground, chapters}（插件格式）。"""
+def build_edit_from_chapters(cfg, story_dir, url, token, chat_id, dry):
+    """读取 chapters 目录，返回 {intro, globalBackground, chapters}（插件格式）。
+
+    章节背景图：按命名约定 image/<章节文件base>_background.<ext> 找本地图，
+    上传到 tavo 并把 ch.background 设为 files/global/... 引用（面板可渲染）。
+    找不到背景图则 background 留空（面板显示占位提示，不再把文字提示词当图）。
+    """
     wb_cfg = cfg.get("worldbook") or {}
     edit = {
         "intro": cfg.get("story_name", ""),
@@ -535,12 +551,17 @@ def build_edit_from_chapters(cfg, story_dir):
         except Exception as e:
             print("  [章节变量] 解析失败 %s: %s" % (f, e))
     chapters.sort(key=lambda x: x[0])
-    for _, _, c in chapters:
+    for _, f, c in chapters:
+        base = os.path.splitext(f)[0]
+        bg = chapter_bg_path_for(url, token, chat_id, base, story_dir, dry)
+        if bg:
+            print("  [章节变量] %s 背景图 -> %s%s" % (base, bg, " [DRY]" if dry else ""))
         edit["chapters"].append({
             "title": c.get("title", ""),
             "openingRole": c.get("openingRole") or "旁白",
             "openingLine": c.get("openingText") or "",
-            "background": c.get("backgroundPrompt") or "",
+            "background": bg or "",
+            "backgroundPrompt": c.get("backgroundPrompt") or "",
             "content": c.get("content", ""),
             "successCondition": c.get("completionCondition") or "",
             "conditionVisible": True,
@@ -553,15 +574,15 @@ def build_edit_from_chapters(cfg, story_dir):
 def ensure_chapter_edit_variable(cfg, url, token, chat_id, dry):
     """把章节数据写进 chat 变量 tf_story.edit，供 event_manager 判定器使用。"""
     story_dir = cfg.get("_story_dir")
-    edit = build_edit_from_chapters(cfg, story_dir)
+    edit = build_edit_from_chapters(cfg, story_dir, url, token, chat_id, dry)
     if not edit["chapters"]:
         print("  [章节变量] 无章节数据，跳过")
         return
     if dry:
         print("  [章节变量][DRY] 将写入 tf_story.edit：%d 章" % len(edit["chapters"]))
         for i, ch in enumerate(edit["chapters"][:3]):
-            print("    [%d] %s | content=%d 字 | success=%s"
-                  % (i, ch["title"], len(ch["content"]),
+            print("    [%d] %s | bg=%s | content=%d 字 | success=%s"
+                  % (i, ch["title"], ch["background"] or "（无）", len(ch["content"]),
                      ch["successCondition"][:30] if ch["successCondition"] else "（无）"))
         if len(edit["chapters"]) > 3:
             print("    ... 还有 %d 章" % (len(edit["chapters"]) - 3))
@@ -569,7 +590,7 @@ def ensure_chapter_edit_variable(cfg, url, token, chat_id, dry):
     try:
         call(url, token, "tavo_variable_set",
              {"scope": "chat", "chatId": chat_id, "name": "tf_story.edit", "value": edit})
-        print("  [章节变量] tf_story.edit 已写入 %d 章" % len(edit["chapters"]))
+        print("  [章节变量] tf_story.edit 已写入 %d 章（含背景图引用）" % len(edit["chapters"]))
     except Exception as e:
         print("  [章节变量] 写入失败: %s" % e)
 
@@ -687,7 +708,7 @@ def main():
     name_to_id = dict(zip(desired_names, char_ids))
     ensure_chapters(cfg, url, token, chat_id, name_to_id, dry, args.force_chapters)
 
-    # 5.6 章节编辑变量同步（写入 tf_story.edit，供 event_manager 判定器读取）
+    # 5.6 章节编辑变量同步（写入 tf_story.edit，含背景图上传，供 event_manager 判定器读取）
     ensure_chapter_edit_variable(cfg, url, token, chat_id, dry)
 
     # 6. 清理旧卡

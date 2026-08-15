@@ -28,6 +28,16 @@ function getConfig() {
   };
 }
 
+// 群聊编排设置（来自 event_manager 维护的 tf_story.edit.orchestration）
+// 'system' = 跟随系统（不接管）；缺省 / 'plugin' = 角色编排插件接管
+function getOrchestration() {
+  try {
+    const edit = tavo.get('tf_story.edit', 'chat') || {};
+    const v = edit.orchestration;
+    return v === 'system' ? 'system' : 'plugin';
+  } catch (e) { return 'plugin'; }
+}
+
 // 对齐 story_orchestrator(compact) + story_speaker 的「编排 + 发言」规则，
 // 适配 Tavo 单模型场景模式（模型同时承担编排与发言）。
 function getScenarioPrompt() {
@@ -72,6 +82,7 @@ function getEffectiveScenarioPrompt() {
 tavo.plugin.on('chat:opened', async () => {
   const cfg = getConfig();
   if (!cfg.enabled) return;
+  if (getOrchestration() === 'system') return; // 跟随系统：不接管群聊
   try {
     await tavo.chat.update({
       responseMode: cfg.responseMode,
@@ -86,6 +97,7 @@ tavo.plugin.on('chat:opened', async () => {
 tavo.plugin.on('message:added', async () => {
   const cfg = getConfig();
   if (!cfg.enabled) return;
+  if (getOrchestration() === 'system') return; // 跟随系统：不接管群聊
   const freeMode = (() => { try { return !!tavo.get('tf_progress.sessionFreeMode'); } catch (e) { return false; } })();
   const lastVal = (() => { try { return tavo.get('mcs_free_mode_seen'); } catch (e) { return false; } })();
   if (freeMode !== lastVal) {
@@ -100,6 +112,7 @@ tavo.plugin.on('message:added', async () => {
 tavo.plugin.on('generation:prepare', async () => {
   const cfg = getConfig();
   if (!cfg.enabled) return;
+  if (getOrchestration() === 'system') return; // 跟随系统：不显示「编排中」
   try { tavo.set(ORCH_FLAG, true, 'chat'); } catch (e) {}
 });
 tavo.plugin.on('generation:success', async () => { try { tavo.set(ORCH_FLAG, false, 'chat'); } catch (e) {} });
@@ -109,15 +122,22 @@ tavo.plugin.on('generation:cancelled', async () => { try { tavo.set(ORCH_FLAG, f
 // 侧边栏：当前模式开关（即时生效，不持久化）
 tavo.plugin.onSidebarAction('mcs-toggle', async () => {
   const cfg = getConfig();
-  const next = cfg.responseMode === 'scenario' ? 'natural' : 'scenario';
+  const cur = getOrchestration();
+  const next = cur === 'system' ? 'plugin' : 'system';
+  // 同步到群聊编排设置（与故事配置面板保持一致）
   try {
-    await tavo.chat.update({ responseMode: next });
-    if (next === 'scenario') {
-      await tavo.chat.update({ overrideScenario: getScenarioPrompt() });
+    const edit = (tavo.get('tf_story.edit', 'chat') || {});
+    edit.orchestration = next;
+    tavo.set('tf_story.edit', edit, 'chat');
+  } catch (e) {}
+  try {
+    if (next === 'plugin') {
+      await tavo.chat.update({ responseMode: cfg.responseMode, overrideScenario: getScenarioPrompt() });
+      tavo.utils.toast('群聊编排：角色编排插件 → 角色发言插件');
     } else {
-      await tavo.chat.update({ overrideScenario: '' });
+      await tavo.chat.update({ responseMode: 'natural', overrideScenario: '' });
+      tavo.utils.toast('群聊编排：跟随系统（Tavo 原生）');
     }
-    tavo.utils.toast(next === 'scenario' ? '编排已开启（场景模式）' : '编排已关闭（自然模式）');
   } catch (e) {
     tavo.utils.toast('切换失败：' + (e && e.message ? e.message : e));
   }

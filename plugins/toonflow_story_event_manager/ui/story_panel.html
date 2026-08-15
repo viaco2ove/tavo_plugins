@@ -233,6 +233,15 @@
   var T = (typeof tavo !== 'undefined') ? tavo : (window.tavo || null);
   var STORY_NS = 'tf_story';
   var CHAPTER_GUIDE = [
+    { title: '@记忆管理 下个章节', lines: [
+      '理论上可行',
+        '如：',
+          '- @记忆管理 下个章节',
+          '- @记忆管理 标记{角色名}的关键信息：是我的舍友',
+          '- @记忆管理 更新记忆/更新物品/领取任务奖励',
+          '- @记忆管理 更新所有人的当前行为',
+          '- @记忆管理 我到达了宗门',
+          '- @事件进度检测 下个事件',] },
     { title: '怎么写章节内容', lines: [
       '把这一章真正会发生的内容写在这里，例如场景变化、人物行动、冲突推进、用户会被要求做什么。',
       '对白请直接写成"@角色名：台词"，旁白也一样，例如"@旁白：乌坦城的风沙停了下来"。',
@@ -285,6 +294,33 @@
     try { return T.file.url(pr.name, pr.scope); } catch (e) {}
     return p;
   }
+  async function resolveChapterBg(root) {
+    var box = root.querySelector('.tf-chapter-bg[data-chbg]');
+    if (!box) return;
+    var p = box.getAttribute('data-bg') || '';
+    if (!p) { box.textContent = '上传 / AI 生成章节背景图（粘贴图片 URL 或 files/ 路径）'; return; }
+    if (/^https?:\/\//.test(p)) { box.innerHTML = '<img src="' + esc(p) + '">'; return; }
+    var url = await resolveAvatarUrl(p);   // files/... 路径 → dataUrl，与头像同逻辑
+    if (url) { box.innerHTML = '<img src="' + esc(url) + '">'; }
+    else { box.textContent = '🖼️ 背景图加载失败：' + p; }
+  }
+  async function detectStagePlugin() {
+    var note = document.getElementById('tf-orch-note');
+    if (!note) return;
+    var installed = true;
+    try {
+      if (T && T.plugin && T.plugin.search) {
+        var res = await T.plugin.search({ limit: 100 });
+        var items = (res && res.items) || [];
+        installed = items.some(function (p) { return p.pluginId === 'com.toonflow.multi-character-stage' && p.enabled !== false; });
+      }
+    } catch (e) { installed = true; }
+    note.innerHTML = installed
+      ? '✅ 已检测到「角色编排器」+「角色发言」插件，推荐使用「角色编排插件」。'
+      : '⚠️ 未检测到角色编排器，选择「角色编排插件」将自动回退跟随系统。';
+    note.style.color = installed ? 'rgba(74,222,128,.92)' : 'rgba(252,165,165,.92)';
+  }
+
   function extractCardJson(desc) {
     if (!desc) return null;
     var m = desc.match(/角色参数卡[\s\S]*?```(?:json)?\s*([\s\S]*?)```/);
@@ -635,7 +671,8 @@
     var names = { scenario: '场景编排', natural: '自然模式', everyone: '所有人', manual: '手动模式' };
     var h = '<div class="tf-card">';
     h += '<div class="tf-card__title">✓ ' + esc(names[mode] || mode) + '（当前）</div>';
-    h += '<div class="tf-card__text">responseMode = ' + esc(mode) + '。可在插件设置中切换是否由编排插件接管。</div>';
+    var orchLabel = (_edit && _edit.orchestration === 'system') ? '跟随系统（Tavo 原生）' : '角色编排插件 → 角色发言插件';
+    h += '<div class="tf-card__text">responseMode = ' + esc(mode) + '，群聊编排 = ' + esc(orchLabel) + '。</div>';
     h += '</div>';
     return h;
   }
@@ -741,6 +778,17 @@
     h += '<span class="tf-chapter-pill" data-chadd="1">＋ 添加章节</span>';
     h += '</div>';
 
+    // 群聊编排（跟随系统 / 角色编排插件）
+    var orch = _edit.orchestration || 'plugin';
+    h += '<div class="tf-card"><div class="tf-card__title">群聊编排</div>'
+      + '<div class="tf-card__text">选择由谁负责群聊的剧情编排与发言。</div>'
+      + '<div class="tf-edit-field"><select data-orch style="padding:8px;border-radius:8px;border:1px solid rgba(188,204,226,.2);background:rgba(12,21,35,.55);color:#e8f2ff;width:100%;box-sizing:border-box;">'
+      + '<option value="system"' + (orch === 'system' ? ' selected' : '') + '>跟随系统（Tavo 原生）</option>'
+      + '<option value="plugin"' + (orch === 'plugin' ? ' selected' : '') + '>角色编排插件 → 角色发言插件</option>'
+      + '</select></div>'
+      + '<div class="tf-card__text" id="tf-orch-note">检测中…</div>'
+      + '<div class="tf-btn-row"><button class="tf-btn tf-btn--primary" data-orch-apply="1">应用编排</button></div></div>';
+
     // 章节名
     h += '<div class="tf-card"><div class="tf-card__title">章节名称</div>'
       + '<div class="tf-edit-field"><input type="text" data-ch="title" value="' + esc(ch.title) + '" placeholder="第 N 章：标题"></div></div>';
@@ -755,8 +803,8 @@
 
     // 章节背景图
     h += '<div class="tf-card"><div class="tf-card__title">章节背景图片</div>'
-      + '<div class="tf-chapter-bg" data-chbg="1">' + (ch.background ? '<img src="' + esc(ch.background) + '">' : '上传 / AI 生成章节背景图（暂支持粘贴图片地址）') + '</div>'
-      + '<div class="tf-edit-field"><input type="text" data-ch="background" value="' + esc(ch.background) + '" placeholder="背景图路径或 URL"></div></div>';
+      + '<div class="tf-chapter-bg" data-chbg="1" data-bg="' + esc(ch.background) + '">' + (ch.background ? '🌄 加载背景图…' : '上传 / AI 生成章节背景图（粘贴图片 URL 或 files/ 路径）') + '</div>'
+      + '<div class="tf-edit-field"><input type="text" data-ch="background" value="' + esc(ch.background) + '" placeholder="背景图 URL 或 files/global/xxx.png"></div></div>';
 
     // 章节内容
     var used = (ch.content || '').length;
@@ -866,6 +914,20 @@
       var inp = root.querySelector('[data-ch="background"]');
       if (inp) inp.focus();
     });
+    // 群聊编排：切换即保存并应用（走 entry 的 applyOrchestrationMode）
+    var orchSel = root.querySelector('[data-orch]');
+    if (orchSel) orchSel.addEventListener('change', function () {
+      _edit.orchestration = orchSel.value;
+      saveEditVar();
+      if (T && T.plugin) T.plugin.emit('sidebar:action', 'tf-story-apply-mode');
+    });
+    var orchApply = root.querySelector('[data-orch-apply]');
+    if (orchApply) orchApply.addEventListener('click', function () {
+      saveEditVar();
+      if (T && T.plugin) T.plugin.emit('sidebar:action', 'tf-story-apply-mode');
+    });
+    // 检测编排器插件并提示
+    if (root.querySelector('#tf-orch-note')) detectStagePlugin();
   }
 
   /* ================= 主渲染 ================= */
@@ -924,6 +986,9 @@
     h += '<div class="tf-collapse' + collapseOpen('editor') + '" id="tf-editor-zone">' + editorHtml() + '</div>';
 
     body.innerHTML = h;
+
+    // 章节背景图：files/... 路径异步解析为可渲染图
+    resolveChapterBg(body);
 
     // 绑定
     body.querySelectorAll('[data-toggle]').forEach(function (el) {

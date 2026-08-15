@@ -31,6 +31,16 @@ function getConfig() {
   };
 }
 
+// 群聊编排设置（来自 event_manager 维护的 tf_story.edit.orchestration）
+// 'system' = 跟随系统（不接管、不注入动态状态、不显示编排中）；缺省 / 'plugin' = 插件接管
+function getOrchestration() {
+  try {
+    const edit = tavo.get('tf_story.edit', 'chat') || {};
+    const v = edit.orchestration;
+    return v === 'system' ? 'system' : 'plugin';
+  } catch (e) { return 'plugin'; }
+}
+
 // 从 memory_manager 的 tmm_story 读取在场角色动态状态；缺失时回退到 chat 角色
 async function buildCastState() {
   let story = null;
@@ -71,6 +81,7 @@ async function buildCastState() {
 tavo.plugin.on('generation:prepare', async (event) => {
   const cfg = getConfig();
   if (!cfg.enabled) return;
+  if (getOrchestration() === 'system') return; // 跟随系统：不注入动态状态、不显示编排中
   try { tavo.set(ORCH_FLAG, true, 'chat'); } catch (e) {}
   try {
     const state = await buildCastState();

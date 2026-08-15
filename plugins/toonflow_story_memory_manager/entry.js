@@ -45,6 +45,7 @@ JSON 顶层固定字段：
  * ========================================================================= */
 
 const STORY_NS = 'tmm_story';
+const STATIC_NS = 'tmm_story_static'; // 受保护的静态基准卡：一次性构建，重启聊天不清空
 
 function scalarText(v) {
   const t = (v == null ? '' : String(v)).trim();
@@ -165,54 +166,90 @@ function normalizeCard(role, desc) {
   };
 }
 
-// 打开聊天时初始化故事：读取当前聊天的角色，构建每个角色参数卡，存入 tmm_story
-async function initStory() {
+// 从当前聊天读取角色 + persona，构建基准参数卡（纯静态，来自角色 description）
+async function buildCharactersFromChat(chat) {
+  const chars = chat.characters || [];
+  let playerChar = null;
+  const personaId = chat.personaId || (chat.persona && chat.persona.id);
+  if (personaId) {
+    let pf = null;
+    try { if (tavo.persona && tavo.persona.get) pf = await tavo.persona.get(personaId); } catch (e) {}
+    const pd = pf || {};
+    const card = normalizeCard(pf || {}, pd.description);
+    card.roleType = 'player';
+    playerChar = {
+      id: personaId,
+      name: (chat.persona && chat.persona.name) || pd.name || '用户',
+      roleType: 'player',
+      isPersona: true,
+      avatar: pd.avatar || '',
+      card,
+    };
+  }
+  // chat.characters 仅含 id/name，需拉取完整角色数据才能拿到 avatar/description
+  const npcs = await Promise.all(chars.map(async (c) => {
+    let full = null;
+    try {
+      if (tavo.character && tavo.character.get) full = await tavo.character.get(c.id);
+    } catch (e) {}
+    const d = (full && full.data) ? full.data : (full || c || {});
+    return {
+      id: c.id,
+      name: c.name || d.name || '未命名',
+      roleType: d.roleType || c.roleType || 'npc',
+      avatar: d.avatar || c.avatar || '',
+      card: normalizeCard(full || c, d.description),
+    };
+  }));
+  return (playerChar ? [playerChar] : []).concat(npcs);
+}
+
+// 构建 / 修复静态基准卡（写入 STATIC_NS）。
+// force=true：仅在"新增角色"上重建，已有角色卡受保护不被覆盖（防止 description 重解析把静态参数清空）。
+async function buildStaticStory(force) {
   try {
-    if (!tavo.chat || !tavo.chat.current) return;
+    if (!tavo.chat || !tavo.chat.current) return null;
     const chat = await tavo.chat.current();
-    if (!chat) return;
-    const chars = chat.characters || [];
+    if (!chat) return null;
     const books = chat.lorebooks || [];
     let synopsis = chat.description || chat.synopsis || '';
     if (!synopsis && books[0] && books[0].entries && books[0].entries[0]) {
       synopsis = books[0].entries[0].content || '';
     }
-    // 用户（persona）作为第一个角色（roleType='player'），放在所有 NPC 之前
-    let playerChar = null;
-    const personaId = chat.personaId || (chat.persona && chat.persona.id);
-    if (personaId) {
-      let pf = null;
-      try { if (tavo.persona && tavo.persona.get) pf = await tavo.persona.get(personaId); } catch (e) {}
-      const pd = pf || {};
-      const card = normalizeCard(pf || {}, pd.description);
-      card.roleType = 'player';
-      playerChar = {
-        id: personaId,
-        name: (chat.persona && chat.persona.name) || pd.name || '用户',
-        roleType: 'player',
-        isPersona: true,
-        avatar: pd.avatar || '',
-        card,
-      };
+    const characters = await buildCharactersFromChat(chat);
+    // 受保护合并：保留已有角色卡，只补建新角色
+    const prev = (force ? (tavo.get(STATIC_NS) || {}) : null);
+    const prevById = {};
+    (prev && prev.characters || []).forEach(c => { if (c && c.id) prevById[c.id] = c; });
+    const merged = characters.map(c => prevById[c.id] || c);
+    const staticStory = {
+      name: chat.name || '故事信息',
+      synopsis: scalarText(synopsis).slice(0, 1200),
+      characters: merged,
+    };
+    tavo.set(STATIC_NS, staticStory, 'chat');
+    return staticStory;
+  } catch (e) {
+    console.warn('[tmm] buildStaticStory failed', e);
+    return null;
+  }
+}
+
+// 打开聊天时：保护静态基准卡（STATIC_NS），重新生成展示层 tmm_story。
+// 动态参数（hp/mp/level 等增量）从「静态基准 + 持久化增量 tmm.cards」重新派生，
+// 而不是被清空成空白——即"重新生成而非清空"。
+async function initStory() {
+  try {
+    let staticStory = tavo.get(STATIC_NS);
+    if (!staticStory || !staticStory.characters || !staticStory.characters.length) {
+      staticStory = await buildStaticStory(false);
     }
-    // chat.characters 仅含 id/name，需拉取完整角色数据才能拿到 avatar/description
-    const npcs = await Promise.all(chars.map(async (c) => {
-      let full = null;
-      try {
-        if (tavo.character && tavo.character.get) full = await tavo.character.get(c.id);
-      } catch (e) {}
-      const d = (full && full.data) ? full.data : (full || c || {});
-      return {
-        id: c.id,
-        name: c.name || d.name || '未命名',
-        roleType: d.roleType || c.roleType || 'npc',
-        avatar: d.avatar || c.avatar || '',
-        card: normalizeCard(full || c, d.description),
-      };
-    }));
-    const characters = (playerChar ? [playerChar] : []).concat(npcs);
-    const story = { name: chat.name || '故事信息', synopsis: scalarText(synopsis).slice(0, 1200), characters };
-    tavo.set(STORY_NS, story, 'chat');
+    if (!staticStory) return;
+    // 展示层 = 静态基准的深拷贝，立即生效
+    const display = JSON.parse(JSON.stringify(staticStory));
+    tavo.set(STORY_NS, display, 'chat');
+    // 把持久化的动态增量立刻合并回来，避免展示层短暂空白/清零
+    syncStoryDynamicCards();
   } catch (e) {
     console.warn('[tmm] initStory failed', e);
   }
@@ -353,12 +390,13 @@ tavo.plugin.on('chat:opened', async () => {
   if (!tavo.get(NS)) {
     tavo.set(NS, defaultState(), 'chat');
   }
-  // 初始化故事动态参数（角色参数卡），供信息面板/事件管理器展示
+  // 打开聊天：保护静态基准卡，重新生成展示层（动态参数从基准 + 持久化增量重新派生）
   await initStory();
 });
 
 tavo.plugin.on('chat:updated', async () => {
-  // 聊天角色/绑定变化时重新初始化故事参数卡
+  // 聊天角色/绑定变化时：仅补建新增角色（已有角色静态卡受保护），再重新生成展示层
+  await buildStaticStory(true);
   await initStory();
 });
 
