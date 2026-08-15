@@ -1,0 +1,6 @@
+{
+  "plugin.name": "Bubble Style",
+  "plugin.description": "Single/multi display mode + bubble opacity. Other styles follow chat theme.",
+  "settings.info": "Single: show only latest message; Multi: show all. Hidden messages still enter AI context in multi mode.",
+  "settings.enabled": "Enable"
+}

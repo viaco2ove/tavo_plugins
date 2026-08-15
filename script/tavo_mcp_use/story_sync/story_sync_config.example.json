@@ -1,0 +1,31 @@
+{
+  "story_name": "示例故事",
+  "chat_name": "示例故事 · 第1章",
+  "response_mode": "scenario",
+  "bind_persona": true,
+  "persona": {
+    "name": "玩家名",
+    "description": "用户身份描述（关系 + 状态 + 基调）",
+    "first_mes": "开场白（可选）",
+    "personality": "性格",
+    "avatar_file": "avatars/玩家名.png"
+  },
+  "characters": [
+    {
+      "name": "NPC甲",
+      "description": "角色设定",
+      "first_mes": "开场白",
+      "personality": "性格",
+      "avatar_file": "avatars/NPC甲.png"
+    }
+  ],
+  "worldbook": {
+    "name": "示例故事",
+    "intro": "故事简介（作为 constant 常驻条目）",
+    "source": "worldbook/worldbook.json"
+  },
+  "chapters": {
+    "dir": "chapters",
+    "enabled_first_only": true
+  }
+}

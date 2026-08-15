@@ -1,5 +1,7 @@
 // toonflow_story_style entry.js
-// 单条/多条显示模式：隐藏历史消息，message:added 确保时序正确。
+// v1.3.0: 单条/多条切换改用 CSS class 控制（body.tf-style-single + data-tf-last 标记），
+//          不再调 message API，彻底避免"是否允许修改聊天消息"权限弹框。
+// 配套迁移：升级时一次性清空 v1.2.0 及之前残留的 hidden 标记。
 
 'use strict';
 
@@ -9,48 +11,59 @@ function readMode() {
   try { return tavo.get(NS + '.mode') === 'single' ? 'single' : 'multi'; } catch (e) { return 'multi'; }
 }
 
-async function applySingle() {
-  let n;
-  try { n = await tavo.message.count(); } catch (e) { return; }
-  if (!n || n < 1) return;
-  if (n >= 2) {
-    let msgs;
-    try { msgs = await tavo.message.find([0, n - 2]); } catch (e) { msgs = []; }
-    for (const m of msgs) {
-      if (m && !m.hidden) {
-        try { m.hidden = true; await tavo.message.update(m); } catch (e) {}
+// 一次性迁移：v1.2.0 及之前用 message.update 标过 hidden=true 的消息，
+// 现在用 CSS 控制可见性，需把所有 hidden 还原为 false，避免历史消息被永久隐藏。
+// 用 'global' scope 而非 'chat'：每个聊天只迁移一次。
+async function migrateClearHidden() {
+  try {
+    if (tavo.get('tf_style.migrated_v130') === '1') return;
+  } catch (e) { return; }
+  try {
+    var n = await tavo.message.count();
+    if (n && n > 0) {
+      var msgs = await tavo.message.find([0, n - 1]);
+      for (var i = 0; i < msgs.length; i++) {
+        if (msgs[i] && msgs[i].hidden) {
+          try { msgs[i].hidden = false; await tavo.message.update(msgs[i]); } catch (e) {}
+        }
       }
     }
-  }
-  let last;
-  try { last = (await tavo.message.find([n - 1, n - 1]))[0]; } catch (e) { last = null; }
-  if (last && last.hidden) {
-    try { last.hidden = false; await tavo.message.update(last); } catch (e) {}
-  }
+    try { tavo.set('tf_style.migrated_v130', '1', 'global'); } catch (e) {}
+  } catch (e) {}
 }
 
-async function applyMulti() {
-  let n;
-  try { n = await tavo.message.count(); } catch (e) { return; }
-  if (!n) return;
-  let msgs;
-  try { msgs = await tavo.message.find([0, n - 1]); } catch (e) { return; }
-  for (const m of msgs) {
-    if (m && m.hidden) {
-      try { m.hidden = false; await tavo.message.update(m); } catch (e) {}
+// 给聊天主页 DOM（window.parent）最新一条 .tav-item-message 打 data-tf-last 标记
+// 配合 ui fragment 注入的 CSS：
+//   body.tf-style-single .tav-item-message:not([data-tf-last]) .tav-bubble { display:none!important }
+// 注意：Tavo 消息列表最新消息在顶部（scrollToCurrentBottom => scrollTo({top:0})），
+// 故「最新」是 DOM 中纵向最靠上的一条，不能用 items[length-1]（那是最旧/第一条）。
+function markLastBubble() {
+  try {
+    var doc = (window.parent && window.parent.document) ? window.parent.document : document;
+    var old = doc.querySelectorAll('.tav-item-message[data-tf-last]');
+    for (var i = 0; i < old.length; i++) old[i].removeAttribute('data-tf-last');
+    var items = Array.prototype.slice.call(doc.querySelectorAll('.tav-item-message'));
+    if (!items.length) return;
+    var top = items[0], topY = top.getBoundingClientRect().top;
+    for (var j = 1; j < items.length; j++) {
+      var y = items[j].getBoundingClientRect().top;
+      if (y < topY) { topY = y; top = items[j]; }
     }
-  }
+    top.setAttribute('data-tf-last', '');
+  } catch (e) {}
 }
 
 tavo.plugin.on('chat:opened', async () => {
-  if (readMode() === 'single') await applySingle();
+  await migrateClearHidden();
+  if (readMode() === 'single') setTimeout(markLastBubble, 300);
 });
 
 tavo.plugin.on('message:added', async (event) => {
   if (event.message && event.message.role === 'system') return;
   if (readMode() !== 'single') return;
-  await applySingle();
+  setTimeout(markLastBubble, 50);
 });
 
-tavo.plugin.onSidebarAction('tf-style-apply-single', async () => { await applySingle(); });
-tavo.plugin.onSidebarAction('tf-style-apply-multi', async () => { await applyMulti(); });
+// 旧 sidebar actions（兼容）：不再做任何操作，UI 切换由 ui fragment 处理
+tavo.plugin.onSidebarAction('tf-style-apply-single', async () => {});
+tavo.plugin.onSidebarAction('tf-style-apply-multi', async () => {});

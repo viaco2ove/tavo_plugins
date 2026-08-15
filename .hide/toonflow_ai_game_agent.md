@@ -35,6 +35,7 @@ ui 往这个靠
 web_project_windows: D:\Users\viaco\tools\Toonflow-game\Toonflow-game-web
 业务往这个靠
 current_project_windows: D:\Users\viaco\tools\Toonflow-game\toonflow-game-app
+
 提示词往这两个靠
 # 世界知识_agent 可以用于参考设计tavo_plugins
 D:\Users\viaco\tools\Toonflow-game\toonflow-game-app\md\curr_design\剧情编排\自由模式\世界书\复刻酒馆\世界知识_agent.md

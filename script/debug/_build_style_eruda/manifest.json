@@ -1,0 +1,55 @@
+{
+  "specVersion": 2,
+  "id": "com.toonflow.story-style",
+  "name": {
+    "$t": "plugin.name"
+  },
+  "version": "1.1.2",
+  "minAppVersion": "1.0.0",
+  "entry": "entry.js",
+  "author": "viaco",
+  "description": {
+    "$t": "plugin.description"
+  },
+  "localization": {
+    "defaultLocale": "zh-CN",
+    "resources": {
+      "en": "locales/en.json",
+      "zh-CN": "locales/zh-CN.json"
+    }
+  },
+  "permissions": [
+    "message",
+    "variable",
+    "theme",
+    "chat"
+  ],
+  "contributes": {
+    "htmlFragments": [
+      {
+        "id": "tf-style-trigger",
+        "src": "ui/story_style_panel.html",
+        "mount": "/chat/body/start"
+      }
+    ],
+    "settings": {
+      "schema": [
+        {
+          "type": "info",
+          "text": {
+            "$t": "settings.info"
+          },
+          "icon": "info"
+        },
+        {
+          "key": "enabled",
+          "type": "switch",
+          "label": {
+            "$t": "settings.enabled"
+          },
+          "default": true
+        }
+      ]
+    }
+  }
+}

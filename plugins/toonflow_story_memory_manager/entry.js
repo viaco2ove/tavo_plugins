@@ -36,6 +36,178 @@ JSON 顶层固定字段：
 角色补丁仅允许字段：raw_setting, personality, appearance, voice, skills, items, equipment, other, gender, age, level, level_desc, exp, next_level_exp, hp, mp, money, role_key_information
 数值字段(age/level/exp/next_level_exp/hp/mp/money)必须为纯数字，禁止中文替代；状态感受/模糊变化统一存 other。`;
 
+/* =========================================================================
+ * 角色参数卡：初始化 / 加载（对齐 toonflow-game-app/src/lib/roleParameterCard.ts）
+ * 故事角色在 Toonflow-game 中带一张「静态参数卡」(parameterCardJson)，
+ * 由角色设定经 AI 生成。tavo 导入的 CCv3 角色卡把这张参数卡嵌在 description 的
+ * 「角色参数卡」```json 块里，本插件在打开聊天时解析并归一化，存入 tmm_story，
+ * 供信息面板/事件管理器展示；运行时记忆生成的动态补丁会回流合并，呈现动态参数。
+ * ========================================================================= */
+
+const STORY_NS = 'tmm_story';
+
+function scalarText(v) {
+  const t = (v == null ? '' : String(v)).trim();
+  return (t === 'null' || t === 'undefined') ? '' : t;
+}
+
+function numberOrNull(v) {
+  const t = scalarText(v);
+  if (!t) return null;
+  const n = Number(t);
+  return Number.isFinite(n) ? Math.floor(n) : null;
+}
+
+function normalizeList(v) {
+  if (Array.isArray(v)) return v.map(scalarText).filter(Boolean).slice(0, 24);
+  if (typeof v === 'string' && v) {
+    return v.split(/[\r\n；;、,，]/).map(scalarText).filter(Boolean).slice(0, 24);
+  }
+  return [];
+}
+
+function detectRoleType(text, hint) {
+  let rt = scalarText(hint);
+  if (!rt) {
+    if (/角色类型\s*[:：]\s*万能角色/i.test(text)) rt = 'general';
+    else if (/角色类型\s*[:：]\s*系统角色/i.test(text)) rt = 'system';
+  }
+  if (!['npc', 'narrator', 'player', 'system', 'general'].includes(rt)) rt = 'npc';
+  return rt;
+}
+
+const ROLE_TYPE_LABEL = { player: '用户', narrator: '旁白', npc: 'NPC', general: '万能角色', system: '系统角色' };
+
+// 从描述里抽取「角色参数卡」```json {...}``` 块
+function extractCardJson(desc) {
+  if (!desc) return null;
+  const m = desc.match(/角色参数卡[\s\S]*?```(?:json)?\s*([\s\S]*?)```/);
+  if (m) {
+    try { return JSON.parse(m[1].trim()); } catch (e) {}
+  }
+  const m2 = desc.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
+  if (m2) {
+    try { return JSON.parse(m2[1].trim()); } catch (e) {}
+  }
+  return null;
+}
+
+// 从描述里抽取 **字段**：值 行
+function parseFieldMap(desc) {
+  const map = {};
+  if (!desc) return map;
+  scalarText(desc).split(/\r?\n/).forEach((line) => {
+    const m = line.match(/^\s*\*\*([^*]+?)\*\*\s*[:：]\s*(.+?)\s*$/);
+    if (m) map[m[1].trim().toLowerCase()] = m[2].trim();
+  });
+  return map;
+}
+
+// 归一化为业务层参数卡（字段顺序与取值规则对齐 roleParameterCard.ts）
+function normalizeCard(role, desc) {
+  const d = (role && role.data) ? role.data : (role || {});
+  const embedded = extractCardJson(d.description || desc || '');
+  const source = (embedded && typeof embedded === 'object') ? embedded : {};
+  const fm = parseFieldMap(d.description || desc || '');
+  const read = (...keys) => {
+    for (const k of keys) {
+      const v = scalarText(source[k]);
+      if (v) return v;
+      const fv = scalarText(fm[k.toLowerCase()]);
+      if (fv) return fv;
+      const dv = scalarText(d[k]);
+      if (dv) return dv;
+    }
+    return '';
+  };
+  const roleType = detectRoleType((d.description || '') + '\n' + (source.raw_setting || ''), source.role_type || d.roleType);
+  const age = numberOrNull(source.age ?? fm['age']);
+  const level = numberOrNull(source.level ?? fm['level']);
+  const hp = numberOrNull(source.hp ?? fm['hp']);
+  const mp = numberOrNull(source.mp ?? fm['mp']);
+  const money = numberOrNull(source.money ?? fm['money']);
+  const exp = numberOrNull(source.exp ?? fm['exp']);
+  const next = numberOrNull(source.next_level_exp ?? fm['next_level_exp']);
+  return {
+    name: read('name') || d.name || '未命名',
+    raw_setting: read('raw_setting', 'rawSetting') || scalarText(d.description) || '',
+    gender: read('gender'),
+    age,
+    level: level ?? 1,
+    level_desc: read('level_desc', 'levelDesc') || '',
+    personality: read('personality'),
+    appearance: read('appearance'),
+    voice: read('voice'),
+    skills: normalizeList(source.skills ?? fm['skills']),
+    items: normalizeList(source.items ?? fm['items']),
+    equipment: normalizeList(source.equipment ?? fm['equipment']),
+    hp: hp ?? 100,
+    mp: mp ?? 0,
+    money: money ?? 0,
+    exp: exp ?? 0,
+    next_level_exp: next ?? 0,
+    other: normalizeList(source.other ?? fm['other']),
+    roleType,
+    role_key_information: read('role_key_information', 'information', 'info'),
+  };
+}
+
+// 打开聊天时初始化故事：读取当前聊天的角色，构建每个角色参数卡，存入 tmm_story
+async function initStory() {
+  try {
+    if (!tavo.chat || !tavo.chat.current) return;
+    const chat = await tavo.chat.current();
+    if (!chat) return;
+    const chars = chat.characters || [];
+    const books = chat.lorebooks || [];
+    let synopsis = chat.description || chat.synopsis || '';
+    if (!synopsis && books[0] && books[0].entries && books[0].entries[0]) {
+      synopsis = books[0].entries[0].content || '';
+    }
+    // chat.characters 仅含 id/name，需拉取完整角色数据才能拿到 avatar/description
+    const characters = await Promise.all(chars.map(async (c) => {
+      let full = null;
+      try {
+        if (tavo.character && tavo.character.get) full = await tavo.character.get(c.id);
+      } catch (e) {}
+      const d = (full && full.data) ? full.data : (full || c || {});
+      return {
+        id: c.id,
+        name: c.name || d.name || '未命名',
+        roleType: d.roleType || c.roleType || 'npc',
+        avatar: d.avatar || c.avatar || '',
+        card: normalizeCard(full || c, d.description),
+      };
+    }));
+    const story = { name: chat.name || '故事信息', synopsis: scalarText(synopsis).slice(0, 1200), characters };
+    tavo.set(STORY_NS, story, 'chat');
+  } catch (e) {
+    console.warn('[tmm] initStory failed', e);
+  }
+}
+
+// 记忆刷新后把动态参数补丁回流进 tmm_story，让信息面板展示实时数值
+function syncStoryDynamicCards() {
+  try {
+    const story = tavo.get(STORY_NS);
+    if (!story || !story.characters) return;
+    const mem = tavo.get(NS) || defaultState();
+    const player = (mem.cards && mem.cards.player) ? mem.cards.player : {};
+    const npcs = (mem.cards && mem.cards.npcs) ? mem.cards.npcs : {};
+    let changed = false;
+    story.characters.forEach((ch) => {
+      let patch = null;
+      if (ch.roleType === 'player' && Object.keys(player).length) patch = player;
+      else if (npcs[ch.name] && Object.keys(npcs[ch.name]).length) patch = npcs[ch.name];
+      if (patch) {
+        ch.card = { ...ch.card, ...patch };
+        changed = true;
+      }
+    });
+    if (changed) tavo.set(STORY_NS, story, 'chat');
+  } catch (e) {}
+}
+
 function getConfig() {
   const get = (k, fallback) => {
     const v = tavo.plugin.config.get(k);
@@ -135,6 +307,8 @@ ${recentDialogue.map(d => `${d.role}: ${d.content}`).join('\n')}
       state.turnsSinceRefresh = 0;
       state.updatedAt = Date.now();
       tavo.set(NS, state, 'chat');
+      // 把动态参数补丁回流到 tmm_story，供信息面板展示实时数值
+      syncStoryDynamicCards();
     }
   } catch (e) {
     console.warn('[tmm] refresh failed', e);
@@ -147,6 +321,13 @@ tavo.plugin.on('chat:opened', async () => {
   if (!tavo.get(NS)) {
     tavo.set(NS, defaultState(), 'chat');
   }
+  // 初始化故事动态参数（角色参数卡），供信息面板/事件管理器展示
+  await initStory();
+});
+
+tavo.plugin.on('chat:updated', async () => {
+  // 聊天角色/绑定变化时重新初始化故事参数卡
+  await initStory();
 });
 
 tavo.plugin.on('message:added', async (event) => {

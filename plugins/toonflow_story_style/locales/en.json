@@ -1,6 +1,6 @@
 {
   "plugin.name": "Toonflow-Bubble Style",
-  "plugin.description": "Single/multi display mode + bubble opacity. Other styles follow chat theme.",
-  "settings.info": "Single: show only latest message; Multi: show all. Hidden messages still enter AI context in multi mode.",
+  "plugin.description": "Single/multi display mode + bubble opacity. Pure CSS control, zero API calls, zero permission dialogs.",
+  "settings.info": "Single: show only the latest bubble; Multi: show all. New version uses CSS toggle for visibility, no message data modification.",
   "settings.enabled": "Enable"
 }

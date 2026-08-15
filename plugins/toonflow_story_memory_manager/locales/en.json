@@ -1,6 +1,6 @@
 {
   "plugin.name": "Toonflow-Memory",
-  "plugin.description": "Async story memory extraction with context injection.",
+  "plugin.description": "Initialize story dynamic params (role cards) on chat open, extract long-term memory and reflect dynamic values back for the info panel.",
   "sidebar.refresh": "Refresh",
   "sidebar.inspect": "View",
   "sidebar.export": "Export",

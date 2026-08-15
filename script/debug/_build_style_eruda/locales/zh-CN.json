@@ -1,0 +1,6 @@
+{
+  "plugin.name": "气泡样式",
+  "plugin.description": "单条/多条显示模式 + 气泡透明度调节；其他样式跟随聊天主题。",
+  "settings.info": "单条模式：新消息仅显示最新一条；多条模式：显示全部。多条时 hidden 消息仍进 AI 上下文。",
+  "settings.enabled": "启用"
+}

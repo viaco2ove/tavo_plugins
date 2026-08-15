@@ -1,6 +1,6 @@
 {
   "plugin.name": "Toonflow-信息面板与事件管理器",
-  "plugin.description": "故事信息面板与事件管理器：追踪章节进度、评估完成条件、自动推进章节。与世界书配合使用。\n https://github.com/viaco2ove/tavo_plugins.git",
+  "plugin.description": "角色信息面板：展示每个角色头像与对齐 Toonflow-game 的参数卡（性别/等级/血量/技能等）。数据来自记忆插件的角色初始化。",
   "sidebar.progress": "故事进度",
   "sidebar.restart": "重新开始",
   "settings.info": "追踪故事章节进度，在条件满足时自动推进。",

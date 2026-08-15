@@ -1,16 +1,16 @@
-<!-- toonflow_story_event_manager - 故事信息面板（参照 toonflow-game 形态） -->
-<!-- 形态：聊天页底部一行紧凑触发器（{故事名} + ›）；点击展开全屏居中模态，含简介/角色列表/角色详情。 -->
+<!-- toonflow_story_event_manager - 故事信息面板（UI 对齐 Toonflow-game-web ScenePlay 角色详情面板） -->
+<!-- 数据来源：memory_manager 初始化的 tmm_story（角色参数卡），缺失时自解析 chat.characters。 -->
+<!-- 展示：每个角色头像 + 对齐 web parameterCardEntries 的参数卡网格。 -->
 <style>
   /* === 底部触发器：固定到屏幕（视口）底部居中，不随消息滚动 === */
   #tf-story-tab {
     position: fixed;
-    bottom: 0px;
-    /*left: 50%;*/
+    bottom: -2px;
     right: 0;
     transform: translateX(-50%);
     margin: 0;
     z-index: 9990;
-    padding: 9px 14px;
+    padding: 2px 2px;
     background: var(--bg-tertiary, rgba(40,40,40,0.75));
     border: 1px solid var(--border-color, #333);
     border-radius: 10px;
@@ -28,208 +28,82 @@
   }
   #tf-story-tab:hover { border-color: var(--accent-color, #7cb3ff); }
   #tf-story-tab:active { transform: translateX(-50%) scale(0.985); }
-  .tf-tab-name {
-    flex: 1;
-    font-weight: 500;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    max-width: 100px;
-  }
-  .tf-tab-chevron {
-    color: var(--accent-warm, #ff9966);
-    font-size: 18px;
-    font-weight: 700;
-    line-height: 1;
-  }
+  .tf-tab-name { flex: 1; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100px; }
+  .tf-tab-chevron { color: var(--accent-warm, #ff9966); font-size: 18px; font-weight: 700; line-height: 1; }
 
   /* === 全屏模态 === */
-  #tf-story-overlay {
-    position: fixed;
-    inset: 0;
-    background: rgba(0, 0, 0, 0.62);
-    z-index: 10000;
-    display: none;
-    overflow-y: auto;
-    -webkit-overflow-scrolling: touch;
-  }
+  #tf-story-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.62); z-index: 10000; display: none; overflow-y: auto; -webkit-overflow-scrolling: touch; }
   #tf-story-overlay.open { display: block; }
   .tf-modal {
-    background: var(--bg-secondary, #1f1f23);
-    color: var(--text-primary, #e8e8e8);
-    border-radius: 14px;
-    width: min(720px, 92vw);
-    margin: 28px auto;
-    box-shadow: 0 16px 56px rgba(0, 0, 0, 0.55);
+    background: var(--bg-secondary, #1f1f23); color: var(--text-primary, #e8e8e8);
+    border-radius: 14px; width: min(560px, 92vw); margin: 28px auto;
+    box-shadow: 0 16px 56px rgba(0,0,0,0.55);
     font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-    overflow: hidden;
-    box-sizing: border-box;
+    overflow: hidden; box-sizing: border-box;
   }
   .tf-modal-head {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 14px 20px;
-    border-bottom: 1px solid var(--border-color, #2a2a30);
-    position: sticky;
-    top: 0;
-    background: var(--bg-secondary, #1f1f23);
-    z-index: 1;
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 14px 20px; border-bottom: 1px solid var(--border-color, #2a2a30);
+    position: sticky; top: 0; background: var(--bg-secondary, #1f1f23); z-index: 1;
   }
-  .tf-modal-head h2 {
-    margin: 0;
-    font-size: 16px;
-    font-weight: 600;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-    max-width: 75%;
-  }
+  .tf-modal-head h2 { margin: 0; font-size: 16px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 75%; }
   .tf-modal-close {
-    background: var(--bg-quaternary, #333);
-    border: 1px solid var(--border-color, #444);
-    color: var(--text-secondary, #bbb);
-    border-radius: 8px;
-    padding: 5px 14px;
-    font-size: 12px;
-    cursor: pointer;
-    flex: 0 0 auto;
+    background: var(--bg-quaternary, #333); border: 1px solid var(--border-color, #444);
+    color: var(--text-secondary, #bbb); border-radius: 8px; padding: 5px 14px; font-size: 12px; cursor: pointer; flex: 0 0 auto;
   }
   .tf-modal-close:hover { color: var(--accent-color, #7cb3ff); border-color: var(--accent-color, #7cb3ff); }
   .tf-modal-body { padding: 16px 20px 28px; }
 
-  .tf-section { margin-bottom: 22px; }
-  .tf-section h3 {
-    margin: 0 0 10px;
-    font-size: 13px;
-    color: var(--text-secondary, #bbb);
-    font-weight: 600;
-  }
+  /* 故事简介 */
   .tf-synopsis {
-    background: var(--bg-tertiary, #26262c);
-    border: 1px solid var(--border-color, #303036);
-    border-radius: 10px;
-    padding: 12px 14px;
-    line-height: 1.7;
-    color: var(--text-secondary, #d0d0d0);
-    font-size: 13px;
-    white-space: pre-wrap;
-    word-break: break-word;
+    background: var(--bg-tertiary, #26262c); border: 1px solid var(--border-color, #303036);
+    border-radius: 10px; padding: 12px 14px; line-height: 1.7;
+    color: var(--text-secondary, #d0d0d0); font-size: 13px; white-space: pre-wrap; word-break: break-word;
   }
 
   /* 角色列表（横滚头像芯片） */
-  .tf-char-chips {
-    display: flex;
-    gap: 12px;
-    overflow-x: auto;
-    padding: 4px 2px 8px;
-    scrollbar-width: thin;
-  }
-  .tf-char-chip {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 6px;
-    cursor: pointer;
-    flex: 0 0 auto;
-    width: 64px;
-  }
+  .tf-char-chips { display: flex; gap: 12px; overflow-x: auto; padding: 4px 2px 8px; scrollbar-width: thin; }
+  .tf-char-chip { display: flex; flex-direction: column; align-items: center; gap: 6px; cursor: pointer; flex: 0 0 auto; width: 64px; }
   .tf-char-chip-ava {
-    width: 52px;
-    height: 52px;
-    border-radius: 50%;
-    background: var(--bg-quaternary, #333);
-    border: 2px solid var(--border-color, #444);
-    overflow: hidden;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--text-muted, #888);
-    font-size: 18px;
-    transition: border-color 0.15s ease;
+    width: 52px; height: 52px; border-radius: 50%; background: var(--bg-quaternary, #333);
+    border: 2px solid var(--border-color, #444); overflow: hidden; display: flex; align-items: center; justify-content: center;
+    color: var(--text-muted, #888); font-size: 18px; transition: border-color 0.15s ease;
   }
-  .tf-char-chip.active .tf-char-chip-ava {
-    border-color: var(--accent-color, #7cb3ff);
-    box-shadow: 0 0 0 2px rgba(124, 179, 255, 0.18);
-  }
+  .tf-char-chip.active .tf-char-chip-ava { border-color: var(--accent-color, #7cb3ff); box-shadow: 0 0 0 2px rgba(124,179,255,0.18); }
   .tf-char-chip-ava img { width: 100%; height: 100%; object-fit: cover; display: block; }
-  .tf-char-chip-name {
-    font-size: 12px;
-    color: var(--text-secondary, #ccc);
-    text-align: center;
-    max-width: 100%;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
+  .tf-char-chip-name { font-size: 12px; color: var(--text-secondary, #ccc); text-align: center; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-  /* 角色详情：两栏键值卡 */
-  .tf-char-detail {
-    background: var(--bg-tertiary, #26262c);
-    border: 1px solid var(--border-color, #303036);
-    border-radius: 10px;
-    padding: 14px;
+  /* === 角色详情：对齐 web detail-card + dialog-stack + param-grid === */
+  .tf-detail-card { display: flex; align-items: center; gap: 14px; padding-bottom: 14px; border-bottom: 1px solid var(--border-color, #333); margin-bottom: 14px; }
+  .tf-detail-ava {
+    width: 64px; height: 64px; border-radius: 50%; background: var(--bg-quaternary, #333);
+    overflow: hidden; display: flex; align-items: center; justify-content: center; color: var(--text-muted, #888);
+    font-size: 22px; flex: 0 0 auto;
   }
-  .tf-char-head {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    margin-bottom: 14px;
-    padding-bottom: 12px;
-    border-bottom: 1px solid var(--border-color, #333);
-  }
-  .tf-char-head-ava {
-    width: 48px;
-    height: 48px;
-    border-radius: 50%;
-    background: var(--bg-quaternary, #333);
-    overflow: hidden;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    color: var(--text-muted, #888);
-    flex: 0 0 auto;
-  }
-  .tf-char-head-ava img { width: 100%; height: 100%; object-fit: cover; display: block; }
-  .tf-char-head-name { font-weight: 600; font-size: 15px; }
-  .tf-char-head-role {
-    font-size: 11px;
-    color: var(--accent-color, #9ec5ff);
-    margin-left: auto;
-    padding: 2px 8px;
-    background: rgba(124, 179, 255, 0.12);
-    border-radius: 4px;
-  }
-  .tf-kv-grid {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 10px;
-  }
-  .tf-kv {
-    background: var(--bg-quaternary, #2f2f35);
-    border: 1px solid var(--border-color, #38383f);
-    border-radius: 8px;
-    padding: 10px 12px;
-    min-width: 0;
-  }
-  .tf-kv-label {
-    font-size: 11px;
-    color: var(--text-muted, #888);
-    margin-bottom: 5px;
-  }
-  .tf-kv-value {
-    font-size: 13px;
-    color: var(--text-primary, #e8e8e8);
-    line-height: 1.55;
-    word-break: break-word;
-  }
-  .tf-kv-full { grid-column: 1 / -1; }
-  .tf-empty {
-    color: var(--text-muted, #888);
-    padding: 14px;
-    text-align: center;
-    font-size: 13px;
-  }
+  .tf-detail-ava img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .tf-detail-meta { min-width: 0; }
+  .tf-detail-row { display: flex; align-items: center; gap: 8px; }
+  .tf-detail-name { font-weight: 700; font-size: 20px; }
+  .tf-chip { font-size: 11px; color: var(--accent-color, #9ec5ff); background: rgba(124,179,255,0.12); border-radius: 4px; padding: 2px 8px; flex: 0 0 auto; }
+  .tf-detail-sub { font-size: 12px; color: var(--text-secondary, #bbb); margin-top: 4px; }
+
+  .tf-sections { display: flex; flex-direction: column; gap: 14px; }
+  .tf-sec { background: var(--bg-tertiary, #26262c); border: 1px solid var(--border-color, #303036); border-radius: 10px; padding: 12px 14px; }
+  .tf-sec-label { font-size: 11px; color: var(--text-muted, #888); margin-bottom: 6px; }
+  .tf-sec-text { font-size: 13px; color: var(--text-secondary, #d0d0d0); line-height: 1.7; white-space: pre-wrap; word-break: break-word; }
+
+  /* 参数卡网格：对齐 web param-grid / parameterCardEntries */
+  .tf-param-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px; }
+  .tf-param { background: var(--bg-quaternary, #2f2f35); border: 1px solid var(--border-color, #38383f); border-radius: 8px; padding: 8px 10px; min-width: 0; }
+  .tf-param--raw { grid-column: 1 / -1; }
+  .tf-param-label { font-size: 11px; color: var(--text-muted, #888); margin-bottom: 4px; }
+  .tf-param-value { font-size: 13px; color: var(--text-primary, #e8e8e8); line-height: 1.55; word-break: break-word; }
+  .tf-param-value--scroll { max-height: 120px; overflow-y: auto; scrollbar-width: thin; }
+  .tf-raw-toggle { font-size: 11px; color: var(--accent-color, #9ec5ff); background: none; border: none; cursor: pointer; padding: 0; margin-top: 8px; }
+  .tf-raw-json { font-size: 12px; color: var(--text-secondary, #c0c0c0); background: var(--bg-secondary, #1f1f23); border: 1px solid var(--border-color, #38383f); border-radius: 8px; padding: 10px; margin-top: 8px; max-height: 240px; overflow: auto; white-space: pre-wrap; word-break: break-word; }
+
+  .tf-section-title { font-size: 13px; color: var(--text-secondary, #bbb); font-weight: 600; margin: 0 0 10px; }
+  .tf-empty { color: var(--text-muted, #888); padding: 14px; text-align: center; font-size: 13px; }
 </style>
 
 <!-- 底部触发器 -->
@@ -242,7 +116,7 @@
 <div id="tf-story-overlay">
   <div class="tf-modal">
     <div class="tf-modal-head">
-      <h2 id="tf-modal-title">故事信息</h2>
+      <h2 id="tf-modal-title">角色信息</h2>
       <button class="tf-modal-close" id="tf-modal-close">关闭</button>
     </div>
     <div class="tf-modal-body" id="tf-modal-body">
@@ -254,8 +128,8 @@
 <script>
 (function () {
   var T = (typeof tavo !== 'undefined') ? tavo : (window.tavo || null);
+  var STORY_NS = 'tmm_story';
 
-  // 把元素钉到 document.body（避免被聊天滚动容器 / transform 祖先影响，确保 fixed 相对视口）
   function pinToBody(id) {
     var el = document.getElementById(id);
     if (!el) return null;
@@ -273,101 +147,210 @@
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m];
     });
   }
+  function scalar(v) { var t = (v == null ? '' : String(v)).trim(); return (t === 'null' || t === 'undefined') ? '' : t; }
 
-  // 从角色描述里解析 "**字段**：值" 序列
-  function parseFields(text) {
-    if (!text) return [];
-    var pairs = [];
-    var re = /\*\*([^*\n]+?)\*\*\s*[：:]\s*([^**]+?)(?=\s*\*\*|$)/g;
-    var m;
-    while ((m = re.exec(text)) !== null) {
-      var k = m[1].trim();
-      var v = m[2].trim().replace(/\s+$/, '');
-      if (k && v) pairs.push({ k: k, v: v });
-    }
-    return pairs;
+  // 把 files/global/xxx.png 或 files/chat/xxx.png 解析成 {scope,name}
+  function parseFilePath(path) {
+    if (!path) return null;
+    var m = path.match(/^files\/(global|chat)\/(.+)$/);
+    if (m) return { scope: m[1], name: m[2] };
+    // 也可能只是文件名（老格式/相对路径）
+    if (!/[\\/]/.test(path)) return { scope: 'global', name: path };
+    return { scope: 'global', name: path };
   }
-
-  // 把已解析出的「可渲染 URL」渲染成头像节点；为空则显示名字首字
-  function avatarInner(url, name) {
-    if (url) {
-      return '<img src="' + esc(url) + '" alt="' + esc(name) + '" onerror="this.style.display=\'none\'">';
-    }
-    return esc((name || '?').slice(0, 1));
-  }
-
-  // 解析头像为「保证可渲染」的 dataUrl。
-  // 1) 优先用 chat.characters[i].data.avatar；没有则逐个 tavo.character.get(id) 拉完整数据
-  // 2) 用 tavo.file.load(path, {encoding:'dataUrl'}) 读回 dataUrl（任何 webview 都能渲染），
-  //    兜底再试 tavo.file.url 虚拟路径，最后直用原值
-  async function resolveAvatarUrl(c) {
-    if (!T || !T.file) return '';
-    var d = c.data || {};
-    var path = d.avatar || '';
-    var id = c.id;
-    if (!path && id != null) {
-      try {
-        var full = await T.character.get(id);
-        if (full && full.data) path = full.data.avatar || '';
-      } catch (e) {}
-    }
-    if (!path) return '';
+  // 头像解析：优先 dataUrl（任何 webview 可渲染），兜底 file.url，最后原值
+  async function resolveAvatarUrl(path) {
+    if (!path || !T || !T.file) return '';
+    var parsed = parseFilePath(path);
     try {
-      var du = await T.file.load(path, { encoding: 'dataUrl' });
-      if (du) return du;
+      var du = await T.file.load(parsed ? parsed.name : path, { scope: parsed ? parsed.scope : 'global', encoding: 'dataUrl' });
+      if (du) {
+        // MCP/JS 可能直接返回 dataUrl 字符串，也可能返回 {content: dataUrl} 对象
+        if (typeof du === 'string') return du;
+        if (du.content && typeof du.content === 'string') return du.content;
+      }
     } catch (e) {}
-    try { return T.file.url(path); } catch (e) {}
+    try {
+      if (parsed) return T.file.url(parsed.name, parsed.scope);
+      return T.file.url(path);
+    } catch (e) {}
     return path;
   }
+  function avatarInner(url, name) {
+    var fallback = esc((name || '?').slice(0, 1));
+    if (!url) return fallback;
+    return '<img src="' + esc(url) + '" alt="' + esc(name) + '" '
+      + 'onerror="this.parentNode.innerHTML=\'' + fallback.replace(/'/g, "\\'") + '\';">';
+  }
 
-  function chipHtml(c, idx, avatars) {
-    var d = c.data || {};
-    var name = c.name || d.name || '未命名';
-    var url = (avatars && avatars[idx]) || '';
+  // === 自解析兜底：对齐 memory_manager 的 normalizeCard（无 tmm_story 时也能展示） ===
+  function extractCardJson(desc) {
+    if (!desc) return null;
+    var m = desc.match(/角色参数卡[\s\S]*?```(?:json)?\s*([\s\S]*?)```/);
+    if (m) { try { return JSON.parse(m[1].trim()); } catch (e) {} }
+    var m2 = desc.match(/```(?:json)?\s*(\{[\s\S]*?\})\s*```/);
+    if (m2) { try { return JSON.parse(m2[1].trim()); } catch (e) {} }
+    return null;
+  }
+  function parseFieldMap(desc) {
+    var map = {}; if (!desc) return map;
+    scalar(desc).split(/\r?\n/).forEach(function (line) {
+      var m = line.match(/^\s*\*\*([^*]+?)\*\*\s*[:：]\s*(.+?)\s*$/);
+      if (m) map[m[1].trim().toLowerCase()] = m[2].trim();
+    });
+    return map;
+  }
+  function numOr(v, fb) { var n = Number(scalar(v)); return Number.isFinite(n) ? Math.floor(n) : fb; }
+  function listOr(v) {
+    if (Array.isArray(v)) return v.map(scalar).filter(Boolean);
+    if (typeof v === 'string' && v) return v.split(/[\r\n；;、,，]/).map(scalar).filter(Boolean);
+    return [];
+  }
+  function localizeCard(c) {
+    var d = (c && c.data) ? c.data : (c || {});
+    var embedded = extractCardJson(d.description || '');
+    var src = (embedded && typeof embedded === 'object') ? embedded : {};
+    var fm = parseFieldMap(d.description || '');
+    var read = function () { for (var i = 0; i < arguments.length; i++) { var v = scalar(src[arguments[i]] || fm[String(arguments[i]).toLowerCase()] || d[arguments[i]]); if (v) return v; } return ''; };
+    var roleType = scalar(src.role_type || d.roleType);
+    if (!roleType) {
+      if (/角色类型\s*[:：]\s*万能角色/.test(d.description || '')) roleType = 'general';
+      else if (/角色类型\s*[:：]\s*系统角色/.test(d.description || '')) roleType = 'system';
+      else roleType = 'npc';
+    }
+    return {
+      name: read('name') || d.name || '未命名',
+      raw_setting: read('raw_setting', 'rawSetting') || scalar(d.description) || '',
+      gender: read('gender'),
+      age: numOr(src.age ?? fm['age'], null),
+      level: numOr(src.level ?? fm['level'], 1),
+      level_desc: read('level_desc', 'levelDesc'),
+      personality: read('personality'),
+      appearance: read('appearance'),
+      voice: read('voice'),
+      skills: listOr(src.skills ?? fm['skills']),
+      items: listOr(src.items ?? fm['items']),
+      equipment: listOr(src.equipment ?? fm['equipment']),
+      hp: numOr(src.hp ?? fm['hp'], 100),
+      mp: numOr(src.mp ?? fm['mp'], 0),
+      money: numOr(src.money ?? fm['money'], 0),
+      exp: numOr(src.exp ?? fm['exp'], 0),
+      next_level_exp: numOr(src.next_level_exp ?? fm['next_level_exp'], 0),
+      other: listOr(src.other ?? fm['other']),
+      roleType: roleType,
+      role_key_information: read('role_key_information', 'information', 'info'),
+      sample: scalar(d.first_mes || d.sample),
+    };
+  }
+
+  // 参数卡网格项（对齐 toonflow-game-web ScenePlay.parameterCardEntries 字段顺序）
+  function paramEntries(card) {
+    var fb = '未设定';
+    var strList = function (arr) { return arr && arr.length ? arr.join('、') : fb; };
+    var num = function (v) { return v != null ? String(v) : fb; };
+    return [
+      { label: '角色名', value: scalar(card.name) || fb },
+      { label: '性别', value: scalar(card.gender) || fb },
+      { label: '年龄', value: num(card.age) },
+      { label: '等级', value: num(card.level) },
+      { label: '经验值', value: num(card.exp) },
+      { label: '下一级所需经验', value: num(card.next_level_exp) },
+      { label: '等级称号', value: scalar(card.level_desc) || fb },
+      { label: '性格', value: scalar(card.personality) || fb },
+      { label: '外貌', value: scalar(card.appearance) || fb },
+      { label: '音色特点', value: scalar(card.voice) || fb },
+      { label: '技能', value: strList(card.skills) },
+      { label: '物品', value: strList(card.items) },
+      { label: '装备', value: strList(card.equipment) },
+      { label: '血量', value: num(card.hp) },
+      { label: '蓝量', value: num(card.mp) },
+      { label: '金钱', value: num(card.money) },
+      { label: '角色关键信息', value: scalar(card.role_key_information) || fb },
+      { label: '其他', value: (Array.isArray(card.other) && card.other.length) ? card.other.map(function (x) { return scalar(x); }).join('、') : fb },
+    ];
+  }
+
+  var ROLE_LABEL = { player: '用户', narrator: '旁白', npc: 'NPC', general: '万能角色', system: '系统角色' };
+  function roleLabel(rt) { return ROLE_LABEL[rt] || 'NPC'; }
+
+  // 构建故事对象：优先用 memory_manager 初始化的 tmm_story，缺失时自解析
+  async function buildStory() {
+    var story = null;
+    try { if (T && T.get) story = T.get(STORY_NS); } catch (e) {}
+    if (story && story.characters && story.characters.length) {
+      // 归一化参数卡字段，保证 UI 字段完整
+      story.characters.forEach(function (ch) { if (!ch.card) ch.card = localizeCard({ data: { description: '' } }); });
+      return story;
+    }
+    // 兜底：直接读当前聊天（chat.characters 只有 id/name，需 get 完整角色拿 avatar）
+    if (!T || !T.chat) return null;
+    var chat = await T.chat.current();
+    if (!chat) return null;
+    var chars = chat.characters || [];
+    var cards = await Promise.all(chars.map(async function (c) {
+      var full = null;
+      try { if (T.character && T.character.get) full = await T.character.get(c.id); } catch (e) {}
+      var d = (full && full.data) ? full.data : (full || c || {});
+      return {
+        id: c.id,
+        name: c.name || d.name || '未命名',
+        roleType: d.roleType || c.roleType || 'npc',
+        avatar: d.avatar || c.avatar || '',
+        card: localizeCard(full || c)
+      };
+    }));
+    var books = chat.lorebooks || [];
+    var synopsis = chat.description || chat.synopsis || '';
+    if (!synopsis && books[0] && books[0].entries && books[0].entries[0]) synopsis = books[0].entries[0].content || '';
+    return { name: chat.name || '故事信息', synopsis: scalar(synopsis).slice(0, 1200), characters: cards };
+  }
+
+  var _cache = null;
+  var _avatars = [];
+
+  function chipHtml(ch, idx) {
+    var url = _avatars[idx] || '';
     return '<div class="tf-char-chip" data-idx="' + idx + '">'
-      + '<div class="tf-char-chip-ava">' + avatarInner(url, name) + '</div>'
-      + '<div class="tf-char-chip-name">' + esc(name) + '</div>'
+      + '<div class="tf-char-chip-ava">' + avatarInner(url, ch.name) + '</div>'
+      + '<div class="tf-char-chip-name">' + esc(ch.name) + '</div>'
       + '</div>';
   }
 
-  function charDetailHtml(c, idx, avatars) {
-    var d = c.data || {};
-    var name = c.name || d.name || '未命名';
-    var desc = d.description || d.personality || '';
-    var role = (d.tags && d.tags[0]) || '';
-    var url = (avatars && avatars[idx]) || '';
-    var fields = parseFields(desc);
-    var head = '<div class="tf-char-head">'
-      + '<div class="tf-char-head-ava">' + avatarInner(url, name) + '</div>'
-      + '<div class="tf-char-head-name">' + esc(name) + '</div>'
-      + (role ? '<span class="tf-char-head-role">' + esc(role) + '</span>' : '')
-      + '</div>';
-    if (fields.length === 0) {
-      return head + '<div class="tf-empty">该角色暂无结构化字段信息</div>';
+  function detailHtml(ch) {
+    var card = ch.card || {};
+    var url = _avatars[ch._idx] || '';
+    var head = '<div class="tf-detail-card">'
+      + '<div class="tf-detail-ava">' + avatarInner(url, ch.name) + '</div>'
+      + '<div class="tf-detail-meta">'
+      + '<div class="tf-detail-row"><span class="tf-detail-name">' + esc(ch.name) + '</span>'
+      + '<span class="tf-chip">' + esc(roleLabel(ch.roleType)) + '</span></div>'
+      + (card.voice ? '<div class="tf-detail-sub">' + esc(card.voice) + '</div>' : '')
+      + '</div></div>';
+
+    var sections = '<div class="tf-sections">';
+    // 角色设定
+    if (card.raw_setting) {
+      sections += '<div class="tf-sec"><div class="tf-sec-label">角色设定</div><div class="tf-sec-text">' + esc(card.raw_setting) + '</div></div>';
     }
-    var grid = '<div class="tf-kv-grid">';
-    fields.forEach(function (f) {
-      var cls = (f.v.length > 36) ? 'tf-kv tf-kv-full' : 'tf-kv';
-      grid += '<div class="' + cls + '">'
-        + '<div class="tf-kv-label">' + esc(f.k) + '</div>'
-        + '<div class="tf-kv-value">' + esc(f.v) + '</div>'
-        + '</div>';
+    // 台词示例
+    if (card.sample) {
+      sections += '<div class="tf-sec"><div class="tf-sec-label">台词示例</div><div class="tf-sec-text">' + esc(card.sample) + '</div></div>';
+    }
+    // 参数卡
+    var entries = paramEntries(card);
+    var grid = '<div class="tf-param-grid">';
+    entries.forEach(function (e) {
+      var long = String(e.value || '').length > 120;
+      grid += '<div class="tf-param"><div class="tf-param-label">' + esc(e.label) + '</div>'
+        + '<div class="tf-param-value' + (long ? ' tf-param-value--scroll' : '') + '">' + esc(e.value) + '</div></div>';
     });
     grid += '</div>';
-    return head + grid;
-  }
-
-  var _chatCache = null;
-  var _avatars = []; // 角色按 idx 解析出的可渲染 URL
-
-  async function loadChat() {
-    if (_chatCache) return _chatCache;
-    try {
-      if (T && T.chat) _chatCache = await T.chat.current();
-    } catch (e) {
-      _chatCache = null;
-    }
-    return _chatCache;
+    sections += '<div class="tf-sec"><div class="tf-sec-label">参数卡</div>' + grid
+      + '<button class="tf-raw-toggle" id="tf-raw-toggle">查看原文</button>'
+      + '<pre class="tf-raw-json" id="tf-raw-json" style="display:none;">' + esc(JSON.stringify(card, null, 2)) + '</pre>'
+      + '</div>';
+    sections += '</div>';
+    return head + sections;
   }
 
   async function renderModal() {
@@ -376,70 +359,32 @@
     var tabName = document.getElementById('tf-tab-name');
     if (!body) return;
 
-    var chat = await loadChat();
-    if (!chat) {
+    var story = await buildStory();
+    if (!story) {
       body.innerHTML = '<div class="tf-empty">未能读取当前聊天，请确认已打开一个聊天。</div>';
-      if (titleEl) titleEl.textContent = '故事信息';
-      if (tabName) tabName.textContent = '故事信息';
       return;
     }
+    if (titleEl) titleEl.textContent = story.name;
+    if (tabName) tabName.textContent = story.name;
 
-    var chars = chat.characters || [];
-    var books = chat.lorebooks || [];
-    var synopsis = chat.description || chat.synopsis || '';
-    if (!synopsis && books.length) {
-      var firstBook = books[0];
-      var entries = firstBook && firstBook.entries;
-      if (entries && entries.length && entries[0] && entries[0].content) {
-        synopsis = entries[0].content;
-      }
-    }
-    var chatName = chat.name || '故事信息';
-
-    if (titleEl) titleEl.textContent = chatName;
-    if (tabName) tabName.textContent = chatName;
-
-    // 先解析所有角色头像（dataUrl，最稳）
-    try {
-      _avatars = await Promise.all(chars.map(function (c) { return resolveAvatarUrl(c); }));
-    } catch (e) {
-      _avatars = [];
-    }
+    try { _avatars = await Promise.all(story.characters.map(function (ch) { return resolveAvatarUrl(ch.avatar); })); }
+    catch (e) { _avatars = []; }
+    story.characters.forEach(function (ch, i) { ch._idx = i; });
 
     var html = '';
-
-    // 故事简介
-    html += '<section class="tf-section"><h3>故事简介</h3>';
-    if (synopsis) {
-      html += '<div class="tf-synopsis">' + esc(String(synopsis).slice(0, 800)) + '</div>';
-    } else {
-      html += '<div class="tf-empty">暂无故事简介</div>';
+    if (story.synopsis) {
+      html += '<section style="margin-bottom:18px;"><h3 class="tf-section-title">故事简介</h3><div class="tf-synopsis">' + esc(String(story.synopsis).slice(0, 800)) + '</div></section>';
     }
-    html += '</section>';
-
-    // 角色列表
-    html += '<section class="tf-section"><h3>角色列表</h3>';
-    if (chars.length === 0) {
+    if (story.characters.length === 0) {
       html += '<div class="tf-empty">本聊天未绑定角色</div>';
     } else {
-      html += '<div class="tf-char-chips" id="tf-char-chips">';
-      chars.forEach(function (c, i) { html += chipHtml(c, i, _avatars); });
-      html += '</div>';
+      html += '<section style="margin-bottom:18px;"><h3 class="tf-section-title">角色列表</h3><div class="tf-char-chips" id="tf-char-chips">';
+      story.characters.forEach(function (ch, i) { html += chipHtml(ch, i); });
+      html += '</div></section>';
+      html += '<section><h3 class="tf-section-title">角色详情</h3><div id="tf-char-detail">' + detailHtml(story.characters[0]) + '</div></section>';
     }
-    html += '</section>';
-
-    // 角色详情
-    html += '<section class="tf-section"><div class="tf-char-detail" id="tf-char-detail">';
-    if (chars.length > 0) {
-      html += charDetailHtml(chars[0], 0, _avatars);
-    } else {
-      html += '<div class="tf-empty">请先选择一个角色</div>';
-    }
-    html += '</div></section>';
-
     body.innerHTML = html;
 
-    // 绑定芯片点击
     var chips = body.querySelectorAll('.tf-char-chip');
     var detailEl = body.querySelector('#tf-char-detail');
     chips.forEach(function (chip) {
@@ -447,36 +392,40 @@
         chips.forEach(function (c) { c.classList.remove('active'); });
         chip.classList.add('active');
         var idx = parseInt(chip.getAttribute('data-idx'), 10);
-        if (detailEl && chars[idx]) {
-          detailEl.innerHTML = charDetailHtml(chars[idx], idx, _avatars);
-        }
+        if (detailEl && story.characters[idx]) detailEl.innerHTML = detailHtml(story.characters[idx]);
+        bindRawToggle(detailEl);
       });
     });
     if (chips[0]) chips[0].classList.add('active');
+    bindRawToggle(detailEl);
   }
 
-  function openModal() {
-    var overlay = document.getElementById('tf-story-overlay');
-    if (!overlay) return;
-    overlay.classList.add('open');
-    renderModal();
-  }
-  function closeModal() {
-    var overlay = document.getElementById('tf-story-overlay');
-    if (!overlay) return;
-    overlay.classList.remove('open');
+  function bindRawToggle(scope) {
+    if (!scope) return;
+    var btn = scope.querySelector('#tf-raw-toggle');
+    var pre = scope.querySelector('#tf-raw-json');
+    if (btn && pre) {
+      btn.addEventListener('click', function () {
+        var show = pre.style.display === 'none';
+        pre.style.display = show ? 'block' : 'none';
+        btn.textContent = show ? '收起原文' : '查看原文';
+      });
+    }
   }
 
-  // 启动时：更新 tab 名
+  function openModal() { var o = document.getElementById('tf-story-overlay'); if (o) { o.classList.add('open'); renderModal(); } }
+  function closeModal() { var o = document.getElementById('tf-story-overlay'); if (o) o.classList.remove('open'); }
+
   (async function init() {
     try {
-      var chat = await loadChat();
+      var story = null;
+      if (T && T.get) story = T.get(STORY_NS);
       var tabName = document.getElementById('tf-tab-name');
-      if (chat && chat.name && tabName) tabName.textContent = chat.name;
+      if (story && story.name && tabName) tabName.textContent = story.name;
+      else if (T && T.chat) { var c = await T.chat.current(); if (c && c.name && tabName) tabName.textContent = c.name; }
     } catch (e) {}
   })();
 
-  // 绑定事件
   var tab = document.getElementById('tf-story-tab');
   var overlay = document.getElementById('tf-story-overlay');
   var closeBtn = document.getElementById('tf-modal-close');
@@ -484,20 +433,19 @@
   if (overlay) overlay.addEventListener('click', function (e) { if (e.target === overlay) closeModal(); });
   if (closeBtn) closeBtn.addEventListener('click', closeModal);
 
-  // 聊天切换时刷新缓存并更新 tab
+  // 聊天切换时刷新缓存与 tab 名
   if (T && T.plugin && T.plugin.on) {
     try {
-      T.plugin.on('chat:updated', function () {
-        _chatCache = null;
-        loadChat().then(function (chat) {
-          var tabName = document.getElementById('tf-tab-name');
-          if (chat && chat.name && tabName) tabName.textContent = chat.name;
-        });
-      });
-      T.plugin.on('chat:opened', function () {
-        _chatCache = null;
-      });
+      T.plugin.on('chat:updated', function () { _cache = null; loadTabName(); });
+      T.plugin.on('chat:opened', function () { _cache = null; });
     } catch (e) {}
+  }
+  function loadTabName() {
+    if (!T || !T.chat) return;
+    T.chat.current().then(function (c) {
+      var tabName = document.getElementById('tf-tab-name');
+      if (c && c.name && tabName) tabName.textContent = c.name;
+    }).catch(function () {});
   }
 })();
 </script>

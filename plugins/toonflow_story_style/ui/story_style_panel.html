@@ -1,5 +1,5 @@
 <!-- toonflow_story_style - 气泡样式面板 -->
-<!-- 单条/多条显示(由 entry.js 的 message:added 驱动) + 透明度(纯 CSS 注入，不碰主题库) -->
+<!-- 单条/多条显示(由 entry.js 的 message:added 驱动) + 透明度(纯 CSS 选择器 + 变量控制，不扫 DOM 不改主题) -->
 <style>
 #tf-style-tab {
   position: fixed; top: 8px; right: 8px; z-index: 9990; margin: 0; padding: 9px 14px;
@@ -92,8 +92,8 @@
       </div>
 
       <div class="tf-hint">
-        透明度通过注入全局 CSS 覆盖气泡背景色，不改主题、不污染其他聊天，实时生效。<br>
-        「单条」隐藏历史台词（仍进 AI 上下文），「多条」全部显示。
+        透明度通过 CSS 变量控制 <code>.tav-user-bubble</code> / <code>.tav-character-bubble</code>；单条/多条通过 <code>body.tf-style-single</code> 切换，<b>不调任何 message API</b>，零弹框、零数据污染。<br>
+        「单条」隐藏历史气泡（仅显示最新一条），「多条」全部显示。
       </div>
       <div class="tf-status" id="tf-style-status"></div>
 
@@ -120,9 +120,6 @@
 
   var _mode = 'multi';
   var _opacity = 100;          // 0-100，100=完全不透明
-  var _bubbleRGBs = [];        // 气泡原色 RGB 列表（从主题读，可能 user/character 两种）
-  var _tagged = false;         // 是否已给气泡元素打标记
-  var INJECT_ID = 'tf-bubble-inject';
 
   function readMode() {
     try { var v = T.get(NS + '.mode'); return v === 'single' ? 'single' : 'multi'; }
@@ -133,7 +130,19 @@
     catch (e) { return 100; }
   }
 
-  /* ===== 透明度：精准标记 + CSS 注入 ===== */
+  /* =====================================================================
+   * 透明度：纯 CSS 选择器 + 变量控制
+   * - 永久注入一条 CSS，命中 .tav-user-bubble / .tav-character-bubble
+   * - 拖滑块只改 --tf-bubble-alpha 一个变量（零 DOM 扫描、零 API）
+   * - 新气泡自动命中，无需 message:changed 重扫
+   * - 主题色变化时重读一次写 RGB 变量（chat:opened 触发）
+   * - flat 风格气泡保持透明（CSS 特异性，不参与透明度控制）
+   * ===================================================================== */
+
+  var INJECT_ID = 'tf-bubble-style-inject';
+  // 默认色取自 tavo bundle.min.css（user #c3f2fd / character #f5f5f5）
+  var DEFAULT_USER_RGB = [195, 242, 253];
+  var DEFAULT_CHAR_RGB = [245, 245, 245];
 
   // 解析 8 位 #AARRGGBB 或 6 位 #RRGGBB -> [r,g,b]
   function parseHex(h) {
@@ -143,110 +152,95 @@
     return [parseInt(h.slice(0,2),16), parseInt(h.slice(2,4),16), parseInt(h.slice(4,6),16)];
   }
 
-  // 从主题读气泡原色（user + character 两种），缓存
-  async function loadBubbleRGBs() {
-    if (_bubbleRGBs.length) return _bubbleRGBs;
+  // 一次性注入永久 CSS
+  // - 透明度：选择器 + :root 变量（拖滑块只改 --tf-bubble-alpha）
+  // - 单条模式：body.tf-style-single + .tav-item-message[data-tf-last] 标记，隐藏非最后一条气泡
+  // - flat 风格特异性保护：保持透明
+  function injectBubbleCSS() {
+    if (document.getElementById(INJECT_ID)) return;
+    var css = [
+      ':root{',
+        '--tf-user-r:', DEFAULT_USER_RGB[0], ';--tf-user-g:', DEFAULT_USER_RGB[1], ';--tf-user-b:', DEFAULT_USER_RGB[2], ';',
+        '--tf-char-r:', DEFAULT_CHAR_RGB[0], ';--tf-char-g:', DEFAULT_CHAR_RGB[1], ';--tf-char-b:', DEFAULT_CHAR_RGB[2], ';',
+        '--tf-bubble-alpha:1;',
+      '}',
+      '.tav-user-bubble{background-color:rgba(var(--tf-user-r),var(--tf-user-g),var(--tf-user-b),var(--tf-bubble-alpha))!important}',
+      '.tav-character-bubble{background-color:rgba(var(--tf-char-r),var(--tf-char-g),var(--tf-char-b),var(--tf-bubble-alpha))!important}',
+      // flat 风格气泡本应透明：特异性 0,2,0,0 > 0,1,0,0，覆盖上面的 alpha 控制
+      '.tav-bubble-style-flat .tav-user-bubble,',
+      '.tav-bubble-style-flat .tav-character-bubble{background-color:transparent!important}',
+      // 单条模式：隐藏最新一条之外的所有气泡（零 API 切换，零弹框；Tavo 列表最新在顶部）
+      'body.tf-style-single .tav-item-message:not([data-tf-last]) .tav-bubble{display:none!important}',
+      'body.tf-style-single .tav-item-message:not([data-tf-last]) .tav-bubble-wrapper{display:none!important}',
+    ].join('');
+    var tag = document.createElement('style');
+    tag.id = INJECT_ID;
+    tag.textContent = css;
+    (document.head || document.documentElement).appendChild(tag);
+  }
+
+  function setRGBVars(rk, gk, bk, rgb) {
+    var root = document.documentElement.style;
+    root.setProperty(rk, rgb[0]);
+    root.setProperty(gk, rgb[1]);
+    root.setProperty(bk, rgb[2]);
+  }
+
+  // 从主题读气泡色，更新 RGB 变量（不重注入 CSS，只改变量值）
+  async function loadThemeColors() {
     try {
       var chat = await T.chat.current();
       var tid = chat && chat.theme && (chat.theme.id != null ? chat.theme.id : chat.theme);
       var th = tid ? await T.theme.get(tid) : null;
-      var list = [];
-      if (th) {
-        if (th.userBubble && th.userBubble.color) { var u = parseHex(th.userBubble.color); if (u) list.push(u); }
-        if (th.characterBubble && th.characterBubble.color) { var c = parseHex(th.characterBubble.color); if (c) list.push(c); }
+      if (!th) return;
+      if (th.userBubble && th.userBubble.color) {
+        var u = parseHex(th.userBubble.color);
+        if (u) setRGBVars('--tf-user-r', '--tf-user-g', '--tf-user-b', u);
       }
-      if (list.length) _bubbleRGBs = list;
+      if (th.characterBubble && th.characterBubble.color) {
+        var c = parseHex(th.characterBubble.color);
+        if (c) setRGBVars('--tf-char-r', '--tf-char-g', '--tf-char-b', c);
+      }
     } catch (e) {}
-    return _bubbleRGBs;
   }
 
-  // 颜色相等比较（容差，忽略 alpha 通道差异）
-  function colorEq(rgbStr, target) {
-    var m = rgbStr && rgbStr.match(/rgba?\(([^)]+)\)/);
-    if (!m) return false;
-    var p = m[1].split(',').map(function(x){return parseFloat(x);});
-    return Math.abs(p[0]-target[0])<=2 && Math.abs(p[1]-target[1])<=2 && Math.abs(p[2]-target[2])<=2;
-  }
-
-  // 扫描 DOM，给"当前背景色等于主题气泡色"的元素打标记（transparent 容器永远不会被选中）
-  async function tagBubbles() {
-    var targets = await loadBubbleRGBs();
-    if (!targets.length) return;
-    // 先清旧标记
-    var old = document.querySelectorAll('[data-tf-bubble]');
-    for (var i = 0; i < old.length; i++) old[i].removeAttribute('data-tf-bubble');
-
-    // 候选范围：只在聊天消息流里找，避免扫全页
-    var roots = document.querySelectorAll('[class*="message" i], [class*="bubble" i], [class*="chat" i] [class*="item" i]');
-    var hit = 0;
-    for (var i = 0; i < roots.length; i++) {
-      var el = roots[i];
-      var bg = getComputedStyle(el).backgroundColor;
-      for (var t = 0; t < targets.length; t++) {
-        if (colorEq(bg, targets[t])) {
-          el.setAttribute('data-tf-bubble', '');
-          hit++;
-          break;
-        }
-      }
-    }
-    _tagged = hit > 0;
-  }
-
-  // 写入/更新注入的 <style>：只命中带标记的气泡
-  function injectBubbleCSS() {
-    var alpha = Math.max(0, Math.min(100, _opacity)) / 100;
-    var rgb = _bubbleRGBs[0] || [40,40,46];
-    var css = '[data-tf-bubble]{background-color:rgba(' + rgb[0] + ',' + rgb[1] + ',' + rgb[2] + ',' + alpha + ') !important;}';
-    var tag = document.getElementById(INJECT_ID);
-    if (!tag) {
-      tag = document.createElement('style');
-      tag.id = INJECT_ID;
-      document.head.appendChild(tag);
-    }
-    tag.textContent = css;
-  }
-
-  function removeBubbleCSS() {
-    var tag = document.getElementById(INJECT_ID);
-    if (tag && tag.parentNode) tag.parentNode.removeChild(tag);
-  }
-
-  // 先标记气泡，再注入（标记失败就不注入，避免误伤）
-  async function applyOpacity(pct) {
+  // 只改 alpha 变量 —— 零 DOM 扫描、零 API 调用
+  function applyOpacity(pct) {
     _opacity = pct;
-    try { T.set(NS + '.opacity', pct, 'chat'); } catch (e) {}
-    if (pct >= 100) { removeBubbleCSS(); }      // 100% = 还原主题
-    else { await tagBubbles(); injectBubbleCSS(); }
+    var alpha = Math.max(0, Math.min(100, pct)) / 100;
+    document.documentElement.style.setProperty('--tf-bubble-alpha', alpha);
     var v = document.getElementById('tf-opacity-val');
     if (v) v.textContent = pct + '%';
   }
 
-  /* ===== 单条/多条 ===== */
-  async function hideHistory() {
-    var n; try { n = await T.message.count(); } catch (e) { return; }
-    if (!n || n < 2) return;
-    var msgs; try { msgs = await T.message.find([0, n - 2]); } catch (e) { return; }
-    for (var i = 0; i < msgs.length; i++) {
-      var m = msgs[i];
-      if (m && !m.hidden) { try { m.hidden = true; await T.message.update(m); } catch (e) {} }
-    }
-    var last; try { last = (await T.message.find([n - 1, n - 1]))[0]; } catch (e) { last = null; }
-    if (last && last.hidden) { try { last.hidden = false; await T.message.update(last); } catch (e) {} }
+  /* ===== 单条/多条：纯 CSS class 切换（零 API、零弹框） ===== */
+  // 给聊天主页最后一条 .tav-item-message 打 data-tf-last 标记
+  // CSS 规则（已注入）：body.tf-style-single .tav-item-message:not([data-tf-last]) .tav-bubble { display:none!important }
+  function markLastBubble() {
+    try {
+      var doc = (window.parent && window.parent.document) ? window.parent.document : document;
+      var old = doc.querySelectorAll('.tav-item-message[data-tf-last]');
+      for (var i = 0; i < old.length; i++) old[i].removeAttribute('data-tf-last');
+      var items = Array.prototype.slice.call(doc.querySelectorAll('.tav-item-message'));
+      if (!items.length) return;
+      // Tavo 消息列表最新消息在顶部（scrollToCurrentBottom => scrollTo({top:0})），
+      // 故「最新」= 视口中纵向最靠上的一条；按 getBoundingClientRect().top 取最小者，
+      // 兼容虚拟列表窗口与任意布局方向，避免误标最旧的「第一条」。
+      var top = items[0], topY = top.getBoundingClientRect().top;
+      for (var j = 1; j < items.length; j++) {
+        var y = items[j].getBoundingClientRect().top;
+        if (y < topY) { topY = y; top = items[j]; }
+      }
+      top.setAttribute('data-tf-last', '');
+    } catch (e) {}
   }
-  async function showAll() {
-    var n; try { n = await T.message.count(); } catch (e) { return; }
-    if (!n) return;
-    var msgs; try { msgs = await T.message.find([0, n - 1]); } catch (e) { return; }
-    for (var i = 0; i < msgs.length; i++) {
-      var m = msgs[i];
-      if (m && m.hidden) { try { m.hidden = false; await T.message.update(m); } catch (e) {} }
-    }
-  }
+
   async function applyMode(mode) {
     _mode = mode;
     try { T.set(NS + '.mode', mode, 'chat'); } catch (e) {}
-    if (mode === 'single') await hideHistory(); else await showAll();
+    var inSingle = mode === 'single';
+    document.body.classList.toggle('tf-style-single', inSingle);
+    if (inSingle) markLastBubble();
     syncUI();
   }
 
@@ -261,27 +255,31 @@
   _mode = readMode();
   _opacity = readOpacity();
   syncUI();
+
+  // 1) 一次性注入永久 CSS（选择器 + 变量骨架）
+  injectBubbleCSS();
+  // 2) 异步读主题色填充 RGB 变量（失败则用默认色，alpha 仍可控）
+  loadThemeColors();
+  // 3) 应用当前 mode：toggle body class（不调任何 API）
+  document.body.classList.toggle('tf-style-single', _mode === 'single');
+  if (_mode === 'single') setTimeout(markLastBubble, 200);
+  // 4) 应用当前 opacity（只改 alpha 变量）
+  applyOpacity(_opacity);
+
   var slider = document.getElementById('tf-opacity');
   var sliderVal = document.getElementById('tf-opacity-val');
   if (slider) {
     slider.value = _opacity;
     if (sliderVal) sliderVal.textContent = _opacity + '%';
-    // 拖动实时改 CSS（零 API），松手才存变量
+    // 拖动实时改变量（零 API、零 DOM 扫描）
     slider.addEventListener('input', function () {
-      _opacity = parseInt(slider.value, 10);
-      if (sliderVal) sliderVal.textContent = _opacity + '%';
-      // 拖动时实时改 CSS（标记已在首次 applyOpacity 打好，直接改 alpha）
-      if (_opacity >= 100) removeBubbleCSS();
-      else if (_tagged) injectBubbleCSS();
+      var pct = parseInt(slider.value, 10);
+      applyOpacity(pct);
     });
+    // 松手才存变量（持久化）
     slider.addEventListener('change', function () {
-      // 松手才完整重跑（重新标记 + 存变量）
-      applyOpacity(_opacity);
+      try { T.set(NS + '.opacity', _opacity, 'chat'); } catch (e) {}
     });
-  }
-  // 首次应用（若非 100%）：先读主题色 + 标记 + 注入
-  if (_opacity < 100) {
-    setTimeout(function () { applyOpacity(_opacity); }, 400);
   }
 
   /* ===== 事件 ===== */
@@ -294,9 +292,15 @@
   var bs = document.getElementById('tf-mode-single'); if (bs) bs.addEventListener('click', function () { applyMode('single'); });
   var bm = document.getElementById('tf-mode-multi'); if (bm) bm.addEventListener('click', function () { applyMode('multi'); });
 
-  // 新消息到达：重标记再重注入（新气泡也要被打标）
+  // chat 切换时重读主题色；新消息到达时重打标记（单条模式下）
   if (T && T.plugin && T.plugin.on) {
-    try { T.plugin.on('message:changed', function () { if (_opacity < 100) { _bubbleRGBs = []; applyOpacity(_opacity); } }); } catch (e) {}
+    try { T.plugin.on('chat:opened', function () { loadThemeColors(); }); } catch (e) {}
+    try {
+      T.plugin.on('message:added', function (ev) {
+        if (ev && ev.message && ev.message.role === 'system') return;
+        if (_mode === 'single') setTimeout(markLastBubble, 50);
+      });
+    } catch (e) {}
   }
 })();
 </script>

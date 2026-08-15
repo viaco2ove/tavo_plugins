@@ -8,3 +8,6 @@
 4.pc调试方案配合反编译调试
 [pc_安卓虚拟机.md](pc_%E5%AE%89%E5%8D%93%E8%99%9A%E6%8B%9F%E6%9C%BA.md)
 [ChromeDev.md](ChromeDev.md)
+5.adb pull
+[adb_pull_webview.md](adb_pull_webview.md)
+可以把 tavo 的资源拉出来 方面快速查阅 样式和dom
