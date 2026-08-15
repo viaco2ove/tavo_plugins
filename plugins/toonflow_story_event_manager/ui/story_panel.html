@@ -389,11 +389,23 @@
       return '';
     }
     var descText = scalar(d.description || '');
+    var charName = scalar(d.name) || scalar(read('name'));
     var roleType = scalar(src.role_type || d.roleType || readZh('role_type','角色类型'));
     if (roleType === '旁白') roleType = 'narrator'; // 中文字面值归一化
+    if (roleType === '万能角色') roleType = 'general';
+    if (roleType === '系统角色') roleType = 'system';
     if (!roleType) {
-      if (/万能角色/.test(descText)) roleType = 'general';
-      else if (/系统角色/.test(descText)) roleType = 'system';
+      // 1) 角色名是最强信号：名字本身就是类型标识
+      if (/^旁白$|^narrator$/i.test(charName)) roleType = 'narrator';
+      else if (/^某男子$|^某女子$|^万能/.test(charName)) roleType = 'general';
+      else if (/^系统$|^system$/i.test(charName)) roleType = 'system';
+      // 2) desc 显式角色类型字段（**角色类型**：旁白）
+      else if (/角色类型\s*[:：]\s*旁白/.test(descText)) roleType = 'narrator';
+      else if (/角色类型\s*[:：]\s*万能/.test(descText)) roleType = 'general';
+      else if (/角色类型\s*[:：]\s*系统/.test(descText)) roleType = 'system';
+      // 3) 弱信号：desc 内容关键词（某女子/某男子的"饰演"用法）
+      else if (/万能角色|不可作为具体角色独立使用/.test(descText)) roleType = 'general';
+      else if (/饰演|扮演虚无/.test(descText)) roleType = 'general';
       else if (/旁白|系统叙事|系统旁白/.test(descText)) roleType = 'narrator';
       else roleType = 'npc';
     }
@@ -472,6 +484,27 @@
       if (isCardEmpty(card) && sc && sc.card) card = Object.assign({}, sc.card);
       return { id: c.id, name: c.name || d.name || '未命名', roleType: d.roleType || 'npc', avatar: d.avatar || c.avatar || '', card: card };
     }));
+    // 过滤掉用户手动创建的"旁白"角色卡（旁白是内置虚拟角色，不该作为 NPC 占一个位置）
+    var isNarratorName = function (n) { return /^(旁白|narrator)$/i.test(String(n || '').trim()); };
+    npcs = npcs.filter(function (c) { return !isNarratorName(c.name); });
+
+    // 内置旁白（对齐 Toonflow-game narratorName 常量）：固定插在用户之后、NPC 之前
+    var narratorCard = {
+      name: '旁白',
+      roleType: 'narrator',
+      raw_setting: '系统叙事者（内置，无需角色卡）。负责场景描述、时间流转、环境氛围、技能与效果说明。',
+      personality: '客观、简洁、画面感',
+      appearance: '',
+      voice: '混合（清朗温润）',
+      skills: [], items: [], equipment: [],
+      level: null, hp: null, mp: null, money: null,
+      role_key_information: '',
+      sample: '夜色笼罩着黑风寨，灯火在风里摇曳。'
+    };
+    var narratorStatic = staticByName['旁白'];
+    if (narratorStatic && narratorStatic.card) narratorCard = Object.assign(narratorCard, narratorStatic.card, { roleType: 'narrator' });
+    cards.push({ id: '__narrator__', name: '旁白', roleType: 'narrator', avatar: '', card: narratorCard });
+
     cards = cards.concat(npcs);
     // 世界书
     var wbItems = [];

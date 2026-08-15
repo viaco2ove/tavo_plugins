@@ -12,6 +12,28 @@
   - create 返回 id 在 `content[0].text` 的 JSON 字符串的 `"id"` 字段。
 - 推送目标：世界书=故事蓝图（constant 世界规则 + keyword 章节/角色/地点），群聊 responseMode=scenario 实现 design.md 的多角色演出效果。
 
+## ⚠️ Tavo 变量读取铁律：`tavo.get` / `T.get` 必须解包（写插件前必读）
+- `tavo.get(name, 'chat')` **不返回值本身**，返回包装对象 `{target, name, found, value}`，真实数据在 `.value`。
+- MCP 侧同理：`tavo_variable_get` → `result.content[0].text` 是 JSON 字符串，解析后仍是上面这个包装形状。
+- **不解包的后果（真实踩过）**：`edit.chapters`/`story.characters`/`card.level` 全 undefined → 代码误判"数据为空"→
+  用默认值兜底覆盖 → 用户看到「故事配置被清空、角色参数全空」。此外 `get(k) === 'single'` 永远 false、
+  `!!get('flag')` 永远 true（包装对象恒真）、迁移/一次性标记永远读不到。
+- **统一做法**：每个插件（entry.js 与 ui/*.html 各自一份）定义 `readChatVar(name)`：
+  循环解包（判据 `hasOwnProperty('value') && hasOwnProperty('name')`，guard<5，`found===false` 返回 null），
+  末尾对 `{`/`[` 开头的字符串再 `JSON.parse` 兜底。所有变量读取只走它。
+- **面板绝不做破坏性写回**：读不到有效值时只在内存用默认值，**不得** `save*Var()` 覆盖持久化变量。
+- MCP 参数细节：`tavo_variable_get/set` 用 **`scope`**（不是 `target`）；`chatId` 必须**整型**
+  （`"2"` 与 `2` 被当作不同作用域，写了 get 不到）；`tavo_character_get` 的 id 也必须整型。
+- 变量分层：`tmm_story_static`（受保护静态基准卡，重启不重建）→ `tmm_story`（chat:opened 从 static 深拷贝派生的展示层）
+  → `tmm.cards`（动态增量，派生后 merge 回展示层）。`tmm_story` 缺失是正常的，会自动派生。
+- 校验手段：`node --check plugins/*/entry.js`；HTML 内联脚本用 `script/tavo_mcp_use/_check_html_js.py` 抽出来逐块校验。
+- 现场诊断：`script/tavo_mcp_use/diag_dump.py`（解包打印关键变量）、`build_static.py`（从角色描述预建静态卡）、`_dump_static.py`（列参数卡）。
+- **改了 ui/*.html 必须重装插件**（HTML 片段不热替换）；只改 entry.js 可「禁用→启用」生效。
+- **`tavo.plugin.search` 不带 query 返回空列表**（MCP 的 `tavo_plugin_search` 同理）。绝不能用"查不到"推断
+  "插件未安装" —— event_manager 曾因此把 `tf_story.edit.orchestration` 默认值写成 `system`（跟随系统、插件不接管）。
+  正确做法：`stageState()` 返回 `enabled|disabled|unknown`，多次带 query 探测（pluginId / 'toonflow' / '编排' / 无 query），
+  查不到就返回 unknown；**只有明确查到且 enabled===false 才算 disabled**，其余一律按默认「插件接管」(`plugin`)。
+
 ## tavo_plugins 设计「靠山」映射（跨项目参考约定）
 做 tavo_plugins 的 UI / 业务 / 提示词时，分别对齐以下真源，不要另起炉灶：
 - **UI → `Toonflow-game-web`**（web_project_windows）：`D:\Users\viaco\tools\Toonflow-game\Toonflow-game-web`（src 含 api/components/composables，即前端界面真源）

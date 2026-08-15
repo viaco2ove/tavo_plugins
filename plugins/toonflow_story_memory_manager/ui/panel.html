@@ -101,6 +101,25 @@
   pinToBody('tmm-tab');
   pinToBody('tmm-overlay');
 
+  // T.get 返回包装对象 {target,name,found,value}，真实数据在 .value；
+  // 不解包时 state.characters / state.player 全是 undefined，面板会一律显示"暂无"。
+  function readChatVar(name) {
+    try {
+      var v = T.get(name);
+      var guard = 0;
+      while (v && typeof v === 'object' && v.found !== undefined && ('value' in v) && guard < 5) {
+        v = v.value; guard++;
+      }
+      if (typeof v === 'string') {
+        var s = v.trim();
+        if (s.charAt(0) === '{' || s.charAt(0) === '[') {
+          try { return JSON.parse(s); } catch (e2) { return v; }
+        }
+      }
+      return v;
+    } catch (e) { return null; }
+  }
+
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (m) {
       return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m];
@@ -153,7 +172,8 @@
 
   function load() {
     if (!T || !T.get) return;
-    try { render(T.get('tmm')); } catch (e) { render(null); }
+    try { render(readChatVar('tmm') || readChatVar('tmm_story') || readChatVar('tmm_story_static')); }
+    catch (e) { render(null); }
   }
   function openModal() { var o = document.getElementById('tmm-overlay'); if (o) o.classList.add('open'); load(); }
   function closeModal() { var o = document.getElementById('tmm-overlay'); if (o) o.classList.remove('open'); }

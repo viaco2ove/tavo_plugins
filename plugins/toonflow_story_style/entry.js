@@ -8,8 +8,25 @@
 
 const NS = 'tf_style';
 
+// tavo.get 返回包装对象 {target,name,found,value}，真实值在 .value。
+// 不解包会让 === 'single' 永远为 false（模式切换失效）、迁移标记永远读不到（每次开聊天都重跑迁移）。
+function readVar(name, target) {
+  let v = null;
+  try { v = tavo.get(name, target || 'chat'); } catch (e) { return null; }
+  let guard = 0;
+  while (v && typeof v === 'object' && !Array.isArray(v)
+         && Object.prototype.hasOwnProperty.call(v, 'value')
+         && Object.prototype.hasOwnProperty.call(v, 'name')
+         && guard < 5) {
+    if (v.found === false) return null;
+    v = v.value;
+    guard += 1;
+  }
+  return v;
+}
+
 function readMode() {
-  try { return tavo.get(NS + '.mode') === 'single' ? 'single' : 'multi'; } catch (e) { return 'multi'; }
+  try { return readVar(NS + '.mode') === 'single' ? 'single' : 'multi'; } catch (e) { return 'multi'; }
 }
 
 // 一次性迁移：v1.2.0 及之前用 message.update 标过 hidden=true 的消息，
@@ -17,7 +34,7 @@ function readMode() {
 // 用 'global' scope 而非 'chat'：每个聊天只迁移一次。
 async function migrateClearHidden() {
   try {
-    if (tavo.get('tf_style.migrated_v130') === '1') return;
+    if (String(readVar('tf_style.migrated_v130', 'global')) === '1') return;
   } catch (e) { return; }
   try {
     var n = await tavo.message.count();

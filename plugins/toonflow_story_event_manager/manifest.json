@@ -1,12 +1,16 @@
 {
   "specVersion": 2,
   "id": "com.toonflow.story-event-manager",
-  "name": { "$t": "plugin.name" },
-  "version": "1.3.0",
+  "name": {
+    "$t": "plugin.name"
+  },
+  "version": "1.3.2",
   "minAppVersion": "1.0.0",
   "entry": "entry.js",
   "author": "viaco",
-  "description": { "$t": "plugin.description" },
+  "description": {
+    "$t": "plugin.description"
+  },
   "localization": {
     "defaultLocale": "zh-CN",
     "resources": {
@@ -15,24 +19,93 @@
     }
   },
   "cover": "cover.png",
-  "permissions": ["input", "message", "generate", "variable", "lorebook", "chat", "character", "persona", "file"],
+  "permissions": [
+    "input",
+    "message",
+    "generate",
+    "variable",
+    "lorebook",
+    "chat",
+    "character",
+    "persona",
+    "file"
+  ],
   "contributes": {
     "htmlFragments": [
-      { "id": "tf-story-trigger", "src": "ui/story_panel.html", "mount": "/chat/body/end" }
+      {
+        "id": "tf-story-trigger",
+        "src": "ui/story_panel.html",
+        "mount": "/chat/body/end"
+      }
     ],
     "sidebar": [
-      { "id": "tf-story-free-mode", "label": { "$t": "sidebar.freeMode" } },
-      { "id": "tf-story-exit-free-mode", "label": { "$t": "sidebar.exitFreeMode" } },
-      { "id": "tf-story-reset", "label": { "$t": "sidebar.reset" } }
+      {
+        "id": "tf-story-free-mode",
+        "label": {
+          "$t": "sidebar.freeMode"
+        }
+      },
+      {
+        "id": "tf-story-exit-free-mode",
+        "label": {
+          "$t": "sidebar.exitFreeMode"
+        }
+      },
+      {
+        "id": "tf-story-reset",
+        "label": {
+          "$t": "sidebar.reset"
+        }
+      }
     ],
     "settings": {
       "schema": [
-        { "type": "info", "text": { "$t": "settings.info" }, "icon": "info" },
-        { "key": "enabled", "type": "switch", "label": { "$t": "settings.enabled" }, "default": true },
-        { "key": "useCustomOrchestration", "type": "switch", "label": { "$t": "settings.orchestration" }, "default": true },
-        { "key": "autoAdvance", "type": "switch", "label": { "$t": "settings.autoAdvance" }, "default": true },
-        { "key": "autoFreeMode", "type": "switch", "label": { "$t": "settings.autoFreeMode" }, "default": true },
-        { "type": "info", "text": { "$t": "settings.orchestrationHint" }, "icon": "info" }
+        {
+          "type": "info",
+          "text": {
+            "$t": "settings.info"
+          },
+          "icon": "info"
+        },
+        {
+          "key": "enabled",
+          "type": "switch",
+          "label": {
+            "$t": "settings.enabled"
+          },
+          "default": true
+        },
+        {
+          "key": "useCustomOrchestration",
+          "type": "switch",
+          "label": {
+            "$t": "settings.orchestration"
+          },
+          "default": true
+        },
+        {
+          "key": "autoAdvance",
+          "type": "switch",
+          "label": {
+            "$t": "settings.autoAdvance"
+          },
+          "default": true
+        },
+        {
+          "key": "autoFreeMode",
+          "type": "switch",
+          "label": {
+            "$t": "settings.autoFreeMode"
+          },
+          "default": true
+        },
+        {
+          "type": "info",
+          "text": {
+            "$t": "settings.orchestrationHint"
+          },
+          "icon": "info"
+        }
       ]
     }
   }

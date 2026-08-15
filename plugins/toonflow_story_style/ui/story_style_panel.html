@@ -121,12 +121,25 @@
   var _mode = 'multi';
   var _opacity = 100;          // 0-100，100=完全不透明
 
+  // T.get 返回包装对象 {target,name,found,value}，真实值在 .value；不解包会导致
+  // mode 永远判定为 multi、opacity 永远 parseInt 失败回落 100（面板读不回已保存设置）。
+  function readChatVar(name) {
+    try {
+      var v = T.get(name);
+      var guard = 0;
+      while (v && typeof v === 'object' && v.found !== undefined && ('value' in v) && guard < 5) {
+        v = v.value; guard++;
+      }
+      return v;
+    } catch (e) { return null; }
+  }
+
   function readMode() {
-    try { var v = T.get(NS + '.mode'); return v === 'single' ? 'single' : 'multi'; }
+    try { var v = readChatVar(NS + '.mode'); return v === 'single' ? 'single' : 'multi'; }
     catch (e) { return 'multi'; }
   }
   function readOpacity() {
-    try { var v = T.get(NS + '.opacity'); v = parseInt(v, 10); return isNaN(v) ? 100 : v; }
+    try { var v = parseInt(readChatVar(NS + '.opacity'), 10); return isNaN(v) ? 100 : v; }
     catch (e) { return 100; }
   }
 

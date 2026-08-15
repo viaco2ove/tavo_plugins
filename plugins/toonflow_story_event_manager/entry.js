@@ -35,24 +35,43 @@ function readChatVar(name) {
 }
 
 // ---------- 编排插件检测 ----------
-async function isStageInstalled() {
-  try {
-    const res = await tavo.plugin.search?.({ limit: 100 });
-    const items = res?.items || [];
-    return items.some(p => p.pluginId === STAGE_PLUGIN_ID && p.enabled !== false);
-  } catch (e) { return true; }
+// 实测：tavo.plugin.search 不带 query 时会返回空列表，**不能**因为"查不到"就判定未安装
+// —— 那会把 tf_story.edit.orchestration 的默认值错设成 'system'（跟随系统，插件不接管）。
+// 返回 'enabled' | 'disabled' | 'unknown'，只有明确查到且被禁用才算 disabled。
+async function stageState() {
+  const probe = async (args) => {
+    try {
+      const res = await tavo.plugin.search?.(args);
+      const items = (res && res.items) ? res.items : (Array.isArray(res) ? res : []);
+      return Array.isArray(items) ? items : [];
+    } catch (e) { return []; }
+  };
+  const tries = [
+    { query: STAGE_PLUGIN_ID, limit: 100 },
+    { query: 'toonflow', limit: 100 },
+    { query: '编排', limit: 100 },
+    { limit: 100 },
+  ];
+  for (const args of tries) {
+    const items = await probe(args);
+    const hit = items.find(p => p && p.pluginId === STAGE_PLUGIN_ID);
+    if (hit) return hit.enabled === false ? 'disabled' : 'enabled';
+  }
+  return 'unknown'; // 查不到就别下结论，交给调用方按「默认插件接管」处理
 }
 
+
 // 群聊编排：读 tf_story.edit.orchestration（'system' 跟随系统 / 'plugin' 角色编排插件）
-// 缺省时根据是否安装编排器决定默认：装了 → 角色编排插件，没装 → 跟随系统
+// 缺省默认 = 'plugin'（角色编排插件接管）；只有明确查到编排插件被禁用才退回 'system'。
 async function applyOrchestrationMode() {
   const enabled = cfgGet('enabled', true) !== false;
   if (!enabled) return;
   const edit = getEdit();
   let orch = edit.orchestration;
-  const installed = await isStageInstalled();
+  const state = await stageState();
+  const installed = state !== 'disabled';
   if (!orch) {
-    orch = installed ? 'plugin' : 'system';
+    orch = (state === 'disabled') ? 'system' : 'plugin';
     edit.orchestration = orch;
     setEdit(edit);
   }
