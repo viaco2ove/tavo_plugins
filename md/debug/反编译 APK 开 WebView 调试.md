@@ -1,5 +1,7 @@
 # 反编译 Tavo APK 开启 WebView 调试（chrome://inspect 真断点）
-
+会清除程序数据，慎用。 但是可以电脑上使用安卓虚拟机进行调试
+[pc_安卓虚拟机.md](pc_%E5%AE%89%E5%8D%93%E8%99%9A%E6%8B%9F%E6%9C%BA.md)
+[ChromeDev.md](ChromeDev.md)
 > 适用：想拿到 **chrome://inspect 完整 DevTools**（断点单步 / Network / Elements / Performance）
 > 前置结论：Tavo 是 **Flutter + Dart** 的 release 版，非 debuggable、设备未 root。
 > 因此 `chrome://inspect` / Frida / `adb logcat` 三条原生路全死（详见 `ChromeDev.md` 与 `Eruda_debug.md`）。
