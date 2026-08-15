@@ -10,8 +10,8 @@
 
 /* ===== 触发器（底部居中，对齐 web 风格） ===== */
 #tf-story-tab {
-  position: fixed; bottom: 0; left: 50%; transform: translateX(-50%);
-  z-index: 9990; padding: 6px 18px; margin: 0;
+  position: fixed; bottom: 0; right: 0; transform: translateX(-50%);
+  z-index: 9990; padding: 2px 2px; margin: 0;
   background: rgba(8, 24, 43, 0.92); border: 1px solid rgba(166, 188, 218, 0.24);
   border-bottom: none; border-radius: 14px 14px 0 0; cursor: pointer; user-select: none;
   display: flex; align-items: center; gap: 8px; font-size: 13px; color: #eef5ff;
@@ -244,6 +244,27 @@
       }
       return v;
     } catch (e) { return null; }
+  }
+  // 读变量：先 global（tavo_chat_reset 不影响），再 chat scope；都带 {found,value} 解包
+  function readVarAnyScope(name) {
+    // global scope：tavoplugin.get 全局变量
+    try {
+      var g = T.get(name, 'global');
+      if (g && typeof g === 'object' && 'value' in g) g = g.value;
+      if (g !== null && g !== undefined && (!g || typeof g !== 'object' || Object.keys(g).length > 0)) {
+        // 修复：global get 也有 found 字段
+      }
+    } catch (e) {}
+    try {
+      var g2 = T.get(name, 'global');
+      var guard = 0;
+      while (g2 && typeof g2 === 'object' && g2.found !== undefined && 'value' in g2 && guard < 5) {
+        g2 = g2.value; guard++;
+      }
+      if (g2 !== null && g2 !== undefined) return g2;
+    } catch (e) {}
+    // 落 chat scope
+    return readChatVar(name);
   }
   var CHAPTER_GUIDE = [
     { title: '@记忆管理 下个章节', lines: [
@@ -756,7 +777,7 @@
   // 故事进度（章节结局判定器 / 自由模式状态）
   function progressHtml() {
     var p = null;
-    try { p = readChatVar('tf_progress') || null; } catch (e) {}
+    try { p = readVarAnyScope('tf_progress') || null; } catch (e) {}
     if (!p) return '<div class="tf-card"><div class="tf-card__text">尚未开始判定（用户还没发言）</div></div>';
     var chapters = (_edit && _edit.chapters) || [];
     var total = chapters.length;
@@ -812,7 +833,7 @@
   async function loadEdit() {
     // 优先读已保存的 chat 变量（章节独立管理）；务必先解包 Tavo 的 {found,value} 包装
     var saved = null;
-    try { saved = readChatVar(STORY_NS + '.edit'); } catch (e) {}
+    try { saved = readVarAnyScope(STORY_NS + '.edit'); } catch (e) {}
     if (saved && typeof saved === 'object') {
       _edit = saved;
       if (!_edit.chapters) _edit.chapters = [];
@@ -838,7 +859,11 @@
     // 不自动 saveEditVar()
   }
 
-  function saveEditVar() { try { T.set(STORY_NS + '.edit', _edit, 'chat'); } catch (e) {} }
+  function saveEditVar() {
+    // 双写：chat + global scope（防 tavo_chat_reset 清空）
+    try { T.set(STORY_NS + '.edit', _edit, 'chat'); } catch (e) {}
+    try { T.set(STORY_NS + '.edit', _edit, 'global'); } catch (e) {}
+  }
 
   function editorHtml() {
     if (!_edit) return '<div class="tf-card"><div class="tf-card__text">加载中…</div></div>';
