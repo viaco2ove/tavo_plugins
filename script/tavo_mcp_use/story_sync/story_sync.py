@@ -407,6 +407,174 @@ def ensure_chat(cfg, url, token, char_ids, lorebook_id, persona_id, dry):
 
 
 # ---------------------------------------------------------------------------
+# 章节：读取 chapters/<x>.json，把开场脚本逐条生成成聊天消息（到第一个"用户发言"停下）
+# ---------------------------------------------------------------------------
+def parse_chapter_script(content, opening_text, opening_role):
+    """把章节 content（markdown 脚本：@角色：台词 / ### 用户发言）解析成消息列表。
+
+    返回 [(speaker_name, text, is_narration), ...]，遇到第一个 '### 用户发言' 即停止。
+    这样开场剧情被"播放"成真实聊天消息，轮到真实用户时停下，保留交互性。
+    """
+    beats = []
+    if opening_text:
+        beats.append((opening_role or "旁白", opening_text, True))
+    open_norm = (opening_text or "").replace(" ", "").replace("\n", "")
+    for raw in (content or "").split("\n"):
+        line = raw.strip()
+        if not line:
+            continue
+        if line.startswith("###") and "用户发言" in line:
+            break  # 轮到真实用户，停止生成
+        if line.startswith("@"):
+            body = line[1:]
+            if "：" in body:
+                role, text = body.split("：", 1)
+            elif ":" in body:
+                role, text = body.split(":", 1)
+            else:
+                role, text = "旁白", body
+            role = role.strip()
+            text = text.strip()
+            if not text:
+                continue
+            is_narration = (role == "旁白")
+            # 去重：opening 已覆盖的开场旁白不再重复生成
+            if is_narration and open_norm and text.replace(" ", "").replace("\n", "") in open_norm:
+                continue
+            beats.append((role, text, is_narration))
+    return beats
+
+
+def ensure_chapters(cfg, url, token, chat_id, name_to_id, dry, force_chapters):
+    ch_cfg = cfg.get("chapters") or {}
+    ch_dir = ch_cfg.get("dir")
+    if not ch_dir:
+        return
+    story_dir = cfg.get("_story_dir")
+    ch_path = os.path.join(story_dir, ch_dir)
+    if not os.path.isdir(ch_path):
+        print("  [章节] 目录不存在，跳过: %s" % ch_path)
+        return
+
+    files = sorted(f for f in os.listdir(ch_path) if f.endswith(".json"))
+    if not files:
+        return
+    # 取 sort 最小（当前激活）的章节
+    chapters = []
+    for f in files:
+        try:
+            c = json.load(open(os.path.join(ch_path, f), encoding="utf-8"))
+            chapters.append((c.get("sort", 999), f, c))
+        except Exception as e:
+            print("  [章节] 解析失败 %s: %s" % (f, e))
+    chapters.sort(key=lambda x: x[0])
+    _, fname, chapter = chapters[0]
+
+    # 幂等：仅在群聊为空（或 --force-chapters）时生成，避免重复
+    if not dry:
+        try:
+            cnt = call(url, token, "tavo_message_count", {"chatId": chat_id})
+            cur = (cnt.get("count") if isinstance(cnt, dict) else cnt) or 0
+        except Exception:
+            cur = 0
+        if cur > 0 and not force_chapters:
+            print("  [章节] 群聊已有 %d 条消息，跳过开场生成（--force-chapters 可重生成）" % cur)
+            return
+
+    beats = parse_chapter_script(chapter.get("content", ""),
+                                chapter.get("openingText"),
+                                chapter.get("openingRole") or "旁白")
+    if not beats:
+        print("  [章节] %s 无可生成开场，跳过" % fname)
+        return
+
+    n = 0
+    for speaker, text, is_narration in beats:
+        cid = None if is_narration else name_to_id.get(speaker)
+        msg = {
+            "role": "assistant",
+            "content": text.replace("用户", "你"),
+            "speakerName": speaker,
+            "characterId": cid,
+        }
+        if dry:
+            print("  [章节][DRY] +%s: %s" % (speaker, text[:30]))
+            n += 1
+            continue
+        call(url, token, "tavo_message_append", {"chatId": chat_id, "message": msg})
+        n += 1
+    print("  [章节] %s -> 生成开场 %d 条消息（到首个用户发言停止）%s"
+          % (chapter.get("title", fname), n, " [DRY]" if dry else ""))
+
+
+# ---------------------------------------------------------------------------
+# 章节编辑变量：把 chapters/<x>.json 同步到 chat 变量 tf_story.edit
+# 这样 toonflow_story_event_manager 的章节结局判定器 / 事件进度判定器才能读到。
+# ---------------------------------------------------------------------------
+def build_edit_from_chapters(cfg, story_dir):
+    """读取 chapters 目录，返回 {intro, globalBackground, chapters}（插件格式）。"""
+    wb_cfg = cfg.get("worldbook") or {}
+    edit = {
+        "intro": cfg.get("story_name", ""),
+        "globalBackground": wb_cfg.get("intro", ""),
+        "chapters": [],
+    }
+    ch_cfg = cfg.get("chapters") or {}
+    ch_dir = ch_cfg.get("dir")
+    if not ch_dir:
+        return edit
+    ch_path = os.path.join(story_dir, ch_dir)
+    if not os.path.isdir(ch_path):
+        return edit
+    files = sorted(f for f in os.listdir(ch_path) if f.endswith(".json"))
+    chapters = []
+    for f in files:
+        try:
+            c = json.load(open(os.path.join(ch_path, f), encoding="utf-8"))
+            chapters.append((c.get("sort", 999), f, c))
+        except Exception as e:
+            print("  [章节变量] 解析失败 %s: %s" % (f, e))
+    chapters.sort(key=lambda x: x[0])
+    for _, _, c in chapters:
+        edit["chapters"].append({
+            "title": c.get("title", ""),
+            "openingRole": c.get("openingRole") or "旁白",
+            "openingLine": c.get("openingText") or "",
+            "background": c.get("backgroundPrompt") or "",
+            "content": c.get("content", ""),
+            "successCondition": c.get("completionCondition") or "",
+            "conditionVisible": True,
+            "entryCondition": "",
+            "musicAutoPlay": False,
+        })
+    return edit
+
+
+def ensure_chapter_edit_variable(cfg, url, token, chat_id, dry):
+    """把章节数据写进 chat 变量 tf_story.edit，供 event_manager 判定器使用。"""
+    story_dir = cfg.get("_story_dir")
+    edit = build_edit_from_chapters(cfg, story_dir)
+    if not edit["chapters"]:
+        print("  [章节变量] 无章节数据，跳过")
+        return
+    if dry:
+        print("  [章节变量][DRY] 将写入 tf_story.edit：%d 章" % len(edit["chapters"]))
+        for i, ch in enumerate(edit["chapters"][:3]):
+            print("    [%d] %s | content=%d 字 | success=%s"
+                  % (i, ch["title"], len(ch["content"]),
+                     ch["successCondition"][:30] if ch["successCondition"] else "（无）"))
+        if len(edit["chapters"]) > 3:
+            print("    ... 还有 %d 章" % (len(edit["chapters"]) - 3))
+        return
+    try:
+        call(url, token, "tavo_variable_set",
+             {"scope": "chat", "chatId": chat_id, "name": "tf_story.edit", "value": edit})
+        print("  [章节变量] tf_story.edit 已写入 %d 章" % len(edit["chapters"]))
+    except Exception as e:
+        print("  [章节变量] 写入失败: %s" % e)
+
+
+# ---------------------------------------------------------------------------
 # 清理：删掉群聊里不再需要的角色卡（如旧的玩家角色 NPC 卡）
 # ---------------------------------------------------------------------------
 def cleanup(url, token, chat_id, desired_names, persona_name, replace_map, dry):
@@ -458,6 +626,8 @@ def main():
     ap.add_argument("--dry", action="store_true", help="预演，不落库")
     ap.add_argument("--force", action="store_true", help="强制重导所有角色/身份")
     ap.add_argument("--rebuild-worldbook", action="store_true", help="重建世界书")
+    ap.add_argument("--force-chapters", action="store_true",
+                    help="强制重生成章节开场（群聊已有消息时也会追加，可能重复）")
     ap.add_argument("--url", help="MCP Server URL（覆盖 .env）")
     ap.add_argument("--token", help="MCP Bearer Token（覆盖 .env）")
     args = ap.parse_args()
@@ -512,6 +682,13 @@ def main():
     # 5. 群聊绑定（重绑 characterIds + lorebook + persona）
     if not dry:
         chat_id = ensure_chat(cfg, url, token, char_ids, lorebook_id, persona_id, dry)
+
+    # 5.5 章节开场生成（读取 chapters/，把开场脚本逐条生成成聊天消息）
+    name_to_id = dict(zip(desired_names, char_ids))
+    ensure_chapters(cfg, url, token, chat_id, name_to_id, dry, args.force_chapters)
+
+    # 5.6 章节编辑变量同步（写入 tf_story.edit，供 event_manager 判定器读取）
+    ensure_chapter_edit_variable(cfg, url, token, chat_id, dry)
 
     # 6. 清理旧卡
     if not dry:
