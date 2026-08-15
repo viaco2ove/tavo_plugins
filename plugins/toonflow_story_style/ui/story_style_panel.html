@@ -154,7 +154,7 @@
 
   // 一次性注入永久 CSS
   // - 透明度：选择器 + :root 变量（拖滑块只改 --tf-bubble-alpha）
-  // - 单条模式：body.tf-style-single + .tav-item-message[data-tf-last] 标记，隐藏非最后一条气泡
+  // - 单条模式：body.tf-style-single + CSS 选择器直接隐藏 .kuibao-list-item，仅显示第一条
   // - flat 风格特异性保护：保持透明
   function injectBubbleCSS() {
     if (document.getElementById(INJECT_ID)) return;
@@ -169,9 +169,9 @@
       // flat 风格气泡本应透明：特异性 0,2,0,0 > 0,1,0,0，覆盖上面的 alpha 控制
       '.tav-bubble-style-flat .tav-user-bubble,',
       '.tav-bubble-style-flat .tav-character-bubble{background-color:transparent!important}',
-      // 单条模式：隐藏最新一条之外的所有气泡（零 API 切换，零弹框；Tavo 列表最新在顶部）
-      'body.tf-style-single .tav-item-message:not([data-tf-last]) .tav-bubble{display:none!important}',
-      'body.tf-style-single .tav-item-message:not([data-tf-last]) .tav-bubble-wrapper{display:none!important}',
+      // 单条模式：纯 CSS 控制，隐藏 .kuibao-list-item，仅显示第一条（最新台词）
+      'body.tf-style-single .kuibao-list-item{display:none!important}',
+      'body.tf-style-single .kuibao-list-item:first-child{display:block!important}',
     ].join('');
     var tag = document.createElement('style');
     tag.id = INJECT_ID;
@@ -214,33 +214,16 @@
   }
 
   /* ===== 单条/多条：纯 CSS class 切换（零 API、零弹框） ===== */
-  // 给聊天主页最后一条 .tav-item-message 打 data-tf-last 标记
-  // CSS 规则（已注入）：body.tf-style-single .tav-item-message:not([data-tf-last]) .tav-bubble { display:none!important }
-  function markLastBubble() {
-    try {
-      var doc = (window.parent && window.parent.document) ? window.parent.document : document;
-      var old = doc.querySelectorAll('.tav-item-message[data-tf-last]');
-      for (var i = 0; i < old.length; i++) old[i].removeAttribute('data-tf-last');
-      var items = Array.prototype.slice.call(doc.querySelectorAll('.tav-item-message'));
-      if (!items.length) return;
-      // Tavo 消息列表最新消息在顶部（scrollToCurrentBottom => scrollTo({top:0})），
-      // 故「最新」= 视口中纵向最靠上的一条；按 getBoundingClientRect().top 取最小者，
-      // 兼容虚拟列表窗口与任意布局方向，避免误标最旧的「第一条」。
-      var top = items[0], topY = top.getBoundingClientRect().top;
-      for (var j = 1; j < items.length; j++) {
-        var y = items[j].getBoundingClientRect().top;
-        if (y < topY) { topY = y; top = items[j]; }
-      }
-      top.setAttribute('data-tf-last', '');
-    } catch (e) {}
-  }
+  // 单条模式可见性完全由 injectBubbleCSS() 注入的 CSS 控制：
+  //   body.tf-style-single .kuibao-list-item{display:none!important}
+  //   body.tf-style-single .kuibao-list-item:first-child{display:block!important}
+  // 最新一条 = 列表第一条（:first-child），无需 JS 标记、无需 message API。
 
   async function applyMode(mode) {
     _mode = mode;
     try { T.set(NS + '.mode', mode, 'chat'); } catch (e) {}
     var inSingle = mode === 'single';
     document.body.classList.toggle('tf-style-single', inSingle);
-    if (inSingle) markLastBubble();
     syncUI();
   }
 
@@ -262,7 +245,6 @@
   loadThemeColors();
   // 3) 应用当前 mode：toggle body class（不调任何 API）
   document.body.classList.toggle('tf-style-single', _mode === 'single');
-  if (_mode === 'single') setTimeout(markLastBubble, 200);
   // 4) 应用当前 opacity（只改 alpha 变量）
   applyOpacity(_opacity);
 
@@ -292,15 +274,9 @@
   var bs = document.getElementById('tf-mode-single'); if (bs) bs.addEventListener('click', function () { applyMode('single'); });
   var bm = document.getElementById('tf-mode-multi'); if (bm) bm.addEventListener('click', function () { applyMode('multi'); });
 
-  // chat 切换时重读主题色；新消息到达时重打标记（单条模式下）
+  // chat 切换时重读主题色（单条模式可见性由 CSS 自动处理，无需重打标记）
   if (T && T.plugin && T.plugin.on) {
     try { T.plugin.on('chat:opened', function () { loadThemeColors(); }); } catch (e) {}
-    try {
-      T.plugin.on('message:added', function (ev) {
-        if (ev && ev.message && ev.message.role === 'system') return;
-        if (_mode === 'single') setTimeout(markLastBubble, 50);
-      });
-    } catch (e) {}
   }
 })();
 </script>

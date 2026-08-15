@@ -1,6 +1,7 @@
 // toonflow_story_style entry.js
-// v1.3.0: 单条/多条切换改用 CSS class 控制（body.tf-style-single + data-tf-last 标记），
-//          不再调 message API，彻底避免"是否允许修改聊天消息"权限弹框。
+// v1.3.0: 单条/多条切换改用 CSS class 控制（body.tf-style-single），不再调 message API，
+//          彻底避免"是否允许修改聊天消息"权限弹框。v1.3.3 起单条可见性完全由 CSS 选择器
+//          （.kuibao-list-item:first-child）控制，连 data-tf-last 标记都不再需要。
 // 配套迁移：升级时一次性清空 v1.2.0 及之前残留的 hidden 标记。
 
 'use strict';
@@ -32,36 +33,11 @@ async function migrateClearHidden() {
   } catch (e) {}
 }
 
-// 给聊天主页 DOM（window.parent）最新一条 .tav-item-message 打 data-tf-last 标记
-// 配合 ui fragment 注入的 CSS：
-//   body.tf-style-single .tav-item-message:not([data-tf-last]) .tav-bubble { display:none!important }
-// 注意：Tavo 消息列表最新消息在顶部（scrollToCurrentBottom => scrollTo({top:0})），
-// 故「最新」是 DOM 中纵向最靠上的一条，不能用 items[length-1]（那是最旧/第一条）。
-function markLastBubble() {
-  try {
-    var doc = (window.parent && window.parent.document) ? window.parent.document : document;
-    var old = doc.querySelectorAll('.tav-item-message[data-tf-last]');
-    for (var i = 0; i < old.length; i++) old[i].removeAttribute('data-tf-last');
-    var items = Array.prototype.slice.call(doc.querySelectorAll('.tav-item-message'));
-    if (!items.length) return;
-    var top = items[0], topY = top.getBoundingClientRect().top;
-    for (var j = 1; j < items.length; j++) {
-      var y = items[j].getBoundingClientRect().top;
-      if (y < topY) { topY = y; top = items[j]; }
-    }
-    top.setAttribute('data-tf-last', '');
-  } catch (e) {}
-}
+// 单条模式可见性完全由 ui fragment 注入的 CSS 控制（body.tf-style-single + .kuibao-list-item 选择器），
+// 无需 JS 标记、无需 message API。这里只保留一次性迁移逻辑。
 
 tavo.plugin.on('chat:opened', async () => {
   await migrateClearHidden();
-  if (readMode() === 'single') setTimeout(markLastBubble, 300);
-});
-
-tavo.plugin.on('message:added', async (event) => {
-  if (event.message && event.message.role === 'system') return;
-  if (readMode() !== 'single') return;
-  setTimeout(markLastBubble, 50);
 });
 
 // 旧 sidebar actions（兼容）：不再做任何操作，UI 切换由 ui fragment 处理
