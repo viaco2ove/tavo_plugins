@@ -63,3 +63,7 @@ run.local.ps1
 /.claude/worktrees/agent-a4554f8deb76d473f/
 /.claude/worktrees/
 /toonflow-pkg-v1.0.2/
+*.apk
+/script/debug/tavo_app_webview/app_apk_reverse/tavo_decoded/lib/
+/script/debug/tavo_app_webview/app_apk_reverse/tavo_decoded/build/resources.zip
+/script/debug/tavo_app_webview/app_apk_reverse/tavo_decoded/build/

@@ -20,6 +20,14 @@ adb kill-server
 adb start-server
 adb devices
 ```
+如果List of devices attached
+emulator-5554   offline
+那么得重启模拟器
+例如
+```
+taskkill /F /PID 27168 2>&1; taskkill /F /PID 7296 2>&1; sleep 2; tasklist | grep -iE "emulator|qemu" | head -5; echo "---残留清理完成---"
+```
+记得关掉vpn，禁用 netsim 崩溃循环的代理，
 
 刷新chrome://inspect/#devices页面
 
@@ -46,12 +54,18 @@ emulator-5554   device
 
 bash
 cat /proc/net/unix | grep webview
-# 输出包含 @webview_devtools_remote_4583
+### 输出包含 @webview_devtools_remote_4583
 4583 就是 Tavo 进程 PID，说明调试 socket 已经暴露。
 
 你现在只需要做一件事：回到 PC 上的 chrome://inspect/#devices 页面，刷新一下，应该就能看到 app.bitbear.tav 的 WebView 条目，点 inspect 就能进 DevTools（Elements/Console/Sources/Network 全功能）。
 
 注意：这是 PopRouter 送的匿名积分，正常发消息会扣积分；但如果只是 inspect DOM、看 Console，不触发 AI 回复就不消耗。
+
+## 404 
+是 Chrome DevTools 客户端版本比 WebView 版本旧 导致
+tavo WebView 是 134.0.6998.135
+下载 https://www.google.cn/chrome/canary/
+https://www.google.com/chrome/canary/next-steps.html?platform=win64
 
 ## 其他问题？
 自己研究吧！
