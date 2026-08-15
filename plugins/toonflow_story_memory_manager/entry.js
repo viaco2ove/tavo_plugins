@@ -47,6 +47,20 @@ JSON 顶层固定字段：
 const STORY_NS = 'tmm_story';
 const STATIC_NS = 'tmm_story_static'; // 受保护的静态基准卡：一次性构建，重启聊天不清空
 
+// Tavo 的 chat 变量经 tavo.get 返回的是包装对象 {target,name,found,value}，
+// 真实数据在 .value 里。所有读变量都必须解包，否则 v.chapters / v.level 等会是 undefined，
+// 代码会误判为"空"并覆盖，造成配置/参数卡被清空。
+function readChatVar(name) {
+  try {
+    let v = tavo.get(name);
+    let guard = 0;
+    while (v && typeof v === 'object' && v.found !== undefined && 'value' in v && guard < 5) {
+      v = v.value; guard++;
+    }
+    return v;
+  } catch (e) { return null; }
+}
+
 function scalarText(v) {
   const t = (v == null ? '' : String(v)).trim();
   return (t === 'null' || t === 'undefined') ? '' : t;
@@ -69,9 +83,11 @@ function normalizeList(v) {
 
 function detectRoleType(text, hint) {
   let rt = scalarText(hint);
+  if (rt === '旁白') rt = 'narrator'; // 中文字面值归一化
   if (!rt) {
     if (/角色类型\s*[:：]\s*万能角色/i.test(text)) rt = 'general';
     else if (/角色类型\s*[:：]\s*系统角色/i.test(text)) rt = 'system';
+    else if (/角色类型\s*[:：]\s*旁白|系统旁白|系统叙事者?/i.test(text)) rt = 'narrator';
   }
   if (!['npc', 'narrator', 'player', 'system', 'general'].includes(rt)) rt = 'npc';
   return rt;
@@ -216,9 +232,14 @@ async function buildStaticStory(force) {
     if (!synopsis && books[0] && books[0].entries && books[0].entries[0]) {
       synopsis = books[0].entries[0].content || '';
     }
-    const characters = await buildCharactersFromChat(chat);
+    // 角色解析健壮化：任一角色拉取/解析失败不影响整体，缺省空数组也要写基准卡
+    let characters = [];
+    try { characters = await buildCharactersFromChat(chat); } catch (e) {
+      console.warn('[tmm] buildCharactersFromChat failed', e);
+      characters = [];
+    }
     // 受保护合并：保留已有角色卡，只补建新角色
-    const prev = (force ? (tavo.get(STATIC_NS) || {}) : null);
+    const prev = (force ? (readChatVar(STATIC_NS) || {}) : null);
     const prevById = {};
     (prev && prev.characters || []).forEach(c => { if (c && c.id) prevById[c.id] = c; });
     const merged = characters.map(c => prevById[c.id] || c);
@@ -240,7 +261,7 @@ async function buildStaticStory(force) {
 // 而不是被清空成空白——即"重新生成而非清空"。
 async function initStory() {
   try {
-    let staticStory = tavo.get(STATIC_NS);
+    let staticStory = readChatVar(STATIC_NS);
     if (!staticStory || !staticStory.characters || !staticStory.characters.length) {
       staticStory = await buildStaticStory(false);
     }
@@ -258,9 +279,9 @@ async function initStory() {
 // 记忆刷新后把动态参数补丁回流进 tmm_story，让信息面板展示实时数值
 function syncStoryDynamicCards() {
   try {
-    const story = tavo.get(STORY_NS);
+    const story = readChatVar(STORY_NS);
     if (!story || !story.characters) return;
-    const mem = tavo.get(NS) || defaultState();
+    const mem = readChatVar(NS) || defaultState();
     const player = (mem.cards && mem.cards.player) ? mem.cards.player : {};
     const npcs = (mem.cards && mem.cards.npcs) ? mem.cards.npcs : {};
     let changed = false;
@@ -319,7 +340,7 @@ async function refreshMemory() {
       content: m.content?.slice(0, 200) || '',
     }));
 
-    const cur = tavo.get(NS) || defaultState();
+    const cur = readChatVar(NS) || defaultState();
 
     const prompt = `${MEMORY_RULES}
 
@@ -346,7 +367,7 @@ ${recentDialogue.map(d => `${d.role}: ${d.content}`).join('\n')}
     }
 
     if (parsed) {
-      const state = tavo.get(NS) || defaultState();
+      const state = readChatVar(NS) || defaultState();
 
       if (parsed.summary) state.summary = String(parsed.summary).slice(0, 500);
       if (Array.isArray(parsed.facts)) {
@@ -387,7 +408,7 @@ ${recentDialogue.map(d => `${d.role}: ${d.content}`).join('\n')}
 }
 
 tavo.plugin.on('chat:opened', async () => {
-  if (!tavo.get(NS)) {
+  if (!readChatVar(NS)) {
     tavo.set(NS, defaultState(), 'chat');
   }
   // 打开聊天：保护静态基准卡，重新生成展示层（动态参数从基准 + 持久化增量重新派生）
@@ -404,7 +425,7 @@ tavo.plugin.on('message:added', async (event) => {
   const cfg = getConfig();
   if (!cfg.enabled || event.message?.role === 'system') return;
 
-  const state = tavo.get(NS) || defaultState();
+  const state = readChatVar(NS) || defaultState();
   state.turnsSinceRefresh = (state.turnsSinceRefresh || 0) + 1;
   tavo.set(NS, state, 'chat');
 
@@ -417,7 +438,7 @@ tavo.plugin.on('generation:prepare', async (event) => {
   const cfg = getConfig();
   if (!cfg.enabled || !cfg.injectEnabled) return;
 
-  const state = tavo.get(NS);
+  const state = readChatVar(NS);
   if (!state || !state.summary) return;
 
   const inject = `【剧情记忆】
@@ -434,7 +455,7 @@ tavo.plugin.onSidebarAction('tmm-refresh', async () => {
 });
 
 tavo.plugin.onSidebarAction('tmm-inspect', async () => {
-  const state = tavo.get(NS);
+  const state = readChatVar(NS);
   await tavo.message.append({
     content: '```\n' + JSON.stringify(state, null, 2) + '\n```',
     hidden: true,
@@ -442,6 +463,6 @@ tavo.plugin.onSidebarAction('tmm-inspect', async () => {
 });
 
 tavo.plugin.onSidebarAction('tmm-export', async () => {
-  const state = tavo.get(NS);
+  const state = readChatVar(NS);
   await tavo.file.export('memory.json', JSON.stringify(state, null, 2));
 });

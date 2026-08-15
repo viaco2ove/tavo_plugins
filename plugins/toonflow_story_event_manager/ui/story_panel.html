@@ -232,6 +232,19 @@
 (function () {
   var T = (typeof tavo !== 'undefined') ? tavo : (window.tavo || null);
   var STORY_NS = 'tf_story';
+
+  // Tavo 的 chat 变量经 T.get 返回的是包装对象 {target,name,found,value}，真实数据在 .value 里。
+  // 不解包的话 v.chapters / v.level 等都是 undefined，会被误判为"空"并拿默认值覆盖，清空配置。
+  function readChatVar(name) {
+    try {
+      var v = T.get(name);
+      var guard = 0;
+      while (v && typeof v === 'object' && v.found !== undefined && ('value' in v) && guard < 5) {
+        v = v.value; guard++;
+      }
+      return v;
+    } catch (e) { return null; }
+  }
   var CHAPTER_GUIDE = [
     { title: '@记忆管理 下个章节', lines: [
       '理论上可行',
@@ -377,9 +390,11 @@
     }
     var descText = scalar(d.description || '');
     var roleType = scalar(src.role_type || d.roleType || readZh('role_type','角色类型'));
+    if (roleType === '旁白') roleType = 'narrator'; // 中文字面值归一化
     if (!roleType) {
       if (/万能角色/.test(descText)) roleType = 'general';
       else if (/系统角色/.test(descText)) roleType = 'system';
+      else if (/旁白|系统叙事|系统旁白/.test(descText)) roleType = 'narrator';
       else roleType = 'npc';
     }
     var level = numOr(src.level ?? fm['level'] ?? readZh('level','等级'), null);
@@ -421,22 +436,41 @@
     };
   }
 
+  function isCardEmpty(c) {
+    if (!c) return true;
+    return !c.gender && (!c.skills || !c.skills.length) && !c.appearance
+      && !c.level_desc && !c.personality
+      && (c.level == null || c.level === 1) && (c.hp == null || c.hp === 100) && (c.mp == null || c.mp === 0);
+  }
+
   async function buildStory() {
     if (!T || !T.chat) return null;
     var chat = await T.chat.current();
     if (!chat) return null;
+    // 静态基准卡（记忆插件解析好的权威参数卡）按名兜底：即使这里拿不到角色描述，参数也能显示
+    var staticStory = readChatVar('tmm_story_static') || readChatVar('tmm_story') || null;
+    var staticByName = {};
+    if (staticStory && staticStory.characters) {
+      staticStory.characters.forEach(function (c) { if (c && c.name) staticByName[c.name] = c; });
+    }
     var cards = [];
     var personaId = chat.personaId || (chat.persona && chat.persona.id);
     if (personaId) {
       var pf = null;
       try { pf = await T.persona.get(personaId); } catch (e) {}
-      cards.push({ id: personaId, name: (chat.persona && chat.persona.name) || (pf && pf.name) || '用户', roleType: 'player', avatar: (pf && pf.avatar) || '', card: localizeCard(pf || {}) });
+      var pCard = localizeCard(pf || {});
+      var pStatic = staticByName[(chat.persona && chat.persona.name) || (pf && pf.name) || '用户'];
+      if (isCardEmpty(pCard) && pStatic && pStatic.card) pCard = Object.assign({}, pStatic.card);
+      cards.push({ id: personaId, name: (chat.persona && chat.persona.name) || (pf && pf.name) || '用户', roleType: 'player', avatar: (pf && pf.avatar) || '', card: pCard });
     }
     var npcs = await Promise.all((chat.characters || []).map(async function (c) {
       var full = null;
       try { full = await T.character.get(c.id); } catch (e) {}
       var d = (full && full.data) ? full.data : (full || c || {});
-      return { id: c.id, name: c.name || d.name || '未命名', roleType: d.roleType || 'npc', avatar: d.avatar || c.avatar || '', card: localizeCard(full || c) };
+      var card = localizeCard(full || c);
+      var sc = staticByName[c.name] || staticByName[d.name];
+      if (isCardEmpty(card) && sc && sc.card) card = Object.assign({}, sc.card);
+      return { id: c.id, name: c.name || d.name || '未命名', roleType: d.roleType || 'npc', avatar: d.avatar || c.avatar || '', card: card };
     }));
     cards = cards.concat(npcs);
     // 世界书
@@ -486,9 +520,13 @@
     h += '<div class="tf-card__text">角色设定：' + esc(c.raw_setting || '暂无角色设定') + '</div>';
     h += '<div class="tf-card__text">角色音色：' + esc(c.voice || '未绑定音色') + '</div>';
     if (c.sample) h += '<div class="tf-card__text">台词示例：' + esc(c.sample) + '</div>';
-    // 状态行
-    h += '<div class="tf-card__text">状态：Lv.' + (c.level || 1) + (c.level_desc ? '（' + esc(c.level_desc) + '）' : '')
-      + ' | HP ' + (c.hp || 0) + ' | MP ' + (c.mp || 0) + ' | 金币 ' + (c.money || 0) + '</div>';
+    // 状态行（旁白为系统叙事者，无战斗数值，不显示 HP/MP/等级）
+    if (ch.roleType === 'narrator') {
+      h += '<div class="tf-card__text tf-card__text--dim">系统叙事者：负责场景描述 / 时间流转 / 效果说明，无战斗数值</div>';
+    } else {
+      h += '<div class="tf-card__text">状态：Lv.' + (c.level || 1) + (c.level_desc ? '（' + esc(c.level_desc) + '）' : '')
+        + ' | HP ' + (c.hp || 0) + ' | MP ' + (c.mp || 0) + ' | 金币 ' + (c.money || 0) + '</div>';
+    }
     if (c.items && c.items.length) h += '<div class="tf-card__text">持有：' + esc(c.items.join('、')) + '</div>';
 
     // 查看角色详情：点开 → 展开参数卡网格（对齐 web parameterCardEntries）
@@ -518,6 +556,11 @@
         { k: 'next_level_exp', label: '下一级所需经验', value: c.next_level_exp != null ? String(c.next_level_exp) : '' },
         { k: 'role_key_information', label: '当前行为', value: c.role_key_information || '' },
       ];
+      // 旁白为系统叙事者，隐藏战斗数值行
+      if (ch.roleType === 'narrator') {
+        var _skip = { level: 1, level_desc: 1, hp: 1, mp: 1, money: 1, exp: 1, next_level_exp: 1 };
+        entries = entries.filter(function (e) { return !_skip[e.k]; });
+      }
       entries.forEach(function (e) {
         var v = e.value || '未设定';
         var long = String(v).length > 80;
@@ -538,7 +581,7 @@
     // 敌人数据来源：tmm 记忆插件的敌对标记（other 含"敌对"），无则空态
     var enemies = [];
     try {
-      var mem = T.get('tmm');
+      var mem = readChatVar('tmm');
       var npcs = (mem && mem.cards && mem.cards.npcs) || {};
       Object.keys(npcs).forEach(function (k) {
         var o = (npcs[k].other || []).join(' ');
@@ -598,9 +641,9 @@
     try {
       var chat = { name: _story.name, responseMode: _story.responseMode };
       lines.push('chat: ' + JSON.stringify(chat));
-      var mem = T.get('tmm');
+      var mem = readChatVar('tmm');
       if (mem) lines.push('memory: ' + JSON.stringify({ summary: (mem.meta && mem.meta.summary || '').slice(0, 80), facts: (mem.meta && mem.meta.facts || []).length, tags: (mem.meta && mem.meta.tags || []).length }));
-      var orch = T.get('tf_orch.active');
+      var orch = readChatVar('tf_orch.active');
       lines.push('orchestrating: ' + (orch ? 'true' : 'false'));
     } catch (e) { lines.push('(snapshot error: ' + e + ')'); }
     return lines.join('\n');
@@ -646,7 +689,7 @@
     var facts = [];
     var summary = '';
     try {
-      var mem = T.get('tmm');
+      var mem = readChatVar('tmm');
       facts = (mem && mem.meta && mem.meta.facts) || [];
       summary = (mem && mem.meta && mem.meta.summary) || '';
     } catch (e) {}
@@ -680,7 +723,7 @@
   // 故事进度（章节结局判定器 / 自由模式状态）
   function progressHtml() {
     var p = null;
-    try { p = T.get('tf_progress') || null; } catch (e) {}
+    try { p = readChatVar('tf_progress') || null; } catch (e) {}
     if (!p) return '<div class="tf-card"><div class="tf-card__text">尚未开始判定（用户还没发言）</div></div>';
     var chapters = (_edit && _edit.chapters) || [];
     var total = chapters.length;
@@ -730,16 +773,24 @@
   var _editChapter = 0;
 
   function defaultEdit() {
-    return { intro: '', globalBackground: '', chapters: [{ title: '第 1 章', openingRole: '旁白', openingLine: '', background: '', content: '', successCondition: '', conditionVisible: true, entryCondition: '', musicAutoPlay: false }] };
+    return { intro: '', globalBackground: '', lineCount: 20, chapters: [{ title: '第 1 章', openingRole: '旁白', openingLine: '', background: '', content: '', successCondition: '', conditionVisible: true, entryCondition: '', musicAutoPlay: false }] };
   }
 
   async function loadEdit() {
-    // 优先 chat 变量（章节独立管理）
+    // 优先读已保存的 chat 变量（章节独立管理）；务必先解包 Tavo 的 {found,value} 包装
     var saved = null;
-    try { saved = T.get(STORY_NS + '.edit'); } catch (e) {}
-    if (saved && saved.chapters && saved.chapters.length) { _edit = saved; return; }
+    try { saved = readChatVar(STORY_NS + '.edit'); } catch (e) {}
+    if (saved && typeof saved === 'object') {
+      _edit = saved;
+      if (!_edit.chapters) _edit.chapters = [];
+      if (_edit.lineCount == null || _edit.lineCount === '') _edit.lineCount = 20;
+      if (!_edit.orchestration) _edit.orchestration = 'plugin';
+      // 注意：这里【绝不】调用 saveEditVar()，避免把读到的真实配置又用默认覆盖写回
+      return;
+    }
 
-    // 初始化：仅从世界书读简介/全局背景，章节默认空（不给世界书的非简介条目当章节）
+    // 没读到任何已保存配置：仅在内存里用默认填充，等待用户真正编辑后才落库。
+    // 这样即使读变量失败，也不会把真实配置（若后续能被读到）清空。
     _edit = defaultEdit();
     var entries = (_story.worldbook && _story.worldbook.entries) || [];
     entries.forEach(function (e) {
@@ -751,7 +802,7 @@
       _edit.chapters = [{ title: '第 1 章', openingRole: '旁白', openingLine: '', background: '', content: '', successCondition: '', conditionVisible: true, entryCondition: '', musicAutoPlay: false }];
     }
     if (_editChapter >= _edit.chapters.length) _editChapter = 0;
-    saveEditVar();
+    // 不自动 saveEditVar()
   }
 
   function saveEditVar() { try { T.set(STORY_NS + '.edit', _edit, 'chat'); } catch (e) {} }
@@ -788,6 +839,13 @@
       + '</select></div>'
       + '<div class="tf-card__text" id="tf-orch-note">检测中…</div>'
       + '<div class="tf-btn-row"><button class="tf-btn tf-btn--primary" data-orch-apply="1">应用编排</button></div></div>';
+
+    // 台词与演出设置（台词数量：传给 agent 的最近对话条数）
+    var lineCount = (_edit.lineCount != null && _edit.lineCount !== '') ? _edit.lineCount : 20;
+    h += '<div class="tf-card"><div class="tf-card__title">台词与演出</div>'
+      + '<div class="tf-card__text">台词数量（默认 20）：传给编排器 / 发言器的「最近对话（recent_dialogue）」台词条数，对齐 Toonflow 的 recent_dialogue 入参。</div>'
+      + '<div class="tf-edit-field"><input type="number" min="1" max="100" data-linecount value="' + esc(String(lineCount)) + '" placeholder="20"></div>'
+      + '<div class="tf-card__text">数值越大，agent 看到的近期上下文越长；越小越聚焦当前轮。该值经由角色发言插件注入到每轮请求。</div></div>';
 
     // 章节名
     h += '<div class="tf-card"><div class="tf-card__title">章节名称</div>'
@@ -925,6 +983,12 @@
     if (orchApply) orchApply.addEventListener('click', function () {
       saveEditVar();
       if (T && T.plugin) T.plugin.emit('sidebar:action', 'tf-story-apply-mode');
+    });
+    // 台词数量（数字，存为整数）
+    var lc = root.querySelector('[data-linecount]');
+    if (lc) lc.addEventListener('input', function () {
+      var v = parseInt(lc.value, 10); if (isNaN(v) || v < 1) v = 20;
+      _edit.lineCount = v; saveEditVar();
     });
     // 检测编排器插件并提示
     if (root.querySelector('#tf-orch-note')) detectStagePlugin();

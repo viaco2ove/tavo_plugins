@@ -52,9 +52,24 @@
     try { return tavo.plugin.config.get('showPanel') !== false; } catch (e) { return true; }
   }
 
+  // tavo.get 返回包装对象 {target,name,found,value}；直接 !! 会永远为 true（横幅常亮），必须解包
+  function readChatVar(name) {
+    try {
+      var v = tavo.get(name, 'chat');
+      var guard = 0;
+      while (v && typeof v === 'object' && v.found !== undefined && ('value' in v) && guard < 5) {
+        v = v.value; guard++;
+      }
+      return v;
+    } catch (e) { return null; }
+  }
+
   function tick() {
     var active = false;
-    try { active = !!tavo.get(KEY, 'chat'); } catch (e) {}
+    try {
+      var raw = readChatVar(KEY);
+      active = (raw === true || raw === 'true' || raw === 1 || raw === '1');
+    } catch (e) {}
     var visible = active && showPanel();
     if (visible !== last) {
       last = visible;

@@ -12,6 +12,19 @@
 const NS = 'mcs_stage';
 const ORCH_FLAG = 'tf_orch.active'; // 编排进行中标记（htmlFragment 轮询）
 
+// Tavo 的 chat 变量经 tavo.get 返回包装对象 {target,name,found,value}，真实数据在 .value。
+// 不解包的话 edit.chapters / edit.lineCount 等都是 undefined，会被误判为"空"。
+function readChatVar(name) {
+  try {
+    let v = tavo.get(name);
+    let guard = 0;
+    while (v && typeof v === 'object' && v.found !== undefined && 'value' in v && guard < 5) {
+      v = v.value; guard++;
+    }
+    return v;
+  } catch (e) { return null; }
+}
+
 function getConfig() {
   const get = (k, fallback) => {
     try {
@@ -32,23 +45,34 @@ function getConfig() {
 // 'system' = 跟随系统（不接管）；缺省 / 'plugin' = 角色编排插件接管
 function getOrchestration() {
   try {
-    const edit = tavo.get('tf_story.edit', 'chat') || {};
+    const edit = readChatVar('tf_story.edit') || {};
     const v = edit.orchestration;
     return v === 'system' ? 'system' : 'plugin';
   } catch (e) { return 'plugin'; }
 }
 
+// 台词数量：传给 agent 的「最近对话」条数（对齐 Toonflow recent_dialogue 入参），默认 20
+function getLineCount() {
+  try {
+    const edit = readChatVar('tf_story.edit') || {};
+    const v = parseInt(edit.lineCount, 10);
+    return (v >= 1) ? v : 20;
+  } catch (e) { return 20; }
+}
+
 // 对齐 story_orchestrator(compact) + story_speaker 的「编排 + 发言」规则，
 // 适配 Tavo 单模型场景模式（模型同时承担编排与发言）。
 function getScenarioPrompt() {
+  const n = getLineCount();
   return `【群聊剧情编排规则（对齐 Toonflow story_orchestrator / story_speaker）】
 你是本群聊的剧情编排师兼导演。群聊里有多个角色在场，你负责决定本轮由谁发言，并直接写出该角色的台词；每轮只推进剧情一小步。
+在场角色包括：各 NPC、万能角色（某女子/某男子），以及系统旁白（旁白）。旁白是真实存在于本群聊的叙事者角色，用于场景描述 / 时间流转 / 效果说明，但它不扮演任何具体人物。
 
 # NPC优先原则
 - 你的首要任务是安排 NPC（一般角色）或万能角色发言来推动剧情。
 - 只有在没有合适的 NPC / 万能角色可以发言，或需要描述环境、时间流转、心理活动时，才用旁白。
-- 优先度：一般角色 > 万能角色 > 系统角色 > 旁白。尽量用 NPC 推进，而非旁白。
-- 旁白不是某个具体角色，是主持/系统视角的场景描述。
+- 优先度权重：一般角色[0.7] > 万能角色[0.6] > 系统角色[0.5] > 旁白[0.1]。尽量用 NPC 推进，而非旁白。
+- 旁白 = 系统叙事者（本群聊中的「旁白」角色）。它不扮演任何具体人物，只负责场景描述、时间流转、环境氛围渲染、技能/效果说明；只有当需要这些叙事功能时才由旁白发言。
 
 # 发言规则（对齐 story_speaker）
 - 直接写该角色的台词，不要前缀 "@角色名："，提到别人直接说"角色XXX"。
@@ -67,12 +91,18 @@ function getScenarioPrompt() {
 - 万能角色不能替代列表中已存在的具体角色发言（例如列表已有"校长"，就不要让万能角色饰演校长）。
 
 # 旁白特殊
-- 用户 @旁白、触发世界书、说明技能效果、观察效果时，编排旁白描述场景 / 时间 / 效果，不要替具体角色说话。`;
+- 用户 @旁白、触发世界书、说明技能效果、观察效果时，编排旁白描述场景 / 时间 / 效果，不要替具体角色说话。
+
+# 每轮会随对话提供的「入参」（由角色发言插件注入到本轮请求，无需你自行记忆）
+- 【在场角色当前状态】：在场角色的等级 / HP / MP / 当前行为等动态参数卡（来自记忆）。
+- 【当前事件】：当前章节标题与本章内容大纲（currStageSummary），是你本轮发言的唯一依据；禁止提前使用后续章节内容。
+- 【最近对话】：最近 ${n} 条对话（recent_dialogue），按时间顺序记录各角色说了什么台词；用于自然衔接上下文。
+- 若最后一句是用户发言，应先回应再推进；若最后一句是问用户事情（如"还请你告知姓名"），则本轮应安排用户发言。`;
 }
 
 // 进入聊天：把群聊切到场景模式并写入编排规则（自由模式下放宽规则）
 function getEffectiveScenarioPrompt() {
-  const freeMode = (() => { try { return !!tavo.get('tf_progress.sessionFreeMode'); } catch (e) { return false; } })();
+  const freeMode = (() => { try { return !!!!(readChatVar('tf_progress')||{}).sessionFreeMode; } catch (e) { return false; } })();
   const base = getScenarioPrompt();
   if (!freeMode) return base;
   // 自由模式追加：可自由讨论、不强制推进剧情、允许对话范围扩展
@@ -98,8 +128,8 @@ tavo.plugin.on('message:added', async () => {
   const cfg = getConfig();
   if (!cfg.enabled) return;
   if (getOrchestration() === 'system') return; // 跟随系统：不接管群聊
-  const freeMode = (() => { try { return !!tavo.get('tf_progress.sessionFreeMode'); } catch (e) { return false; } })();
-  const lastVal = (() => { try { return tavo.get('mcs_free_mode_seen'); } catch (e) { return false; } })();
+  const freeMode = (() => { try { return !!!!(readChatVar('tf_progress')||{}).sessionFreeMode; } catch (e) { return false; } })();
+  const lastVal = (() => { try { return readChatVar('mcs_free_mode_seen'); } catch (e) { return false; } })();
   if (freeMode !== lastVal) {
     try {
       tavo.set('mcs_free_mode_seen', freeMode, 'chat');
@@ -126,7 +156,7 @@ tavo.plugin.onSidebarAction('mcs-toggle', async () => {
   const next = cur === 'system' ? 'plugin' : 'system';
   // 同步到群聊编排设置（与故事配置面板保持一致）
   try {
-    const edit = (tavo.get('tf_story.edit', 'chat') || {});
+    const edit = (readChatVar('tf_story.edit') || {});
     edit.orchestration = next;
     tavo.set('tf_story.edit', edit, 'chat');
   } catch (e) {}

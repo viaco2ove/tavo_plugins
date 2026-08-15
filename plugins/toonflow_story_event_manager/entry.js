@@ -20,6 +20,20 @@ function cfgGet(k, fb) {
   try { const v = tavo.plugin.config.get(k); return (v === undefined || v === null) ? fb : v; } catch (e) { return fb; }
 }
 
+// Tavo 的 chat 变量经 tavo.get 返回的是包装对象 {target,name,found,value}，
+// 真实数据在 .value 里。所有读变量都必须解包，否则 v.chapters / v.level 等会是 undefined，
+// 代码会误判为"空"并拿默认值覆盖，造成配置/参数卡被清空。
+function readChatVar(name) {
+  try {
+    let v = tavo.get(name);
+    let guard = 0;
+    while (v && typeof v === 'object' && v.found !== undefined && 'value' in v && guard < 5) {
+      v = v.value; guard++;
+    }
+    return v;
+  } catch (e) { return null; }
+}
+
 // ---------- 编排插件检测 ----------
 async function isStageInstalled() {
   try {
@@ -226,10 +240,8 @@ function defaultProgress() {
 }
 
 function getProgress() {
-  try {
-    const v = tavo.get(PROGRESS_NS);
-    return v || defaultProgress();
-  } catch (e) { return defaultProgress(); }
+  const v = readChatVar(PROGRESS_NS);
+  return (v && typeof v === 'object') ? v : defaultProgress();
 }
 
 function setProgress(p) {
@@ -339,7 +351,7 @@ async function getAllMessagesText() {
 
 async function getMemoryItems() {
   try {
-    const mem = tavo.get('tmm');
+    const mem = readChatVar('tmm');
     const player = (mem && mem.cards && mem.cards.player) || {};
     return [...(player.items || []), ...((mem.meta && mem.meta.facts) || [])];
   } catch (e) { return []; }
@@ -351,7 +363,7 @@ async function getMemoryItems() {
 
 function defaultEditData() {
   return {
-    intro: '', globalBackground: '',
+    intro: '', globalBackground: '', lineCount: 20,
     chapters: [{ title: '第 1 章', openingRole: '旁白', openingLine: '', background: '', content: '', successCondition: '', conditionVisible: true, entryCondition: '', musicAutoPlay: false }],
   };
 }
@@ -374,7 +386,8 @@ async function syncEditToWorldbook(edit) {
 }
 
 function getEdit() {
-  try { const v = tavo.get(NS + '.edit'); return v || defaultEditData(); } catch (e) { return defaultEditData(); }
+  const v = readChatVar(NS + '.edit');
+  return (v && typeof v === 'object') ? v : defaultEditData();
 }
 function setEdit(edit) {
   try { tavo.set(NS + '.edit', edit, 'chat'); return true; } catch (e) { return false; }
@@ -410,6 +423,12 @@ tavo.plugin.on('chat:opened', async () => {
       return c;
     });
     if (repaired) setEdit(cur);
+  }
+
+  // 台词数量（最近对话入参条数）补全：缺失/非法时回退默认 20（静态配置，受保护不覆盖）
+  if (typeof cur.lineCount !== 'number' || isNaN(cur.lineCount) || cur.lineCount < 1) {
+    cur.lineCount = 20;
+    setEdit(cur);
   }
 
   // 进度时间戳更新（不重置章节进度等动态数值，仅刷新时间）

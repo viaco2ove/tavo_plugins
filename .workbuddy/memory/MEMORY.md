@@ -7,7 +7,8 @@
 - **tavo 字段约定（务必遵守）**：
   - chat 对象用 camelCase：`characterIds`、`lorebookIds`、`responseMode`(enum natural/everyone/manual/scenario)、`title`(或 name 别名)。
   - lorebook entry 用 Tavo-native 形状：必填 `identifier`+`content`+`strategy`(constant|keyword)；关键词 `keywords`(复数)；`probability` 0-100；`completion_condition` 等非标准字段会被忽略。
-  - character create 用 CCv3 形状（name/description/first_mes/personality 必填）；`roleType` 非标准、会被忽略。
+  - character create 用 CCv3 形状（name/description/first_mes/personality 必填）；`roleType` 非标准、会被忽略（Tavo 角色卡不持久化该字段，get 回来是 None）。
+  - **「旁白」建模约定**：Toonflow-game 里旁白是系统自带角色类型（roleType=narrator），Tavo 没有。tavo_plugins 把旁白做成 Tavo 里一个真实角色（故事《谁让这个山大王修仙的》chat 2 中 id=36），`roleType:'narrator'` 写进 CCv3 data；因 Tavo 忽略该字段，插件用 description 文本兜底识别（`**角色类型**：旁白` → 正则 `角色类型[:：]旁白|系统旁白|系统叙事者?` → narrator）。信息面板对旁白不显示 HP/MP/等级（无战斗数值）；发言器入参把旁白列为"系统叙事者"；编排提示词明确旁白只负责场景描述/时间流转/效果说明。新增旁白只需在 `story_sync_config.json` 的 characters 加该条目 + 提供 `avatars/旁白.png`。
   - create 返回 id 在 `content[0].text` 的 JSON 字符串的 `"id"` 字段。
 - 推送目标：世界书=故事蓝图（constant 世界规则 + keyword 章节/角色/地点），群聊 responseMode=scenario 实现 design.md 的多角色演出效果。
 

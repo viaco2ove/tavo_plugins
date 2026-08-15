@@ -15,6 +15,29 @@ const ROLE_LABEL = {
   system: '系统角色', general: '万能角色',
 };
 
+// Tavo 的 tavo.get(name) 返回包装对象 {target,name,found,value}，真实数据在 .value。
+// 不解包会导致 edit.chapters / story.characters 全是 undefined（表现为「配置被清空、参数为空」）。
+function readChatVar(name) {
+  let v = null;
+  try { v = tavo.get(name, 'chat'); } catch (e) { return null; }
+  let guard = 0;
+  while (v && typeof v === 'object' && !Array.isArray(v)
+         && Object.prototype.hasOwnProperty.call(v, 'value')
+         && Object.prototype.hasOwnProperty.call(v, 'name')
+         && guard < 5) {
+    if (v.found === false) return null;
+    v = v.value;
+    guard += 1;
+  }
+  if (typeof v === 'string') {
+    const s = v.trim();
+    if (s.startsWith('{') || s.startsWith('[')) {
+      try { return JSON.parse(s); } catch (e) { return v; }
+    }
+  }
+  return v;
+}
+
 function getConfig() {
   const get = (k, fallback) => {
     try {
@@ -35,16 +58,25 @@ function getConfig() {
 // 'system' = 跟随系统（不接管、不注入动态状态、不显示编排中）；缺省 / 'plugin' = 插件接管
 function getOrchestration() {
   try {
-    const edit = tavo.get('tf_story.edit', 'chat') || {};
+    const edit = readChatVar('tf_story.edit') || {};
     const v = edit.orchestration;
     return v === 'system' ? 'system' : 'plugin';
   } catch (e) { return 'plugin'; }
 }
 
+// 台词数量：发给 agent 的「最近对话」条数（对齐 Toonflow recent_dialogue 入参），默认 20
+function getLineCount() {
+  try {
+    const edit = readChatVar('tf_story.edit') || {};
+    const v = parseInt(edit.lineCount, 10);
+    return (v >= 1) ? v : 20;
+  } catch (e) { return 20; }
+}
+
 // 从 memory_manager 的 tmm_story 读取在场角色动态状态；缺失时回退到 chat 角色
 async function buildCastState() {
   let story = null;
-  try { story = tavo.get('tmm_story', 'chat'); } catch (e) {}
+  try { story = readChatVar('tmm_story') || readChatVar('tmm_story_static'); } catch (e) {}
   let characters = (story && Array.isArray(story.characters)) ? story.characters : null;
 
   if (!characters) {
@@ -64,6 +96,10 @@ async function buildCastState() {
   let block = '\n【在场角色当前状态】（对齐 story_speaker 动态参数卡，来自记忆）\n';
   for (const ch of characters) {
     const c = ch.card || {};
+    if (ch.roleType === 'narrator') {
+      block += '- 旁白（系统旁白）：负责场景描述 / 时间流转 / 效果说明，不扮演具体人物，无战斗数值\n';
+      continue;
+    }
     const label = ROLE_LABEL[ch.roleType] || ch.roleType || 'npc';
     const parts = [ch.name + '(' + label + ')'];
     if (c.level != null && c.level !== '') parts.push('Lv.' + c.level);
@@ -77,15 +113,56 @@ async function buildCastState() {
   return block;
 }
 
-// 生成前：注入在场角色动态状态 + 编排进行中标记
+// 当前事件（对齐 story_speaker 的 [当前事件] currStageSummary）：
+// 取当前进度所在章节的标题 + 本章内容大纲，作为本轮发言唯一依据。
+async function getCurrentEventText() {
+  try {
+    const edit = readChatVar('tf_story.edit') || {};
+    const chapters = edit.chapters || [];
+    let prog = null;
+    try { prog = readChatVar('tf_progress'); } catch (e) {}
+    const idx = (prog && typeof prog.currentChapterIndex === 'number') ? prog.currentChapterIndex : 0;
+    const ch = chapters[idx];
+    if (!ch) return '';
+    let s = '【当前章节】' + (ch.title || '未命名') + '\n';
+    s += (ch.content || '').slice(0, 1500);
+    return s;
+  } catch (e) { return ''; }
+}
+
+// 最近对话（对齐 story_speaker 的 [最近对话] recent_dialogue）：取最后 n 条消息，格式化为「角色名：内容」。
+async function buildRecentDialogue(n) {
+  try {
+    const count = await tavo.message.count();
+    if (!count) return '';
+    const start = Math.max(0, count - n);
+    const msgs = await tavo.message.find([start, count - 1]);
+    const lines = (msgs || []).map((m) => {
+      const name = m.characterName || (m.role === 'user' ? '用户' : '旁白');
+      return name + '：' + String(m.content || '').replace(/\s+/g, ' ').slice(0, 200);
+    });
+    return lines.join('\n');
+  } catch (e) { return ''; }
+}
+
+// 生成前：注入对齐 Toonflow story_speaker 的「入参」（当前事件 / 最近对话 / 在场角色当前状态）+ 编排标记
 tavo.plugin.on('generation:prepare', async (event) => {
   const cfg = getConfig();
   if (!cfg.enabled) return;
   if (getOrchestration() === 'system') return; // 跟随系统：不注入动态状态、不显示编排中
   try { tavo.set(ORCH_FLAG, true, 'chat'); } catch (e) {}
   try {
-    const state = await buildCastState();
-    if (state) event.text = state + '\n---\n' + (event.text || '');
+    const n = getLineCount();
+    const [evt, dlg, cast] = await Promise.all([
+      getCurrentEventText(),
+      buildRecentDialogue(n),
+      buildCastState(),
+    ]);
+    let block = '【角色发言器入参】（对齐 Toonflow story_speaker，本轮需基于以下信息决定发言角色并生成其台词）\n';
+    block += '## 当前事件\n' + (evt || '（无）') + '\n';
+    block += '## 最近对话（最近 ' + n + ' 条）\n' + (dlg || '（无）') + '\n';
+    block += '## 在场角色当前状态\n' + (cast || '（无）') + '\n';
+    event.text = block + '\n---\n' + (event.text || '');
   } catch (e) {
     console.warn('[tf_speaker] prepare failed', e);
   }
@@ -106,7 +183,7 @@ tavo.plugin.onSidebarAction('speaker-test', async () => {
     const state = await buildCastState();
 
     // 自由模式：放宽台词长度（用户可自由讨论/提问/闲聊）
-    const freeMode = (() => { try { return !!tavo.get('tf_progress.sessionFreeMode'); } catch (e) { return false; } })();
+    const freeMode = (() => { try { return !!(readChatVar('tf_progress') || {}).sessionFreeMode; } catch (e) { return false; } })();
     const lengthHint = freeMode ? '40~150字，2~4句（自由模式可稍长）' : '40~80字，最多2句';
 
     const prompt = (state ? state + '\n' : '') +

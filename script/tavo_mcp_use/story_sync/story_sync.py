@@ -344,6 +344,7 @@ def ensure_characters(cfg, url, token, chat_id, dry, force, story_dir):
                 "first_mes": c.get("first_mes", "你好"),
                 "personality": c.get("personality", ""),
                 "avatar": avatar,
+                "roleType": c.get("roleType", "npc"),
             }
             inner = call(url, token, "tavo_character_import_card",
                          {"card": {"spec": "chara_card_v3", "spec_version": "3.0", "data": data}}, dry=dry)
@@ -370,6 +371,7 @@ def ensure_characters(cfg, url, token, chat_id, dry, force, story_dir):
                 "first_mes": c.get("first_mes", old.get("first_mes", "你好")),
                 "personality": c.get("personality", old.get("personality", "")),
                 "avatar": desired_avatar,
+                "roleType": c.get("roleType", old.get("roleType", "npc")),
             })
             inner = call(url, token, "tavo_character_import_card",
                          {"card": {"spec": "chara_card_v3", "spec_version": "3.0", "data": new_data}})
@@ -533,6 +535,7 @@ def build_edit_from_chapters(cfg, story_dir, url, token, chat_id, dry):
     edit = {
         "intro": cfg.get("story_name", ""),
         "globalBackground": wb_cfg.get("intro", ""),
+        "lineCount": int(cfg.get("line_count", 20) or 20),  # 最近对话入参条数（对齐 recent_dialogue）
         "chapters": [],
     }
     ch_cfg = cfg.get("chapters") or {}
