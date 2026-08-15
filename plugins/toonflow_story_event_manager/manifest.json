@@ -4,8 +4,9 @@
   "name": {
     "$t": "plugin.name"
   },
-  "version": "1.1.1",
+  "version": "1.2.3",
   "minAppVersion": "1.0.0",
+  "entry": "entry.js",
   "author": "viaco",
   "description": {
     "$t": "plugin.description"
@@ -26,6 +27,7 @@
     "lorebook",
     "chat",
     "character",
+    "persona",
     "file"
   ],
   "contributes": {
@@ -40,14 +42,33 @@
       "schema": [
         {
           "type": "info",
-          "text": "故事信息面板：点击聊天页底部的「{故事名} ›」按钮展开查看。",
+          "text": {
+            "$t": "settings.info"
+          },
           "icon": "info"
         },
         {
           "key": "enabled",
           "type": "switch",
-          "label": "启用",
+          "label": {
+            "$t": "settings.enabled"
+          },
           "default": true
+        },
+        {
+          "key": "useCustomOrchestration",
+          "type": "switch",
+          "label": {
+            "$t": "settings.orchestration"
+          },
+          "default": true
+        },
+        {
+          "type": "info",
+          "text": {
+            "$t": "settings.orchestrationHint"
+          },
+          "icon": "info"
         }
       ]
     }

@@ -1,23 +1,8 @@
 {
   "plugin.name": "Toonflow-信息面板与事件管理器",
-  "plugin.description": "角色信息面板：展示每个角色头像与对齐 Toonflow-game 的参数卡（性别/等级/血量/技能等）。数据来自记忆插件的角色初始化。",
-  "sidebar.progress": "故事进度",
-  "sidebar.restart": "重新开始",
-  "settings.info": "追踪故事章节进度，在条件满足时自动推进。",
-  "settings.enabled": "启用信息面板与事件管理",
-  "settings.autoAdvance": "自动推进章节",
-  "settings.showPanel": "显示故事面板",
-  "runtime.chapterCompleted": "章节「{chapter}」已完成！",
-  "runtime.chapterAdvanced": "进入章节「{chapter}」",
-  "runtime.storyCompleted": "故事已完成！",
-  "runtime.storyRestarted": "故事已重新开始",
-  "runtime.noStory": "当前聊天未绑定故事",
-  "runtime.evaluating": "评估完成条件...",
-  "panel.title": "故事进度",
-  "panel.chapter": "当前章节",
-  "panel.progress": "进度",
-  "panel.condition": "完成条件",
-  "panel.completed": "已完成",
-  "panel.noConditions": "无明确条件",
-  "panel.restart": "重新开始"
+  "plugin.description": "故事信息面板（对齐 Toonflow play-sheet）+ 故事编辑器 + 编排联动。",
+  "settings.info": "点击聊天页底部的「{故事名} ›」展开信息面板与故事编辑器。",
+  "settings.enabled": "启用",
+  "settings.orchestration": "禁用官方群聊编排（用编排插件接管）",
+  "settings.orchestrationHint": "开启后群聊切到场景模式，由「Toonflow-角色编排」插件提供编排规则；未安装该插件时自动回退官方模式。"
 }

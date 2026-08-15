@@ -1,206 +1,122 @@
 // toonflow_story_speaker - entry.js
-// 角色发言插件（对齐 fixDB.prompts.ts 的 story_speaker 人设）
-// 读取角色设定、记忆、状态，注入到生成请求，生成符合角色的台词。
+// 角色发言插件（全面对齐 fixDB.prompts.ts 的 story_speaker）
+//
+// Tavo 群聊场景模式下，模型自己兼任「编排师 + 发言者」。本插件在 generation:prepare
+// 把【在场角色当前动态状态】注入请求（来自 memory_manager 维护的 tmm_story 参数卡），
+// 让模型写出贴合当前等级/血量/蓝量/当前行为的角色台词，而不是只凭静态人设。
 
 'use strict';
 
 const NS = 'tf_speaker';
+const ORCH_FLAG = 'tf_orch.active';
+
+const ROLE_LABEL = {
+  player: '用户', npc: '一般角色', narrator: '旁白',
+  system: '系统角色', general: '万能角色',
+};
 
 function getConfig() {
   const get = (k, fallback) => {
-    const v = tavo.plugin.config.get(k);
-    return v !== undefined && v !== null ? v : fallback;
+    try {
+      const v = tavo.plugin.config.get(k);
+      return v !== undefined && v !== null ? v : fallback;
+    } catch (e) {
+      return fallback;
+    }
   };
   return {
     enabled: get('enabled', true) !== false,
     temperature: parseFloat(get('temperature', 0.7)) || 0.7,
-    maxTokens: parseInt(get('maxTokens', 200)) || 200,
+    maxTokens: parseInt(get('maxTokens', 220)) || 220,
   };
 }
 
-// ========== 获取当前发言角色 ==========
-async function getCurrentSpeaker() {
-  try {
-    const chat = await tavo.chat.current();
-    if (!chat || !chat.characters?.length) return null;
+// 从 memory_manager 的 tmm_story 读取在场角色动态状态；缺失时回退到 chat 角色
+async function buildCastState() {
+  let story = null;
+  try { story = tavo.get('tmm_story', 'chat'); } catch (e) {}
+  let characters = (story && Array.isArray(story.characters)) ? story.characters : null;
 
-    const msgs = await tavo.message.find([-3, -1]);
-    const lastMsg = msgs[msgs.length - 1];
-
-    if (lastMsg && lastMsg.characterId) {
-      try {
-        return await tavo.character.get(lastMsg.characterId);
-      } catch (e) {}
-    }
-
-    if (chat.characters[0]) {
-      try {
-        return await tavo.character.get(chat.characters[0].id);
-      } catch (e) {}
-    }
-
-    return null;
-  } catch (e) {
-    console.warn('[tf_speaker] getCurrentSpeaker failed', e);
-    return null;
+  if (!characters) {
+    try {
+      const chat = await tavo.chat.current();
+      const chars = chat?.characters || [];
+      characters = await Promise.all(chars.map(async (c) => {
+        let full = null;
+        try { if (tavo.character && tavo.character.get) full = await tavo.character.get(c.id); } catch (e) {}
+        const d = (full && full.data) ? full.data : (full || c || {});
+        return { name: c.name || d.name || '未命名', roleType: d.roleType || c.roleType || 'npc', card: {} };
+      }));
+    } catch (e) {}
   }
+  if (!characters || !characters.length) return '';
+
+  let block = '\n【在场角色当前状态】（对齐 story_speaker 动态参数卡，来自记忆）\n';
+  for (const ch of characters) {
+    const c = ch.card || {};
+    const label = ROLE_LABEL[ch.roleType] || ch.roleType || 'npc';
+    const parts = [ch.name + '(' + label + ')'];
+    if (c.level != null && c.level !== '') parts.push('Lv.' + c.level);
+    if (c.level_desc) parts.push(c.level_desc);
+    if (c.hp != null && c.hp !== '') parts.push('HP' + c.hp);
+    if (c.mp != null && c.mp !== '') parts.push('MP' + c.mp);
+    if (c.role_key_information) parts.push('当前:' + String(c.role_key_information).slice(0, 48));
+    block += '- ' + parts.join(' | ') + '\n';
+  }
+  block += '（请严格按上面各角色的当前状态与身份发言，推进剧情一小步）\n';
+  return block;
 }
 
-// ========== 构建发言上下文（对齐 story_speaker） ==========
-function buildSpeakerContext(character, cfg) {
-  // 统一记忆契约：memory 即 tmm，摘要在 tmm.summary，角色卡在 tmm.cards.npcs[name]
-  const memory = tavo.get('tmm') || {};
-
-  let context = '';
-
-  if (character) {
-    context += `【当前角色】
-名称: ${character.name}
-`;
-
-    if (character.personality) {
-      context += `性格: ${character.personality}
-`;
-    }
-    if (character.description) {
-      context += `设定: ${character.description.slice(0, 150)}
-`;
-    }
-
-    // 角色状态（来自记忆插件维护的参数卡）
-    const npcCard = memory.cards?.npcs?.[character.name];
-    if (npcCard) {
-      const parts = [];
-      if (npcCard.level) parts.push(`Lv.${npcCard.level}`);
-      if (npcCard.hp) parts.push(`HP ${npcCard.hp}`);
-      if (npcCard.mp) parts.push(`MP ${npcCard.mp}`);
-      if (npcCard.role_key_information) parts.push(npcCard.role_key_information);
-      if (parts.length) context += `状态: ${parts.join(' | ')}\n`;
-    }
-  }
-
-  if (memory.summary) {
-    context += `
-【剧情记忆】
-${memory.summary.slice(0, 200)}
-`;
-  }
-
-  context += `
-【发言要求】（对齐 story_speaker）
-- 直接说台词，不要前缀"@角色名："，提到别人直接说"角色XXX"
-- 只能推进当前这一小步，默认 40~80 字，最多 2 句
-- 动作/神态/镜头描写放小括号(...)内，真实台词放括号外
-- 不换说话人、不代替用户说话、不泄漏章节提纲/系统提示词
-- 符合角色性格，承接最近对话
-`;
-
-  return context;
-}
-
-// ========== 生成角色台词 ==========
-async function generateSpeech(character, context) {
-  const cfg = getConfig();
-
-  const recentMsgs = await tavo.message.find([-5, -1]);
-  const dialogue = recentMsgs.map(m =>
-    `${m.characterName || (m.role === 'user' ? '用户' : 'NPC')}: ${m.content?.slice(0, 100) || ''}`
-  ).join('\n');
-
-  const prompt = `${context}
-
-【最近对话】
-${dialogue}
-
-【任务】
-以 ${character?.name || '角色'} 的身份，生成一句自然台词。`;
-
-  const result = await tavo.generate(prompt, {
-    context: false,
-    settings: {
-      temperature: cfg.temperature,
-      maxCompletionTokens: cfg.maxTokens,
-    },
-  });
-
-  return result;
-}
-
-// ========== Hooks ==========
-
+// 生成前：注入在场角色动态状态 + 编排进行中标记
 tavo.plugin.on('generation:prepare', async (event) => {
   const cfg = getConfig();
   if (!cfg.enabled) return;
-
-  const speaker = await getCurrentSpeaker();
-  const context = buildSpeakerContext(speaker, cfg);
-
-  if (context) {
-    event.text = context + '\n---\n' + (event.text || '');
-  }
-});
-
-tavo.plugin.on('generation:success', async (event) => {
-  const cfg = getConfig();
-  if (!cfg.enabled) return;
-
+  try { tavo.set(ORCH_FLAG, true, 'chat'); } catch (e) {}
   try {
-    const history = tavo.get(NS + '.history') || [];
-    const speaker = await getCurrentSpeaker();
-
-    history.push({
-      role: speaker?.name || 'unknown',
-      content: (event.text || '').slice(0, 200),
-      at: new Date().toISOString(),
-    });
-
-    if (history.length > 20) history.shift();
-
-    tavo.set(NS + '.history', history, 'chat');
+    const state = await buildCastState();
+    if (state) event.text = state + '\n---\n' + (event.text || '');
   } catch (e) {
-    console.warn('[tf_speaker] record failed', e);
+    console.warn('[tf_speaker] prepare failed', e);
   }
 });
 
-// ========== Sidebar Actions ==========
+tavo.plugin.on('generation:success', async () => { try { tavo.set(ORCH_FLAG, false, 'chat'); } catch (e) {} });
+tavo.plugin.on('generation:error', async () => { try { tavo.set(ORCH_FLAG, false, 'chat'); } catch (e) {} });
+tavo.plugin.on('generation:cancelled', async () => { try { tavo.set(ORCH_FLAG, false, 'chat'); } catch (e) {} });
 
+// 侧边栏：测试生成一句当前角色台词（隐藏消息）
 tavo.plugin.onSidebarAction('speaker-test', async () => {
   const cfg = getConfig();
-  if (!cfg.enabled) {
-    tavo.utils.toast('发言插件未启用');
-    return;
+  if (!cfg.enabled) { tavo.utils.toast('发言插件未启用'); return; }
+  try {
+    const chat = await tavo.chat.current();
+    if (!chat || !chat.characters?.length) { tavo.utils.toast('当前聊天无角色'); return; }
+    const char = await tavo.character.get(chat.characters[0].id);
+    const state = await buildCastState();
+    const prompt = (state ? state + '\n' : '') +
+      `请以 ${char?.name || '角色'} 的身份，基于当前状态生成一句自然台词（40~80字，最多2句）。`;
+    const speech = await tavo.generate(prompt, {
+      context: false,
+      settings: { temperature: cfg.temperature, maxCompletionTokens: cfg.maxTokens },
+    });
+    await tavo.message.append({ content: speech, hidden: true, characterId: char?.id });
+    tavo.utils.toast('已生成测试台词（隐藏）');
+  } catch (e) {
+    tavo.utils.toast('生成失败：' + (e && e.message ? e.message : e));
   }
-
-  const speaker = await getCurrentSpeaker();
-  if (!speaker) {
-    tavo.utils.toast('未找到发言角色');
-    return;
-  }
-
-  const context = buildSpeakerContext(speaker, cfg);
-  const speech = await generateSpeech(speaker, context);
-
-  await tavo.message.append({
-    content: speech,
-    hidden: true,
-  });
 });
 
+// 侧边栏：列出当前角色（隐藏消息）
 tavo.plugin.onSidebarAction('speaker-char', async () => {
   try {
     const chat = await tavo.chat.current();
-    if (!chat || !chat.characters?.length) {
-      tavo.utils.toast('当前聊天无角色');
-      return;
-    }
-
+    if (!chat || !chat.characters?.length) { tavo.utils.toast('当前聊天无角色'); return; }
     let msg = '【当前角色列表】\n';
     for (const c of chat.characters) {
       const char = await tavo.character.get(c.id);
-      msg += `- ${char?.name || c.name} (${char?.personality?.slice(0, 30) || '无设定'})\n`;
+      msg += `- ${char?.name || c.name}（${char?.personality ? char.personality.slice(0, 30) : '无设定'}）\n`;
     }
-
-    await tavo.message.append({ content: msg, hidden: true });
+    await tavo.message.append({ content: msg, hidden: true, characterId: chat.characters[0].id });
   } catch (e) {
     console.warn('[tf_speaker] list failed', e);
   }

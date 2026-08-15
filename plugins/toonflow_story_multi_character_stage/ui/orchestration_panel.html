@@ -1,0 +1,93 @@
+<style>
+  #tf-orch-banner {
+    position: fixed;
+    left: 50%;
+    bottom: 76px;
+    transform: translateX(-50%);
+    z-index: 9999;
+    display: none;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    border-radius: 999px;
+    background: rgba(20, 20, 28, 0.86);
+    color: #fff;
+    font-size: 13px;
+    line-height: 1;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.35);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    user-select: none;
+    touch-action: none;
+    max-width: 80vw;
+  }
+  #tf-orch-banner .tf-orch-ico { font-size: 15px; }
+  #tf-orch-banner .tf-orch-dots { display: inline-flex; gap: 4px; }
+  #tf-orch-banner .tf-orch-dots i {
+    width: 6px; height: 6px; border-radius: 50%;
+    background: #7cc4ff; display: inline-block;
+    animation: tf-orch-pulse 1s infinite ease-in-out;
+  }
+  #tf-orch-banner .tf-orch-dots i:nth-child(2) { animation-delay: 0.16s; background: #b78bff; }
+  #tf-orch-banner .tf-orch-dots i:nth-child(3) { animation-delay: 0.32s; background: #ff9ecb; }
+  @keyframes tf-orch-pulse {
+    0%, 80%, 100% { transform: scale(0.6); opacity: 0.4; }
+    40% { transform: scale(1); opacity: 1; }
+  }
+</style>
+
+<div id="tf-orch-banner">
+  <span class="tf-orch-ico">🎬</span>
+  <span>剧情编排中…</span>
+  <span class="tf-orch-dots"><i></i><i></i><i></i></span>
+</div>
+
+<script>
+(function () {
+  var banner = document.getElementById('tf-orch-banner');
+  var KEY = 'tf_orch.active';
+  var last = false;
+
+  function showPanel() {
+    try { return tavo.plugin.config.get('showPanel') !== false; } catch (e) { return true; }
+  }
+
+  function tick() {
+    var active = false;
+    try { active = !!tavo.get(KEY, 'chat'); } catch (e) {}
+    var visible = active && showPanel();
+    if (visible !== last) {
+      last = visible;
+      banner.style.display = visible ? 'inline-flex' : 'none';
+    }
+  }
+
+  // 轮询编排标记
+  setInterval(tick, 400);
+  tick();
+
+  // 可拖动（满足 Tavo 对固定悬浮控件的要求）
+  var dragging = false, sx = 0, sy = 0, ox = 0, oy = 0;
+  banner.addEventListener('pointerdown', function (e) {
+    dragging = true;
+    sx = e.clientX; sy = e.clientY;
+    var r = banner.getBoundingClientRect();
+    ox = r.left; oy = r.top;
+    banner.style.transform = 'none';
+    banner.style.left = ox + 'px';
+    banner.style.top = oy + 'px';
+    banner.style.bottom = 'auto';
+    banner.setPointerCapture(e.pointerId);
+  });
+  banner.addEventListener('pointermove', function (e) {
+    if (!dragging) return;
+    banner.style.left = (ox + (e.clientX - sx)) + 'px';
+    banner.style.top = (oy + (e.clientY - sy)) + 'px';
+  });
+  banner.addEventListener('pointerup', function (e) {
+    dragging = false;
+    try { banner.releasePointerCapture(e.pointerId); } catch (x) {}
+  });
+  // 点击不触发拖动的判定：这里拖动与点击共用，简单忽略
+})();
+</script>

@@ -6,5 +6,6 @@
   "settings.info": "设 responseMode=scenario，动态编排发言者。",
   "settings.enabled": "启用编排",
   "settings.responseMode": "回复模式",
+  "settings.showPanel": "显示编排横幅",
   "settings.npcAuto": "NPC自主发言"
 }

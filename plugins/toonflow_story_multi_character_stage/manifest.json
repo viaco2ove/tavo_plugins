@@ -4,7 +4,7 @@
   "name": {
     "$t": "plugin.name"
   },
-  "version": "1.0.1",
+  "version": "2.0.0",
   "minAppVersion": "1.0.0",
   "entry": "entry.js",
   "author": "viaco",
@@ -23,7 +23,8 @@
     "input",
     "message",
     "generate",
-    "variable"
+    "variable",
+    "chat"
   ],
   "contributes": {
     "sidebar": [
@@ -38,6 +39,13 @@
         "label": {
           "$t": "sidebar.area"
         }
+      }
+    ],
+    "htmlFragments": [
+      {
+        "id": "mcs-orchestration-panel",
+        "src": "ui/orchestration_panel.html",
+        "mount": "/chat/body/end"
       }
     ],
     "settings": {
@@ -67,23 +75,19 @@
           "options": [
             {
               "value": "scenario",
-              "label": "场景模式"
+              "label": "场景模式（NPC优先编排）"
             },
             {
               "value": "natural",
               "label": "自然模式"
-            },
-            {
-              "value": "manual",
-              "label": "手动模式"
             }
           ]
         },
         {
-          "key": "npcAuto",
+          "key": "showPanel",
           "type": "switch",
           "label": {
-            "$t": "settings.npcAuto"
+            "$t": "settings.showPanel"
           },
           "default": true
         }

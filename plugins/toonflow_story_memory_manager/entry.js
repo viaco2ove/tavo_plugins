@@ -121,20 +121,33 @@ function normalizeCard(role, desc) {
     return '';
   };
   const roleType = detectRoleType((d.description || '') + '\n' + (source.raw_setting || ''), source.role_type || d.roleType);
-  const age = numberOrNull(source.age ?? fm['age']);
-  const level = numberOrNull(source.level ?? fm['level']);
-  const hp = numberOrNull(source.hp ?? fm['hp']);
-  const mp = numberOrNull(source.mp ?? fm['mp']);
+  const descText = d.description || '';
+  let age = numberOrNull(source.age ?? fm['age']);
+  if (age == null) { const m = descText.match(/(\d+)\s*岁/); if (m) age = numberOrNull(m[1]); }
+  let level = numberOrNull(source.level ?? fm['level']);
+  let levelDesc = read('level_desc', 'levelDesc') || '';
+  if (level == null) {
+    const m = descText.match(/炼气\s*(\d+)\s*层/);
+    if (m) { level = numberOrNull(m[1]); if (!levelDesc) levelDesc = '炼气' + m[1] + '层'; }
+    else { const m2 = descText.match(/(\d+)\s*级/); if (m2) level = numberOrNull(m2[1]); }
+  }
+  if (!levelDesc) { const m = descText.match(/炼气\s*\d+\s*层/); if (m) levelDesc = m[0]; }
+  let hp = numberOrNull(source.hp ?? fm['hp']);
+  if (hp == null) { const m = descText.match(/HP\s*(\d+)/i); if (m) hp = numberOrNull(m[1]); }
+  let mp = numberOrNull(source.mp ?? fm['mp']);
+  if (mp == null) { const m = descText.match(/MP\s*(\d+)/i); if (m) mp = numberOrNull(m[1]); }
   const money = numberOrNull(source.money ?? fm['money']);
   const exp = numberOrNull(source.exp ?? fm['exp']);
   const next = numberOrNull(source.next_level_exp ?? fm['next_level_exp']);
+  let gender = read('gender');
+  if (!gender) { if (/男/.test(descText)) gender = '男'; else if (/女/.test(descText)) gender = '女'; }
   return {
     name: read('name') || d.name || '未命名',
     raw_setting: read('raw_setting', 'rawSetting') || scalarText(d.description) || '',
-    gender: read('gender'),
+    gender,
     age,
     level: level ?? 1,
-    level_desc: read('level_desc', 'levelDesc') || '',
+    level_desc: levelDesc,
     personality: read('personality'),
     appearance: read('appearance'),
     voice: read('voice'),
@@ -164,8 +177,26 @@ async function initStory() {
     if (!synopsis && books[0] && books[0].entries && books[0].entries[0]) {
       synopsis = books[0].entries[0].content || '';
     }
+    // 用户（persona）作为第一个角色（roleType='player'），放在所有 NPC 之前
+    let playerChar = null;
+    const personaId = chat.personaId || (chat.persona && chat.persona.id);
+    if (personaId) {
+      let pf = null;
+      try { if (tavo.persona && tavo.persona.get) pf = await tavo.persona.get(personaId); } catch (e) {}
+      const pd = pf || {};
+      const card = normalizeCard(pf || {}, pd.description);
+      card.roleType = 'player';
+      playerChar = {
+        id: personaId,
+        name: (chat.persona && chat.persona.name) || pd.name || '用户',
+        roleType: 'player',
+        isPersona: true,
+        avatar: pd.avatar || '',
+        card,
+      };
+    }
     // chat.characters 仅含 id/name，需拉取完整角色数据才能拿到 avatar/description
-    const characters = await Promise.all(chars.map(async (c) => {
+    const npcs = await Promise.all(chars.map(async (c) => {
       let full = null;
       try {
         if (tavo.character && tavo.character.get) full = await tavo.character.get(c.id);
@@ -179,6 +210,7 @@ async function initStory() {
         card: normalizeCard(full || c, d.description),
       };
     }));
+    const characters = (playerChar ? [playerChar] : []).concat(npcs);
     const story = { name: chat.name || '故事信息', synopsis: scalarText(synopsis).slice(0, 1200), characters };
     tavo.set(STORY_NS, story, 'chat');
   } catch (e) {

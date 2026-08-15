@@ -1,109 +1,196 @@
-<!-- toonflow_story_event_manager - 故事信息面板（UI 对齐 Toonflow-game-web ScenePlay 角色详情面板） -->
-<!-- 数据来源：memory_manager 初始化的 tmm_story（角色参数卡），缺失时自解析 chat.characters。 -->
-<!-- 展示：每个角色头像 + 对齐 web parameterCardEntries 的参数卡网格。 -->
+<!-- toonflow_story_event_manager - 故事面板（完整对齐 Toonflow-game-web ScenePlay play-sheet--setting） -->
+<!-- 栏目：角色列表(跑马灯关键信息) / 敌人状态 / 故事设定 / help(?) / 世界书 / 当前章节事件 / 对话模式 / 故事编辑 -->
 <style>
-  /* === 底部触发器：固定到屏幕（视口）底部居中，不随消息滚动 === */
-  #tf-story-tab {
-    position: fixed;
-    bottom: -2px;
-    right: 0;
-    transform: translateX(-50%);
-    margin: 0;
-    z-index: 9990;
-    padding: 2px 2px;
-    background: var(--bg-tertiary, rgba(40,40,40,0.75));
-    border: 1px solid var(--border-color, #333);
-    border-radius: 10px;
-    cursor: pointer;
-    user-select: none;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    font-size: 13px;
-    color: var(--text-primary, #e8e8e8);
-    backdrop-filter: blur(8px);
-    -webkit-backdrop-filter: blur(8px);
-    box-sizing: border-box;
-    transition: border-color 0.15s ease, transform 0.1s ease;
-  }
-  #tf-story-tab:hover { border-color: var(--accent-color, #7cb3ff); }
-  #tf-story-tab:active { transform: translateX(-50%) scale(0.985); }
-  .tf-tab-name { flex: 1; font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 100px; }
-  .tf-tab-chevron { color: var(--accent-warm, #ff9966); font-size: 18px; font-weight: 700; line-height: 1; }
+/* ===== 跑马灯（对齐 web marquee-left） ===== */
+@keyframes tf-marquee-left { 0% { transform: translateX(0); } 100% { transform: translateX(-50%); } }
+.tf-marquee-container { overflow: hidden; white-space: nowrap; }
+.tf-marquee-content { display: inline-block; animation: tf-marquee-left 8s linear infinite; }
+.tf-marquee-container:hover .tf-marquee-content { animation-play-state: paused; }
+.tf-role-key-info .tf-marquee-content { color: #c78131; }
 
-  /* === 全屏模态 === */
-  #tf-story-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.62); z-index: 10000; display: none; overflow-y: auto; -webkit-overflow-scrolling: touch; }
-  #tf-story-overlay.open { display: block; }
-  .tf-modal {
-    background: var(--bg-secondary, #1f1f23); color: var(--text-primary, #e8e8e8);
-    border-radius: 14px; width: min(560px, 92vw); margin: 28px auto;
-    box-shadow: 0 16px 56px rgba(0,0,0,0.55);
-    font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
-    overflow: hidden; box-sizing: border-box;
-  }
-  .tf-modal-head {
-    display: flex; align-items: center; justify-content: space-between;
-    padding: 14px 20px; border-bottom: 1px solid var(--border-color, #2a2a30);
-    position: sticky; top: 0; background: var(--bg-secondary, #1f1f23); z-index: 1;
-  }
-  .tf-modal-head h2 { margin: 0; font-size: 16px; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 75%; }
-  .tf-modal-close {
-    background: var(--bg-quaternary, #333); border: 1px solid var(--border-color, #444);
-    color: var(--text-secondary, #bbb); border-radius: 8px; padding: 5px 14px; font-size: 12px; cursor: pointer; flex: 0 0 auto;
-  }
-  .tf-modal-close:hover { color: var(--accent-color, #7cb3ff); border-color: var(--accent-color, #7cb3ff); }
-  .tf-modal-body { padding: 16px 20px 28px; }
+/* ===== 触发器（底部居中，对齐 web 风格） ===== */
+#tf-story-tab {
+  position: fixed; bottom: 0; left: 50%; transform: translateX(-50%);
+  z-index: 9990; padding: 6px 18px; margin: 0;
+  background: rgba(8, 24, 43, 0.92); border: 1px solid rgba(166, 188, 218, 0.24);
+  border-bottom: none; border-radius: 14px 14px 0 0; cursor: pointer; user-select: none;
+  display: flex; align-items: center; gap: 8px; font-size: 13px; color: #eef5ff;
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  box-sizing: border-box; max-width: 70vw; transition: border-color .15s;
+}
+#tf-story-tab:hover { border-color: rgba(124, 179, 255, .6); }
+.tf-tab-name { font-weight: 700; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 46vw; }
+.tf-tab-chevron { color: #ff9966; font-size: 16px; font-weight: 700; }
 
-  /* 故事简介 */
-  .tf-synopsis {
-    background: var(--bg-tertiary, #26262c); border: 1px solid var(--border-color, #303036);
-    border-radius: 10px; padding: 12px 14px; line-height: 1.7;
-    color: var(--text-secondary, #d0d0d0); font-size: 13px; white-space: pre-wrap; word-break: break-word;
-  }
+/* ===== play-sheet（对齐 web .play-sheet--setting：absolute 底部卡片） ===== */
+#tf-story-overlay { position: fixed; inset: 0; background: rgba(0,0,0,0.45); z-index: 9995; display: none; }
+#tf-story-overlay.open { display: block; }
 
-  /* 角色列表（横滚头像芯片） */
-  .tf-char-chips { display: flex; gap: 12px; overflow-x: auto; padding: 4px 2px 8px; scrollbar-width: thin; }
-  .tf-char-chip { display: flex; flex-direction: column; align-items: center; gap: 6px; cursor: pointer; flex: 0 0 auto; width: 64px; }
-  .tf-char-chip-ava {
-    width: 52px; height: 52px; border-radius: 50%; background: var(--bg-quaternary, #333);
-    border: 2px solid var(--border-color, #444); overflow: hidden; display: flex; align-items: center; justify-content: center;
-    color: var(--text-muted, #888); font-size: 18px; transition: border-color 0.15s ease;
-  }
-  .tf-char-chip.active .tf-char-chip-ava { border-color: var(--accent-color, #7cb3ff); box-shadow: 0 0 0 2px rgba(124,179,255,0.18); }
-  .tf-char-chip-ava img { width: 100%; height: 100%; object-fit: cover; display: block; }
-  .tf-char-chip-name { font-size: 12px; color: var(--text-secondary, #ccc); text-align: center; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tf-sheet {
+  position: absolute; left: 10px; right: 10px; bottom: 0; z-index: 4;
+  display: grid; gap: 10px; padding: 14px 12px 18px;
+  border-radius: 18px 18px 0 0;
+  border: 1px solid rgba(166, 188, 218, 0.24); border-bottom: none;
+  background: rgba(8, 24, 43, 0.96);
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 -12px 40px rgba(5, 14, 26, 0.4);
+  overflow-y: auto; -webkit-overflow-scrolling: touch;
+  max-height: calc(100vh - 90px);
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+  color: #e8e8e8; box-sizing: border-box;
+  animation: tf-sheet-up .22s ease-out;
+}
+@keyframes tf-sheet-up { from { transform: translateY(30px); opacity: 0; } to { transform: none; opacity: 1; } }
 
-  /* === 角色详情：对齐 web detail-card + dialog-stack + param-grid === */
-  .tf-detail-card { display: flex; align-items: center; gap: 14px; padding-bottom: 14px; border-bottom: 1px solid var(--border-color, #333); margin-bottom: 14px; }
-  .tf-detail-ava {
-    width: 64px; height: 64px; border-radius: 50%; background: var(--bg-quaternary, #333);
-    overflow: hidden; display: flex; align-items: center; justify-content: center; color: var(--text-muted, #888);
-    font-size: 22px; flex: 0 0 auto;
-  }
-  .tf-detail-ava img { width: 100%; height: 100%; object-fit: cover; display: block; }
-  .tf-detail-meta { min-width: 0; }
-  .tf-detail-row { display: flex; align-items: center; gap: 8px; }
-  .tf-detail-name { font-weight: 700; font-size: 20px; }
-  .tf-chip { font-size: 11px; color: var(--accent-color, #9ec5ff); background: rgba(124,179,255,0.12); border-radius: 4px; padding: 2px 8px; flex: 0 0 auto; }
-  .tf-detail-sub { font-size: 12px; color: var(--text-secondary, #bbb); margin-top: 4px; }
+/* ===== head（对齐 .play-sheet__head--center） ===== */
+.tf-head { position: relative; text-align: center; }
+.tf-head-title { color: #fff; font-size: 18px; font-weight: 900; }
+.tf-head-sub { margin-top: 6px; color: rgba(213,235,255,.84); font-size: 12px; line-height: 1.5; }
+.tf-head-close {
+  position: absolute; right: 0; top: 0; min-width: 52px; height: 30px;
+  border-radius: 999px; border: 1px solid rgba(188,204,226,.32);
+  background: rgba(186,142,129,.85); color: #eef5ff; cursor: pointer;
+}
 
-  .tf-sections { display: flex; flex-direction: column; gap: 14px; }
-  .tf-sec { background: var(--bg-tertiary, #26262c); border: 1px solid var(--border-color, #303036); border-radius: 10px; padding: 12px 14px; }
-  .tf-sec-label { font-size: 11px; color: var(--text-muted, #888); margin-bottom: 6px; }
-  .tf-sec-text { font-size: 13px; color: var(--text-secondary, #d0d0d0); line-height: 1.7; white-space: pre-wrap; word-break: break-word; }
+/* ===== 角色横滚条（对齐 .play-role-strip / .play-role-pill） ===== */
+.tf-label { color: rgba(213,235,255,.84); font-size: 12px; }
+.tf-role-strip { display: flex; gap: 8px; overflow-x: auto; width: 100%; padding-bottom: 2px; }
+.tf-role-pill {
+  flex: none; width: 56px; display: grid; justify-items: center; gap: 4px;
+  padding: 0; border: 0; background: transparent; color: rgba(233,241,252,.92);
+  text-align: center; cursor: pointer;
+}
+.tf-role-pill--active { color: #fff; }
+.tf-role-pill__avatar {
+  position: relative; width: 42px; height: 42px; border-radius: 999px; overflow: hidden;
+  display: grid; place-items: center; border: 2px solid transparent;
+  background: rgba(255,255,255,.14); color: #f4f8ff; font-size: 12px; font-weight: 900;
+  transition: border-color .15s;
+}
+.tf-role-pill--active .tf-role-pill__avatar { border-color: rgba(124,179,255,.9); }
+.tf-role-pill__avatar img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.tf-role-pill__name { font-size: 10px; line-height: 1.3; max-width: 56px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-  /* 参数卡网格：对齐 web param-grid / parameterCardEntries */
-  .tf-param-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 8px; }
-  .tf-param { background: var(--bg-quaternary, #2f2f35); border: 1px solid var(--border-color, #38383f); border-radius: 8px; padding: 8px 10px; min-width: 0; }
-  .tf-param--raw { grid-column: 1 / -1; }
-  .tf-param-label { font-size: 11px; color: var(--text-muted, #888); margin-bottom: 4px; }
-  .tf-param-value { font-size: 13px; color: var(--text-primary, #e8e8e8); line-height: 1.55; word-break: break-word; }
-  .tf-param-value--scroll { max-height: 120px; overflow-y: auto; scrollbar-width: thin; }
-  .tf-raw-toggle { font-size: 11px; color: var(--accent-color, #9ec5ff); background: none; border: none; cursor: pointer; padding: 0; margin-top: 8px; }
-  .tf-raw-json { font-size: 12px; color: var(--text-secondary, #c0c0c0); background: var(--bg-secondary, #1f1f23); border: 1px solid var(--border-color, #38383f); border-radius: 8px; padding: 10px; margin-top: 8px; max-height: 240px; overflow: auto; white-space: pre-wrap; word-break: break-word; }
+/* ===== inline card（对齐 .play-inline-card） ===== */
+.tf-card {
+  display: grid; gap: 6px; padding: 10px 12px; border-radius: 14px;
+  background: rgba(255,255,255,.08); border: 1px solid rgba(188,204,226,.16);
+}
+.tf-card__title { color: #fff; font-size: 14px; font-weight: 800; }
+.tf-card__text { color: rgba(220,238,255,.92); font-size: 12px; line-height: 1.55; word-break: break-word; }
+.tf-card__text--dim { color: rgba(216,230,249,.45); font-style: italic; }
+.tf-card__marquee { display: block; overflow: hidden; white-space: nowrap; padding: 2px 0; background: rgba(0,0,0,.18); border-radius: 6px; padding: 4px 8px; }
 
-  .tf-section-title { font-size: 13px; color: var(--text-secondary, #bbb); font-weight: 600; margin: 0 0 10px; }
-  .tf-empty { color: var(--text-muted, #888); padding: 14px; text-align: center; font-size: 13px; }
+/* ===== link row 折叠条（对齐 .play-link-row） ===== */
+.tf-link-row {
+  display: flex; justify-content: space-between; align-items: center; gap: 10px;
+  padding: 10px 12px; border-radius: 12px; cursor: pointer;
+  border: 1px solid rgba(188,204,226,.16); background: rgba(255,255,255,.06);
+  color: #fff; font-weight: 700; font-size: 13px;
+}
+.tf-link-row:active { background: rgba(255,255,255,.1); }
+.tf-link-text { justify-self: start; border: 0; padding: 0; background: none; color: #a9ccff; font-size: 12px; font-weight: 700; cursor: pointer; }
+.tf-inline-toggle {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%;
+  padding: 8px 10px; border: 1px solid rgba(188,204,226,.12); border-radius: 10px;
+  background: rgba(255,255,255,.04); color: rgba(226,239,255,.92); font-size: 12px; font-weight: 700; cursor: pointer;
+}
+.tf-state-pre {
+  margin: 0; white-space: pre-wrap; word-break: break-word; color: rgba(197,214,233,.92);
+  font-size: 11px; line-height: 1.55; background: rgba(0,0,0,.25); padding: 8px; border-radius: 8px;
+}
+
+/* ===== 敌人卡（对齐 .play-enemy-card） ===== */
+.tf-enemy-list { display: flex; flex-direction: column; gap: 8px; }
+.tf-enemy-card { padding: 8px 10px; border-radius: 10px; background: rgba(12,21,35,.4); border: 1px solid rgba(188,204,226,.16); display: grid; gap: 6px; }
+.tf-enemy-card__head { display: flex; gap: 10px; align-items: center; }
+.tf-enemy-card__ava { width: 36px; height: 36px; border-radius: 50%; overflow: hidden; flex: none; background: rgba(255,255,255,.12); display: grid; place-items: center; font-size: 12px; font-weight: 900; color: #f4f8ff; }
+.tf-enemy-card__ava img { width: 100%; height: 100%; object-fit: cover; }
+.tf-enemy-card__name { color: #fff; font-size: 13px; font-weight: 700; display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.tf-enemy-card__tag { font-size: 10px; padding: 1px 6px; border-radius: 6px; background: rgba(239,68,68,.2); color: #fecaca; border: 1px solid rgba(239,68,68,.35); }
+.tf-enemy-card__bar { height: 5px; border-radius: 3px; background: rgba(0,0,0,.35); overflow: hidden; }
+.tf-enemy-card__fill { height: 100%; background: #ef4444; transition: width .3s; }
+.tf-enemy-card__fill--mana { background: #3b82f6; }
+
+/* ===== 世界书条目（对齐 .play-world-book-item） ===== */
+.tf-wb-list { display: flex; flex-direction: column; gap: 8px; }
+.tf-wb-item { padding: 8px 10px; border-radius: 10px; background: rgba(12,21,35,.4); border: 1px solid rgba(188,204,226,.16); }
+.tf-wb-item__head { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-bottom: 4px; }
+.tf-wb-item__title { color: #fff; font-size: 13px; font-weight: 700; }
+.tf-wb-tag { display: inline-block; padding: 1px 7px; font-size: 11px; border-radius: 7px; background: rgba(96,165,250,.18); color: #bfdbfe; border: 1px solid rgba(96,165,250,.35); }
+.tf-wb-tag--const { background: rgba(34,197,94,.18); color: #bbf7d0; border-color: rgba(34,197,94,.35); }
+.tf-wb-item__content { color: rgba(220,238,255,.82); font-size: 12px; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
+.tf-wb-page { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 6px; font-size: 12px; color: rgba(220,238,255,.75); }
+.tf-wb-page button { padding: 4px 12px; border-radius: 8px; border: 1px solid rgba(188,204,226,.24); background: rgba(255,255,255,.08); color: #eef5ff; cursor: pointer; font-size: 12px; }
+.tf-wb-page button:disabled { opacity: .4; }
+
+/* ===== 事件列表（对齐 .play-event-item） ===== */
+.tf-event-list { display: flex; flex-direction: column; gap: 8px; }
+.tf-event-item { padding: 8px 10px; border-radius: 10px; background: rgba(12,21,35,.4); border: 1px solid rgba(188,204,226,.16); }
+.tf-event-item__head { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-bottom: 4px; }
+.tf-event-item__index { color: #fff; font-size: 12px; font-weight: 700; }
+.tf-event-item__meta { color: rgba(191,219,254,.85); font-size: 11px; }
+.tf-event-item__summary { color: rgba(220,238,255,.9); font-size: 12px; line-height: 1.5; }
+
+/* ===== 编辑器表单（对齐 SceneCreate 卡片风） ===== */
+.tf-edit-field { display: grid; gap: 5px; }
+.tf-edit-field label { color: rgba(213,235,255,.8); font-size: 12px; font-weight: 600; }
+.tf-edit-field textarea, .tf-edit-field input[type=text] {
+  width: 100%; box-sizing: border-box; padding: 9px 10px; border-radius: 10px;
+  border: 1px solid rgba(188,204,226,.2); background: rgba(12,21,35,.55); color: #e8f2ff;
+  font-size: 13px; font-family: inherit; line-height: 1.55; resize: vertical;
+}
+.tf-edit-field textarea:focus, .tf-edit-field input:focus { outline: none; border-color: rgba(124,179,255,.65); }
+.tf-edit-count { display: flex; justify-content: space-between; font-size: 11px; color: rgba(160,185,215,.7); }
+.tf-switch-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 8px 2px; font-size: 12px; color: rgba(220,238,255,.9); }
+.tf-chapter-pill-row { display: flex; gap: 6px; overflow-x: auto; padding: 4px 0; }
+.tf-chapter-pill { flex: none; display: inline-flex; align-items: center; gap: 4px; padding: 5px 10px; border-radius: 999px; border: 1px solid rgba(188,204,226,.24); background: rgba(255,255,255,.06); color: #eef5ff; font-size: 12px; cursor: pointer; }
+.tf-chapter-pill.active { border-color: rgba(124,179,255,.8); background: rgba(124,179,255,.14); }
+.tf-chapter-pill .del { color: #fca5a5; font-weight: 900; padding: 0 2px; }
+.tf-btn {
+  padding: 9px 16px; border-radius: 10px; border: 1px solid rgba(188,204,226,.28);
+  background: rgba(255,255,255,.08); color: #eef5ff; font-size: 13px; font-weight: 700; cursor: pointer;
+}
+.tf-btn--primary { background: rgba(124,179,255,.85); color: #08121f; border: none; }
+.tf-btn--danger { background: rgba(239,68,68,.2); color: #fecaca; border-color: rgba(239,68,68,.4); }
+.tf-btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
+.tf-chapter-bg { width: 100%; aspect-ratio: 16/9; border-radius: 12px; border: 1px dashed rgba(188,204,226,.3); background: rgba(12,21,35,.5); display: grid; place-items: center; color: rgba(160,185,215,.7); font-size: 12px; cursor: pointer; overflow: hidden; }
+.tf-chapter-bg img { width: 100%; height: 100%; object-fit: cover; }
+.tf-help-sec { margin-bottom: 8px; }
+.tf-help-sec h4 { margin: 0 0 4px; color: #a9ccff; font-size: 13px; }
+.tf-help-sec p { margin: 0 0 4px; color: rgba(220,238,255,.85); font-size: 12px; line-height: 1.6; }
+.tf-help-sec code { background: rgba(0,0,0,.3); padding: 1px 5px; border-radius: 4px; font-size: 11px; color: #c78131; }
+
+/* ===== 故事配置主按钮（对齐 SceneCreate create-primary-btn 风格：醒目、可识别为配置入口） ===== */
+.tf-config-btn {
+  display: flex; align-items: center; gap: 10px; width: 100%; box-sizing: border-box;
+  padding: 13px 16px; border-radius: 14px; cursor: pointer;
+  border: none;
+  background: linear-gradient(135deg, rgba(124,179,255,.92), rgba(96,140,255,.88));
+  color: #081222; text-align: left;
+  box-shadow: 0 4px 16px rgba(96,140,255,.35);
+  transition: filter .15s, transform .1s;
+}
+.tf-config-btn:active { transform: scale(.985); filter: brightness(.94); }
+.tf-config-btn__icon {
+  width: 30px; height: 30px; border-radius: 9px; flex: none;
+  display: grid; place-items: center; font-size: 16px; font-weight: 900;
+  background: rgba(8,18,34,.18); color: #081222;
+}
+.tf-config-btn__body, .tf-config-btn__label { font-size: 15px; font-weight: 900; letter-spacing: .5px; }
+.tf-config-btn__sub { flex: 1; min-width: 0; font-size: 10.5px; font-weight: 600; opacity: .75; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tf-config-btn__arrow { flex: none; font-size: 15px; font-weight: 900; }
+
+/* 折叠动画 */
+.tf-collapse { overflow: hidden; max-height: 0; opacity: 0; transition: max-height .25s ease, opacity .2s ease; }
+
+/* 角色详情参数卡网格（对齐 web param-grid） */
+.tf-role-detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin: 8px 0; }
+.tf-role-detail-cell { background: rgba(8,18,34,.35); border: 1px solid rgba(188,204,226,.14); border-radius: 8px; padding: 8px 10px; min-width: 0; }
+.tf-role-detail-cell--long { grid-column: 1 / -1; }
+.tf-role-detail-label { font-size: 10.5px; color: rgba(160,185,215,.75); margin-bottom: 3px; }
+.tf-role-detail-value { font-size: 12.5px; color: #eef5ff; line-height: 1.5; word-break: break-word; }
+.tf-collapse.open { max-height: 4000px; opacity: 1; }
 </style>
 
 <!-- 底部触发器 -->
@@ -112,78 +199,75 @@
   <span class="tf-tab-chevron">›</span>
 </div>
 
-<!-- 全屏模态 -->
+<!-- play-sheet -->
 <div id="tf-story-overlay">
-  <div class="tf-modal">
-    <div class="tf-modal-head">
-      <h2 id="tf-modal-title">角色信息</h2>
-      <button class="tf-modal-close" id="tf-modal-close">关闭</button>
+  <div class="tf-sheet" id="tf-sheet">
+    <div class="tf-head">
+      <div class="tf-head-title" id="tf-head-title">故事</div>
+      <div class="tf-head-sub" id="tf-head-sub"></div>
+      <button class="tf-head-close" id="tf-sheet-close">关闭</button>
     </div>
-    <div class="tf-modal-body" id="tf-modal-body">
-      <div class="tf-empty">正在加载…</div>
-    </div>
+    <div id="tf-sheet-body"></div>
   </div>
 </div>
 
 <script>
 (function () {
   var T = (typeof tavo !== 'undefined') ? tavo : (window.tavo || null);
-  var STORY_NS = 'tmm_story';
+  var STORY_NS = 'tf_story';
+  var CHAPTER_GUIDE = [
+    { title: '怎么写章节内容', lines: [
+      '把这一章真正会发生的内容写在这里，例如场景变化、人物行动、冲突推进、用户会被要求做什么。',
+      '对白请直接写成"@角色名：台词"，旁白也一样，例如"@旁白：乌坦城的风沙停了下来"。',
+      '提及用户扮演的角色时，请统一写"用户"，不要混用"你"或别的代称。',
+      '章节内容使用Markdown格式，通过二级标题(`##`)划分阶段，三级标题(`###`)划分事件。'] },
+    { title: '阶段与事件结构', lines: [
+      '`## 阶段名` 定义一个阶段（Phase），系统会按顺序推进各阶段。',
+      '`### 事件进度名` 定义阶段内的事件进度（stage），可以是台词、场景描述或用户发言节点。',
+      '注意 stage 里 台词一般只有一个。最多不能超过三个。',
+      '`### 用户发言` 单独一行表示等待用户输入，系统会自动切换到等待用户状态。'] },
+    { title: '随机编排NPC', lines: [
+      '使用"随机"关键字可以让AI随机编排NPC发言，例如：`随机 遇见各种npc @角色A @角色B @角色C`。',
+      '可以指定条件：`聊天5轮对话后进入下个事件，也就是用户发言5次`。',
+      'AI会根据条件判断是否满足，不满足则随机选择NPC发言来引导用户。'] },
+    { title: '事件进度状态', lines: [
+      '每个事件都有进度状态标记：`[]`未开始、`[i]`进行中、`[s]`完成、`[f]`失败。',
+      '系统会自动追踪事件进度，例如：`[s]开场 -> [i]交流 -> []结束`。',
+      'AI编排师会根据当前事件和进度决定谁来发言、剧情如何推进。'] },
+    { title: '非事件标记', lines: [
+      '使用`## 非事件: 名称`可以标记不参与事件流程的内容，仅供旁白参考。',
+      '非事件内容不会影响进度追踪，但会作为上下文提供给AI。'] },
+    { title: '推荐写法', lines: [
+      '先写本章开场和场景，再写角色互动，最后写用户需要完成的目标。',
+      '成功条件里只写结局判断，例如"用户选择了跟随A或B"或"用户发言达到5次"。',
+      '利用随机编排功能可以让章节更具可玩性，不需要为每个NPC写死台词。'] },
+  ];
 
-  function pinToBody(id) {
-    var el = document.getElementById(id);
-    if (!el) return null;
+  function pin(id) {
+    var el = document.getElementById(id); if (!el) return null;
     var prev = window['__pin_' + id];
     if (prev && prev !== el && prev.parentNode) prev.parentNode.removeChild(prev);
     if (el.parentNode !== document.body) document.body.appendChild(el);
-    window['__pin_' + id] = el;
-    return el;
+    window['__pin_' + id] = el; return el;
   }
-  pinToBody('tf-story-tab');
-  pinToBody('tf-story-overlay');
+  pin('tf-story-tab'); pin('tf-story-overlay');
 
-  function esc(s) {
-    return String(s == null ? '' : s).replace(/[&<>"']/g, function (m) {
-      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m];
-    });
-  }
+  function esc(s) { return String(s == null ? '' : s).replace(/[&<>"']/g, function (m) { return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m]; }); }
   function scalar(v) { var t = (v == null ? '' : String(v)).trim(); return (t === 'null' || t === 'undefined') ? '' : t; }
 
-  // 把 files/global/xxx.png 或 files/chat/xxx.png 解析成 {scope,name}
-  function parseFilePath(path) {
-    if (!path) return null;
-    var m = path.match(/^files\/(global|chat)\/(.+)$/);
-    if (m) return { scope: m[1], name: m[2] };
-    // 也可能只是文件名（老格式/相对路径）
-    if (!/[\\/]/.test(path)) return { scope: 'global', name: path };
-    return { scope: 'global', name: path };
-  }
-  // 头像解析：优先 dataUrl（任何 webview 可渲染），兜底 file.url，最后原值
-  async function resolveAvatarUrl(path) {
-    if (!path || !T || !T.file) return '';
-    var parsed = parseFilePath(path);
+  /* ================= 数据构建（沿用旧版角色解析） ================= */
+  function parseFilePath(p) { if (!p) return null; var m = String(p).match(/^files\/(global|chat)\/(.+)$/); if (m) return { scope: m[1], name: m[2] }; return { scope: 'global', name: p }; }
+  async function resolveAvatarUrl(p) {
+    if (!p || !T || !T.file) return '';
+    var pr = parseFilePath(p);
     try {
-      var du = await T.file.load(parsed ? parsed.name : path, { scope: parsed ? parsed.scope : 'global', encoding: 'dataUrl' });
-      if (du) {
-        // MCP/JS 可能直接返回 dataUrl 字符串，也可能返回 {content: dataUrl} 对象
-        if (typeof du === 'string') return du;
-        if (du.content && typeof du.content === 'string') return du.content;
-      }
+      var du = await T.file.load(pr.name, { scope: pr.scope, encoding: 'dataUrl' });
+      if (typeof du === 'string') return du;
+      if (du && du.content) return du.content;
     } catch (e) {}
-    try {
-      if (parsed) return T.file.url(parsed.name, parsed.scope);
-      return T.file.url(path);
-    } catch (e) {}
-    return path;
+    try { return T.file.url(pr.name, pr.scope); } catch (e) {}
+    return p;
   }
-  function avatarInner(url, name) {
-    var fallback = esc((name || '?').slice(0, 1));
-    if (!url) return fallback;
-    return '<img src="' + esc(url) + '" alt="' + esc(name) + '" '
-      + 'onerror="this.parentNode.innerHTML=\'' + fallback.replace(/'/g, "\\'") + '\';">';
-  }
-
-  // === 自解析兜底：对齐 memory_manager 的 normalizeCard（无 tmm_story 时也能展示） ===
   function extractCardJson(desc) {
     if (!desc) return null;
     var m = desc.match(/角色参数卡[\s\S]*?```(?:json)?\s*([\s\S]*?)```/);
@@ -211,241 +295,595 @@
     var embedded = extractCardJson(d.description || '');
     var src = (embedded && typeof embedded === 'object') ? embedded : {};
     var fm = parseFieldMap(d.description || '');
-    var read = function () { for (var i = 0; i < arguments.length; i++) { var v = scalar(src[arguments[i]] || fm[String(arguments[i]).toLowerCase()] || d[arguments[i]]); if (v) return v; } return ''; };
+    function read() { for (var i = 0; i < arguments.length; i++) { var v = scalar(src[arguments[i]] || fm[String(arguments[i]).toLowerCase()] || d[arguments[i]]); if (v) return v; } return ''; }
+    var descText = scalar(d.description || '');
     var roleType = scalar(src.role_type || d.roleType);
     if (!roleType) {
-      if (/角色类型\s*[:：]\s*万能角色/.test(d.description || '')) roleType = 'general';
-      else if (/角色类型\s*[:：]\s*系统角色/.test(d.description || '')) roleType = 'system';
+      if (/万能角色/.test(descText)) roleType = 'general';
+      else if (/系统角色/.test(descText)) roleType = 'system';
       else roleType = 'npc';
     }
+    var level = numOr(src.level ?? fm['level'], null);
+    var level_desc = read('level_desc', 'levelDesc');
+    var hp = numOr(src.hp ?? fm['hp'], null);
+    var mp = numOr(src.mp ?? fm['mp'], null);
+    var gender = read('gender');
+    if (!gender) { if (/男/.test(descText)) gender = '男'; else if (/女/.test(descText)) gender = '女'; }
     return {
       name: read('name') || d.name || '未命名',
-      raw_setting: read('raw_setting', 'rawSetting') || scalar(d.description) || '',
-      gender: read('gender'),
-      age: numOr(src.age ?? fm['age'], null),
-      level: numOr(src.level ?? fm['level'], 1),
-      level_desc: read('level_desc', 'levelDesc'),
-      personality: read('personality'),
-      appearance: read('appearance'),
-      voice: read('voice'),
-      skills: listOr(src.skills ?? fm['skills']),
-      items: listOr(src.items ?? fm['items']),
+      raw_setting: read('raw_setting') || descText,
+      gender: gender, age: numOr(src.age ?? fm['age'], null),
+      level: level ?? 1, level_desc: level_desc,
+      personality: read('personality'), appearance: read('appearance'), voice: read('voice'),
+      skills: listOr(src.skills ?? fm['skills']), items: listOr(src.items ?? fm['items']),
       equipment: listOr(src.equipment ?? fm['equipment']),
-      hp: numOr(src.hp ?? fm['hp'], 100),
-      mp: numOr(src.mp ?? fm['mp'], 0),
-      money: numOr(src.money ?? fm['money'], 0),
-      exp: numOr(src.exp ?? fm['exp'], 0),
-      next_level_exp: numOr(src.next_level_exp ?? fm['next_level_exp'], 0),
-      other: listOr(src.other ?? fm['other']),
-      roleType: roleType,
+      hp: hp ?? 100, mp: mp ?? 0, money: numOr(src.money ?? fm['money'], 0),
       role_key_information: read('role_key_information', 'information', 'info'),
       sample: scalar(d.first_mes || d.sample),
+      roleType: roleType,
     };
   }
 
-  // 参数卡网格项（对齐 toonflow-game-web ScenePlay.parameterCardEntries 字段顺序）
-  function paramEntries(card) {
-    var fb = '未设定';
-    var strList = function (arr) { return arr && arr.length ? arr.join('、') : fb; };
-    var num = function (v) { return v != null ? String(v) : fb; };
-    return [
-      { label: '角色名', value: scalar(card.name) || fb },
-      { label: '性别', value: scalar(card.gender) || fb },
-      { label: '年龄', value: num(card.age) },
-      { label: '等级', value: num(card.level) },
-      { label: '经验值', value: num(card.exp) },
-      { label: '下一级所需经验', value: num(card.next_level_exp) },
-      { label: '等级称号', value: scalar(card.level_desc) || fb },
-      { label: '性格', value: scalar(card.personality) || fb },
-      { label: '外貌', value: scalar(card.appearance) || fb },
-      { label: '音色特点', value: scalar(card.voice) || fb },
-      { label: '技能', value: strList(card.skills) },
-      { label: '物品', value: strList(card.items) },
-      { label: '装备', value: strList(card.equipment) },
-      { label: '血量', value: num(card.hp) },
-      { label: '蓝量', value: num(card.mp) },
-      { label: '金钱', value: num(card.money) },
-      { label: '角色关键信息', value: scalar(card.role_key_information) || fb },
-      { label: '其他', value: (Array.isArray(card.other) && card.other.length) ? card.other.map(function (x) { return scalar(x); }).join('、') : fb },
-    ];
-  }
-
-  var ROLE_LABEL = { player: '用户', narrator: '旁白', npc: 'NPC', general: '万能角色', system: '系统角色' };
-  function roleLabel(rt) { return ROLE_LABEL[rt] || 'NPC'; }
-
-  // 构建故事对象：优先用 memory_manager 初始化的 tmm_story，缺失时自解析
   async function buildStory() {
-    var story = null;
-    try { if (T && T.get) story = T.get(STORY_NS); } catch (e) {}
-    if (story && story.characters && story.characters.length) {
-      // 归一化参数卡字段，保证 UI 字段完整
-      story.characters.forEach(function (ch) { if (!ch.card) ch.card = localizeCard({ data: { description: '' } }); });
-      return story;
-    }
-    // 兜底：直接读当前聊天（chat.characters 只有 id/name，需 get 完整角色拿 avatar）
     if (!T || !T.chat) return null;
     var chat = await T.chat.current();
     if (!chat) return null;
-    var chars = chat.characters || [];
-    var cards = await Promise.all(chars.map(async function (c) {
+    var cards = [];
+    var personaId = chat.personaId || (chat.persona && chat.persona.id);
+    if (personaId) {
+      var pf = null;
+      try { pf = await T.persona.get(personaId); } catch (e) {}
+      cards.push({ id: personaId, name: (chat.persona && chat.persona.name) || (pf && pf.name) || '用户', roleType: 'player', avatar: (pf && pf.avatar) || '', card: localizeCard(pf || {}) });
+    }
+    var npcs = await Promise.all((chat.characters || []).map(async function (c) {
       var full = null;
-      try { if (T.character && T.character.get) full = await T.character.get(c.id); } catch (e) {}
+      try { full = await T.character.get(c.id); } catch (e) {}
       var d = (full && full.data) ? full.data : (full || c || {});
-      return {
-        id: c.id,
-        name: c.name || d.name || '未命名',
-        roleType: d.roleType || c.roleType || 'npc',
-        avatar: d.avatar || c.avatar || '',
-        card: localizeCard(full || c)
-      };
+      return { id: c.id, name: c.name || d.name || '未命名', roleType: d.roleType || 'npc', avatar: d.avatar || c.avatar || '', card: localizeCard(full || c) };
     }));
-    var books = chat.lorebooks || [];
-    var synopsis = chat.description || chat.synopsis || '';
-    if (!synopsis && books[0] && books[0].entries && books[0].entries[0]) synopsis = books[0].entries[0].content || '';
-    return { name: chat.name || '故事信息', synopsis: scalar(synopsis).slice(0, 1200), characters: cards };
+    cards = cards.concat(npcs);
+    // 世界书
+    var wbItems = [];
+    var wbName = '';
+    if (chat.lorebooks && chat.lorebooks.length && T.lorebook) {
+      try {
+        var lb = await T.lorebook.get(chat.lorebooks[0].id);
+        if (lb) { wbName = lb.name; wbItems = lb.entries || []; }
+      } catch (e) {}
+    }
+    return { name: chat.name || '故事', responseMode: chat.responseMode, characters: cards, worldbook: { name: wbName, entries: wbItems } };
   }
 
-  var _cache = null;
+  /* ================= 渲染：play-sheet ================= */
   var _avatars = [];
+  var _story = null;
+  var _openSections = {};
+  var _selRole = 0;
+  var _wbPage = 1;
 
-  function chipHtml(ch, idx) {
-    var url = _avatars[idx] || '';
-    return '<div class="tf-char-chip" data-idx="' + idx + '">'
-      + '<div class="tf-char-chip-ava">' + avatarInner(url, ch.name) + '</div>'
-      + '<div class="tf-char-chip-name">' + esc(ch.name) + '</div>'
-      + '</div>';
+  function marqueeHtml(text, cls) {
+    return '<span class="tf-marquee-container ' + (cls || '') + '" style="display:inline-block;width:100%;overflow:hidden;">'
+      + '<span class="tf-marquee-content">' + esc(text) + '</span></span>';
   }
 
-  function detailHtml(ch) {
-    var card = ch.card || {};
-    var url = _avatars[ch._idx] || '';
-    var head = '<div class="tf-detail-card">'
-      + '<div class="tf-detail-ava">' + avatarInner(url, ch.name) + '</div>'
-      + '<div class="tf-detail-meta">'
-      + '<div class="tf-detail-row"><span class="tf-detail-name">' + esc(ch.name) + '</span>'
-      + '<span class="tf-chip">' + esc(roleLabel(ch.roleType)) + '</span></div>'
-      + (card.voice ? '<div class="tf-detail-sub">' + esc(card.voice) + '</div>' : '')
-      + '</div></div>';
-
-    var sections = '<div class="tf-sections">';
-    // 角色设定
-    if (card.raw_setting) {
-      sections += '<div class="tf-sec"><div class="tf-sec-label">角色设定</div><div class="tf-sec-text">' + esc(card.raw_setting) + '</div></div>';
-    }
-    // 台词示例
-    if (card.sample) {
-      sections += '<div class="tf-sec"><div class="tf-sec-label">台词示例</div><div class="tf-sec-text">' + esc(card.sample) + '</div></div>';
-    }
-    // 参数卡
-    var entries = paramEntries(card);
-    var grid = '<div class="tf-param-grid">';
-    entries.forEach(function (e) {
-      var long = String(e.value || '').length > 120;
-      grid += '<div class="tf-param"><div class="tf-param-label">' + esc(e.label) + '</div>'
-        + '<div class="tf-param-value' + (long ? ' tf-param-value--scroll' : '') + '">' + esc(e.value) + '</div></div>';
-    });
-    grid += '</div>';
-    sections += '<div class="tf-sec"><div class="tf-sec-label">参数卡</div>' + grid
-      + '<button class="tf-raw-toggle" id="tf-raw-toggle">查看原文</button>'
-      + '<pre class="tf-raw-json" id="tf-raw-json" style="display:none;">' + esc(JSON.stringify(card, null, 2)) + '</pre>'
-      + '</div>';
-    sections += '</div>';
-    return head + sections;
+  function linkRowHtml(key, label, countSuffix) {
+    var open = !!_openSections[key];
+    return '<div class="tf-link-row" data-toggle="' + key + '">'
+      + '<span>' + esc(label) + (countSuffix ? esc(countSuffix) : '') + '</span>'
+      + '<span>' + (open ? '收起 >' : '>') + '</span></div>';
   }
+  function collapseOpen(key) { return _openSections[key] ? ' open' : ''; }
 
-  async function renderModal() {
-    var body = document.getElementById('tf-modal-body');
-    var titleEl = document.getElementById('tf-modal-title');
-    var tabName = document.getElementById('tf-tab-name');
-    if (!body) return;
-
-    var story = await buildStory();
-    if (!story) {
-      body.innerHTML = '<div class="tf-empty">未能读取当前聊天，请确认已打开一个聊天。</div>';
-      return;
-    }
-    if (titleEl) titleEl.textContent = story.name;
-    if (tabName) tabName.textContent = story.name;
-
-    try { _avatars = await Promise.all(story.characters.map(function (ch) { return resolveAvatarUrl(ch.avatar); })); }
-    catch (e) { _avatars = []; }
-    story.characters.forEach(function (ch, i) { ch._idx = i; });
-
-    var html = '';
-    if (story.synopsis) {
-      html += '<section style="margin-bottom:18px;"><h3 class="tf-section-title">故事简介</h3><div class="tf-synopsis">' + esc(String(story.synopsis).slice(0, 800)) + '</div></section>';
-    }
-    if (story.characters.length === 0) {
-      html += '<div class="tf-empty">本聊天未绑定角色</div>';
+  function roleDetailHtml(ch) {
+    var c = ch.card || {};
+    var h = '<div class="tf-card">';
+    h += '<div class="tf-card__title">' + esc(ch.name) + '</div>';
+    h += '<div class="tf-card__text">关键信息：</div>';
+    if (c.role_key_information) {
+      h += '<div class="tf-card__marquee tf-role-key-info">' + marqueeHtml(c.role_key_information, 'tf-role-key-info') + '</div>';
     } else {
-      html += '<section style="margin-bottom:18px;"><h3 class="tf-section-title">角色列表</h3><div class="tf-char-chips" id="tf-char-chips">';
-      story.characters.forEach(function (ch, i) { html += chipHtml(ch, i); });
-      html += '</div></section>';
-      html += '<section><h3 class="tf-section-title">角色详情</h3><div id="tf-char-detail">' + detailHtml(story.characters[0]) + '</div></section>';
+      h += '<div class="tf-card__text tf-card__text--dim">暂无当前行为</div>';
     }
-    body.innerHTML = html;
+    var roleNames = { player: '用户', narrator: '旁白', npc: '一般角色', general: '万能角色', system: '系统角色' };
+    h += '<div class="tf-card__text">角色类型：' + esc(roleNames[ch.roleType] || '一般角色') + '</div>';
+    h += '<div class="tf-card__text">角色设定：' + esc(c.raw_setting || '暂无角色设定') + '</div>';
+    h += '<div class="tf-card__text">角色音色：' + esc(c.voice || '未绑定音色') + '</div>';
+    if (c.sample) h += '<div class="tf-card__text">台词示例：' + esc(c.sample) + '</div>';
+    // 状态行
+    h += '<div class="tf-card__text">状态：Lv.' + (c.level || 1) + (c.level_desc ? '（' + esc(c.level_desc) + '）' : '')
+      + ' | HP ' + (c.hp || 0) + ' | MP ' + (c.mp || 0) + ' | 金币 ' + (c.money || 0) + '</div>';
+    if (c.items && c.items.length) h += '<div class="tf-card__text">持有：' + esc(c.items.join('、')) + '</div>';
 
-    var chips = body.querySelectorAll('.tf-char-chip');
-    var detailEl = body.querySelector('#tf-char-detail');
-    chips.forEach(function (chip) {
-      chip.addEventListener('click', function () {
-        chips.forEach(function (c) { c.classList.remove('active'); });
-        chip.classList.add('active');
-        var idx = parseInt(chip.getAttribute('data-idx'), 10);
-        if (detailEl && story.characters[idx]) detailEl.innerHTML = detailHtml(story.characters[idx]);
-        bindRawToggle(detailEl);
+    // 查看角色详情：点开 → 展开参数卡网格（对齐 web parameterCardEntries）
+    var openKey = '__roleDetail_' + (ch.id || ch.name || '0');
+    var isOpen = !!_openSections[openKey];
+    h += '<button class="tf-link-text" data-role-detail="' + openKey + '">' + (isOpen ? '收起角色详情' : '查看角色详情') + '</button>';
+    h += '<div class="tf-collapse' + collapseOpen(openKey) + '" id="tf-role-detail-body">';
+    if (isOpen) {
+      h += '<div class="tf-role-detail-grid">';
+      var entries = [
+        { k: 'role_type', label: '角色类型', value: roleNames[ch.roleType] || ch.roleType || '' },
+        { k: 'name', label: '角色名', value: c.name || '' },
+        { k: 'gender', label: '性别', value: c.gender || '' },
+        { k: 'age', label: '年龄', value: c.age || '' },
+        { k: 'level', label: '等级', value: c.level != null ? String(c.level) : '' },
+        { k: 'level_desc', label: '等级称号', value: c.level_desc || '' },
+        { k: 'personality', label: '性格', value: c.personality || '' },
+        { k: 'appearance', label: '外貌', value: c.appearance || '' },
+        { k: 'voice', label: '音色', value: c.voice || '' },
+        { k: 'skills', label: '技能', value: c.skills && c.skills.length ? c.skills.join('、') : '' },
+        { k: 'items', label: '物品', value: c.items && c.items.length ? c.items.join('、') : '' },
+        { k: 'equipment', label: '装备', value: c.equipment && c.equipment.length ? c.equipment.join('、') : '' },
+        { k: 'hp', label: '血量', value: c.hp != null ? String(c.hp) : '' },
+        { k: 'mp', label: '蓝量', value: c.mp != null ? String(c.mp) : '' },
+        { k: 'money', label: '金钱', value: c.money != null ? String(c.money) : '' },
+        { k: 'exp', label: '经验', value: c.exp != null ? String(c.exp) : '' },
+        { k: 'next_level_exp', label: '下一级所需经验', value: c.next_level_exp != null ? String(c.next_level_exp) : '' },
+        { k: 'role_key_information', label: '当前行为', value: c.role_key_information || '' },
+      ];
+      entries.forEach(function (e) {
+        var v = e.value || '未设定';
+        var long = String(v).length > 80;
+        h += '<div class="tf-role-detail-cell' + (long ? ' tf-role-detail-cell--long' : '') + '"><div class="tf-role-detail-label">' + esc(e.label) + '</div><div class="tf-role-detail-value">' + esc(v) + '</div></div>';
+      });
+      h += '</div>';
+      // 查看原文（JSON）
+      h += '<button class="tf-link-text" data-role-raw="' + openKey + '">' + (_openSections[openKey + '__raw'] ? '收起原文' : '查看原文（JSON）') + '</button>';
+      h += '<div class="tf-collapse' + collapseOpen(openKey + '__raw') + '"><pre class="tf-state-pre">' + esc(JSON.stringify({ card: c, role: ch }, null, 2)) + '</pre></div>';
+    }
+    h += '</div>';
+
+    h += '</div>';
+    return h;
+  }
+
+  function enemiesHtml() {
+    // 敌人数据来源：tmm 记忆插件的敌对标记（other 含"敌对"），无则空态
+    var enemies = [];
+    try {
+      var mem = T.get('tmm');
+      var npcs = (mem && mem.cards && mem.cards.npcs) || {};
+      Object.keys(npcs).forEach(function (k) {
+        var o = (npcs[k].other || []).join(' ');
+        if (/敌对|敌人/.test(o)) {
+          enemies.push({ name: k, level: npcs[k].level || 1, hp: npcs[k].hp || 100, maxHp: 100 + (npcs[k].level || 1) * 10, mp: npcs[k].mp || 0, maxMp: 100 + (npcs[k].level || 1) * 10, isRole: true, desc: npcs[k].role_key_information || '' });
+        }
+      });
+    } catch (e) {}
+    var h = '<div class="tf-card">';
+    if (!enemies.length) { h += '<div class="tf-card__text">当前没有敌人。</div>'; h += '</div>'; return h; }
+    h += '<div class="tf-enemy-list">';
+    enemies.forEach(function (e) {
+      h += '<div class="tf-enemy-card">'
+        + '<div class="tf-enemy-card__head"><div class="tf-enemy-card__ava">' + esc((e.name || '敌').slice(0, 1)) + '</div>'
+        + '<div><div class="tf-enemy-card__name"><span>' + esc(e.name) + '</span><span class="tf-enemy-card__tag">' + (e.isRole ? '角色敌人' : '临时敌人') + '</span></div>'
+        + '<div class="tf-card__text">等级 ' + e.level + ' · HP ' + e.hp + '/' + e.maxHp + ' · MP ' + e.mp + '/' + e.maxMp + '</div></div></div>'
+        + '<div class="tf-enemy-card__bar"><div class="tf-enemy-card__fill" style="width:' + Math.min(100, e.hp / e.maxHp * 100) + '%"></div></div>'
+        + '<div class="tf-enemy-card__bar"><div class="tf-enemy-card__fill tf-enemy-card__fill--mana" style="width:' + Math.min(100, e.mp / e.maxMp * 100) + '%"></div></div>'
+        + '</div>';
+    });
+    h += '</div></div>';
+    return h;
+  }
+
+  function storySettingHtml() {
+    var wb = (_story.worldbook && _story.worldbook.entries) || [];
+    var introE = wb.find(function (e) { return /【简介】/.test(e.content || ''); });
+    var bgE = wb.find(function (e) { return /【全局背景】/.test(e.content || ''); });
+    var chapterEs = wb.filter(function (e) { return e.strategy !== 'constant'; });
+    var curCh = chapterEs[0];
+    var curName = curCh ? curCh.name : '当前章节';
+    var opening = '', cond = '', entryCond = '';
+    if (curCh) {
+      var mo = (curCh.content || '').match(/【开场】(.+?)：([\s\S]*?)(?=\n\n|$)/);
+      if (mo) opening = mo[2].trim();
+      var mc = (curCh.content || '').match(/【完成条件】([\s\S]*?)(?=\n【|$)/);
+      if (mc) cond = mc[1].trim();
+      var me = (curCh.content || '').match(/【进入条件】([\s\S]*?)(?=\n【|$)/);
+      if (me) entryCond = me[1].trim();
+    }
+    var h = '<div class="tf-card">';
+    h += '<div class="tf-card__text">故事背景：' + esc(bgE ? (bgE.content || '').replace('【全局背景】', '').trim() : '暂无世界背景') + '</div>';
+    h += '<div class="tf-card__text">章节：' + esc(curName) + '</div>';
+    h += '<div class="tf-card__text">开场白：' + esc(opening || '（无）') + '</div>';
+    h += '<div class="tf-card__text">章节编排：仅供编排师内部使用，游玩时不直接展示。</div>';
+    h += '<div class="tf-card__text">章节进入条件：' + esc(entryCond || '无') + '</div>';
+    h += '<div class="tf-card__text">章节完成条件：' + esc(cond || '无') + '</div>';
+    // 运行状态快照
+    h += '<button class="tf-inline-toggle" data-toggle="__stateSnap"><span>运行状态快照</span><span>' + (_openSections.__stateSnap ? '收起 >' : '展开 >') + '</span></button>';
+    h += '<div class="tf-collapse' + collapseOpen('__stateSnap') + '"><pre class="tf-state-pre">' + esc(stateSnapshotText()) + '</pre></div>';
+    h += '</div>';
+    return h;
+  }
+
+  function stateSnapshotText() {
+    var lines = [];
+    try {
+      var chat = { name: _story.name, responseMode: _story.responseMode };
+      lines.push('chat: ' + JSON.stringify(chat));
+      var mem = T.get('tmm');
+      if (mem) lines.push('memory: ' + JSON.stringify({ summary: (mem.meta && mem.meta.summary || '').slice(0, 80), facts: (mem.meta && mem.meta.facts || []).length, tags: (mem.meta && mem.meta.tags || []).length }));
+      var orch = T.get('tf_orch.active');
+      lines.push('orchestrating: ' + (orch ? 'true' : 'false'));
+    } catch (e) { lines.push('(snapshot error: ' + e + ')'); }
+    return lines.join('\n');
+  }
+
+  function helpHtml() {
+    var h = '<div class="tf-card">';
+    CHAPTER_GUIDE.forEach(function (s) {
+      h += '<div class="tf-help-sec"><h4>' + esc(s.title) + '</h4>';
+      s.lines.forEach(function (l) {
+        h += '<p>' + esc(l).replace(/`([^`]+)`/g, '<code>$1</code>').replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>') + '</p>';
+      });
+      h += '</div>';
+    });
+    h += '</div>';
+    return h;
+  }
+
+  function worldbookHtml() {
+    var entries = (_story.worldbook && _story.worldbook.entries) || [];
+    var PAGE = 3;
+    var total = Math.max(1, Math.ceil(entries.length / PAGE));
+    if (_wbPage > total) _wbPage = total;
+    var pageItems = entries.slice((_wbPage - 1) * PAGE, _wbPage * PAGE);
+    var h = '<div class="tf-card"><div class="tf-card__title">激活的世界书条目</div>';
+    if (!pageItems.length) { h += '<div class="tf-card__text">暂无激活条目（章节模式或本轮无匹配）。</div></div>'; return h; }
+    h += '<div class="tf-wb-list">';
+    pageItems.forEach(function (e) {
+      var tag = e.strategy === 'constant' ? '<span class="tf-wb-tag tf-wb-tag--const">常驻</span>' : '<span class="tf-wb-tag">章节</span>';
+      h += '<div class="tf-wb-item"><div class="tf-wb-item__head"><span class="tf-wb-item__title">' + esc(e.name || '(无标题)') + '</span>' + tag + (e.enabled ? '' : '<span class="tf-wb-tag" style="opacity:.5">停用</span>') + '</div>'
+        + '<div class="tf-wb-item__content">' + esc((e.content || '').slice(0, 300)) + '</div></div>';
+    });
+    h += '</div>';
+    if (total > 1) {
+      h += '<div class="tf-wb-page"><button data-wb="prev" ' + (_wbPage <= 1 ? 'disabled' : '') + '>上一页</button><span>第 ' + _wbPage + ' / ' + total + ' 页</span><button data-wb="next" ' + (_wbPage >= total ? 'disabled' : '') + '>下一页</button></div>';
+    }
+    h += '</div>';
+    return h;
+  }
+
+  function eventsHtml() {
+    // 事件进度来源：tmm 记忆 facts（简化实现，展示当前章节事件状态）
+    var facts = [];
+    var summary = '';
+    try {
+      var mem = T.get('tmm');
+      facts = (mem && mem.meta && mem.meta.facts) || [];
+      summary = (mem && mem.meta && mem.meta.summary) || '';
+    } catch (e) {}
+    var h = '<div class="tf-card"><div class="tf-card__title">当前事件进度</div>';
+    if (summary) h += '<div class="tf-card__text">事件记忆：' + esc(summary.slice(0, 200)) + '</div>';
+    if (facts.length) {
+      h += '<div class="tf-event-list">';
+      facts.slice(-5).forEach(function (f, i) {
+        h += '<div class="tf-event-item"><div class="tf-event-item__head"><span class="tf-event-item__index">事实 ' + (i + 1) + '</span></div>'
+          + '<div class="tf-event-item__summary">' + esc(f) + '</div></div>';
+      });
+      h += '</div>';
+    } else {
+      h += '<div class="tf-card__text">当前章节事件尚未生成。</div>';
+    }
+    h += '</div>';
+    return h;
+  }
+
+  function modeHtml() {
+    var mode = _story.responseMode || 'natural';
+    var names = { scenario: '场景编排', natural: '自然模式', everyone: '所有人', manual: '手动模式' };
+    var h = '<div class="tf-card">';
+    h += '<div class="tf-card__title">✓ ' + esc(names[mode] || mode) + '（当前）</div>';
+    h += '<div class="tf-card__text">responseMode = ' + esc(mode) + '。可在插件设置中切换是否由编排插件接管。</div>';
+    h += '</div>';
+    return h;
+  }
+
+  /* ================= 编辑器 ================= */
+  var _edit = null;
+  var _editChapter = 0;
+
+  function defaultEdit() {
+    return { intro: '', globalBackground: '', chapters: [{ title: '第 1 章', openingRole: '旁白', openingLine: '', background: '', content: '', successCondition: '', conditionVisible: true, entryCondition: '', musicAutoPlay: false }] };
+  }
+
+  async function loadEdit() {
+    // 优先变量缓存，其次从世界书解析
+    var saved = null;
+    try { saved = T.get(STORY_NS + '.edit'); } catch (e) {}
+    if (saved && saved.chapters && saved.chapters.length) { _edit = saved; return; }
+    // 从世界书解析
+    var entries = (_story.worldbook && _story.worldbook.entries) || [];
+    _edit = defaultEdit();
+    _edit.chapters = [];
+    entries.forEach(function (e) {
+      var c = e.content || '';
+      if (e.strategy === 'constant') {
+        var mi = c.match(/【简介】([\s\S]*?)(?=\n【|$)/); if (mi) _edit.intro = mi[1].trim();
+        var mb = c.match(/【全局背景】([\s\S]*?)(?=\n【|$)/); if (mb) _edit.globalBackground = mb[1].trim();
+        return;
+      }
+      var ch = { title: e.name || '章节', openingRole: '旁白', openingLine: '', background: '', content: '', successCondition: '', conditionVisible: true, entryCondition: '', musicAutoPlay: false };
+      var mo = c.match(/【开场】(.+?)：([\s\S]*?)(?=\n\n|$)/); if (mo) { ch.openingRole = mo[1]; ch.openingLine = mo[2].trim(); }
+      var me = c.match(/【进入条件】([\s\S]*?)(?=\n【|$)/); if (me) ch.entryCondition = me[1].trim();
+      var mc = c.match(/【完成条件】([\s\S]*?)(?=\n【|$)/); if (mc) ch.successCondition = mc[1].trim();
+      ch.content = c.replace(/【开场】[\s\S]*?(\n\n|$)/, '').replace(/【进入条件】[\s\S]*?(?=\n【|$)/, '').replace(/【完成条件】[\s\S]*?(?=\n【|$)/, '').trim();
+      _edit.chapters.push(ch);
+    });
+    if (!_edit.chapters.length) _edit.chapters = defaultEdit().chapters;
+    if (_editChapter >= _edit.chapters.length) _editChapter = 0;
+  }
+
+  function saveEditVar() { try { T.set(STORY_NS + '.edit', _edit, 'chat'); } catch (e) {} }
+
+  function editorHtml() {
+    if (!_edit) return '<div class="tf-card"><div class="tf-card__text">加载中…</div></div>';
+    var ch = _edit.chapters[_editChapter] || _edit.chapters[0];
+    var roleNames = ['旁白'].concat(_story.characters.filter(function (c) { return c.roleType !== 'player'; }).map(function (c) { return c.name; }));
+    var h = '';
+
+    // 故事简介
+    h += '<div class="tf-card"><div class="tf-card__title">故事简介</div>'
+      + '<div class="tf-edit-field"><textarea rows="3" data-edit="intro">' + esc(_edit.intro) + '</textarea></div></div>';
+
+    // 全局背景
+    h += '<div class="tf-card"><div class="tf-card__title">全局背景（选填）重要的信息请放最前面</div>'
+      + '<div class="tf-edit-field"><textarea rows="4" placeholder="多章节故事时可填写世界背景，提及时请使用角色名或&ldquo;用户&rdquo;。" data-edit="globalBackground">' + esc(_edit.globalBackground) + '</textarea></div></div>';
+
+    // 章节 tabs
+    h += '<div class="tf-chapter-pill-row">';
+    _edit.chapters.forEach(function (c, i) {
+      h += '<span class="tf-chapter-pill' + (i === _editChapter ? ' active' : '') + '" data-chtab="' + i + '">' + esc(c.title || ('第 ' + (i + 1) + ' 章')) + '<span class="del" data-chdel="' + i + '">×</span></span>';
+    });
+    h += '<span class="tf-chapter-pill" data-chadd="1">＋ 添加章节</span>';
+    h += '</div>';
+
+    // 章节名
+    h += '<div class="tf-card"><div class="tf-card__title">章节名称</div>'
+      + '<div class="tf-edit-field"><input type="text" data-ch="title" value="' + esc(ch.title) + '" placeholder="第 N 章：标题"></div></div>';
+
+    // 故事描述（开场白）
+    h += '<div class="tf-card"><div class="tf-card__title">故事描述</div>'
+      + '<div class="tf-edit-field"><label>开场白</label>'
+      + '<select data-ch="openingRole" style="padding:8px;border-radius:8px;border:1px solid rgba(188,204,226,.2);background:rgba(12,21,35,.55);color:#e8f2ff;">'
+      + roleNames.map(function (r) { return '<option' + (r === ch.openingRole ? ' selected' : '') + '>' + esc(r) + '</option>'; }).join('')
+      + '</select></div>'
+      + '<div class="tf-edit-field"><textarea rows="3" placeholder="作为选定角色/旁白的第一句话开启整个故事" data-ch="openingLine">' + esc(ch.openingLine) + '</textarea></div></div>';
+
+    // 章节背景图
+    h += '<div class="tf-card"><div class="tf-card__title">章节背景图片</div>'
+      + '<div class="tf-chapter-bg" data-chbg="1">' + (ch.background ? '<img src="' + esc(ch.background) + '">' : '上传 / AI 生成章节背景图（暂支持粘贴图片地址）') + '</div>'
+      + '<div class="tf-edit-field"><input type="text" data-ch="background" value="' + esc(ch.background) + '" placeholder="背景图路径或 URL"></div></div>';
+
+    // 章节内容
+    var used = (ch.content || '').length;
+    h += '<div class="tf-card"><div class="tf-card__title">故事内容（章节内容）</div>'
+      + '<div class="tf-card__text" style="display:flex;justify-content:space-between;align-items:center;"><span>提及用户扮演的角色时，请用&ldquo;用户&rdquo;一词称呼。</span><button class="tf-link-text" data-helpbtn="1">编写说明</button></div>'
+      + '<div class="tf-edit-field"><textarea rows="8" placeholder="描述主要情节，包括用户在故事中和其他角色的互动。提及时请使用角色原名或用户，不要使用&ldquo;你&rdquo;来代称。" data-ch="content">' + esc(ch.content) + '</textarea></div>'
+      + '<div class="tf-edit-count"><span>还可输入' + Math.max(0, 1500 - used) + '字</span><span>' + used + '/1500</span></div>'
+      + '<div class="tf-collapse' + collapseOpen('__chHelp') + '">' + helpHtml() + '</div></div>';
+
+    // 进入条件
+    h += '<div class="tf-card"><div class="tf-card__title">章节进入条件</div>'
+      + '<div class="tf-edit-field"><textarea rows="2" placeholder="满足该条件才进入本章，为空默认直接进入" data-ch="entryCondition">' + esc(ch.entryCondition) + '</textarea></div></div>';
+
+    // 成功条件
+    h += '<div class="tf-card"><div class="tf-card__title">成功条件（章节结局）</div>'
+      + '<div class="tf-edit-field"><textarea rows="4" placeholder="只有用户达成该条件才进入下一章节。为空代表无结束，AI 持续编排。" data-ch="successCondition">' + esc(ch.successCondition) + '</textarea></div>'
+      + '<label class="tf-switch-row"><span>结局条件对用户可见</span><input type="checkbox" data-ch="conditionVisible"' + (ch.conditionVisible ? ' checked' : '') + '></label></div>';
+
+    // 操作
+    h += '<div class="tf-btn-row">'
+      + '<button class="tf-btn tf-btn--primary" data-editsave="1">保存（同步到世界书）</button>'
+      + '<button class="tf-btn" data-editcache="1">暂存本地</button>'
+      + '</div>';
+    return h;
+  }
+
+  function bindEditor(root) {
+    // 故事级字段
+    root.querySelectorAll('[data-edit]').forEach(function (el) {
+      el.addEventListener('input', function () {
+        _edit[el.getAttribute('data-edit')] = el.value;
+        saveEditVar();
       });
     });
-    if (chips[0]) chips[0].classList.add('active');
-    bindRawToggle(detailEl);
-  }
-
-  function bindRawToggle(scope) {
-    if (!scope) return;
-    var btn = scope.querySelector('#tf-raw-toggle');
-    var pre = scope.querySelector('#tf-raw-json');
-    if (btn && pre) {
-      btn.addEventListener('click', function () {
-        var show = pre.style.display === 'none';
-        pre.style.display = show ? 'block' : 'none';
-        btn.textContent = show ? '收起原文' : '查看原文';
+    // 章节字段
+    var ch = _edit.chapters[_editChapter];
+    root.querySelectorAll('[data-ch]').forEach(function (el) {
+      var k = el.getAttribute('data-ch');
+      var ev = (el.tagName === 'SELECT' || el.type === 'checkbox') ? 'change' : 'input';
+      el.addEventListener(ev, function () {
+        ch[k] = el.type === 'checkbox' ? el.checked : el.value;
+        saveEditVar();
+        if (k === 'content') {
+          var cnt = root.querySelector('.tf-edit-count');
+          if (cnt) { var u = (el.value || '').length; cnt.innerHTML = '<span>还可输入' + Math.max(0, 1500 - u) + '字</span><span>' + u + '/1500</span>'; }
+        }
       });
-    }
+    });
+    // 章节 tab 切换/添加/删除
+    root.querySelectorAll('[data-chtab]').forEach(function (el) {
+      el.addEventListener('click', function (ev) {
+        if (ev.target.getAttribute('data-chdel')) return;
+        _editChapter = parseInt(el.getAttribute('data-chtab'), 10); renderBody();
+      });
+    });
+    root.querySelectorAll('[data-chdel]').forEach(function (el) {
+      el.addEventListener('click', function (ev) {
+        ev.stopPropagation();
+        var i = parseInt(el.getAttribute('data-chdel'), 10);
+        if (_edit.chapters.length <= 1) { alert('至少保留一个章节'); return; }
+        _edit.chapters.splice(i, 1);
+        if (_editChapter >= _edit.chapters.length) _editChapter = _edit.chapters.length - 1;
+        saveEditVar(); renderBody();
+      });
+    });
+    var addBtn = root.querySelector('[data-chadd]');
+    if (addBtn) addBtn.addEventListener('click', function () {
+      _edit.chapters.push({ title: '第 ' + (_edit.chapters.length + 1) + ' 章', openingRole: '旁白', openingLine: '', background: '', content: '', successCondition: '', conditionVisible: true, entryCondition: '', musicAutoPlay: false });
+      _editChapter = _edit.chapters.length - 1;
+      saveEditVar(); renderBody();
+    });
+    // 编写说明折叠
+    var helpBtn = root.querySelector('[data-helpbtn]');
+    if (helpBtn) helpBtn.addEventListener('click', function () { _openSections.__chHelp = !_openSections.__chHelp; renderBody(); });
+    // 保存按钮
+    var saveBtn = root.querySelector('[data-editsave]');
+    if (saveBtn) saveBtn.addEventListener('click', function () {
+      saveEditVar();
+      if (T && T.plugin) { T.plugin.emit('sidebar:action', 'tf-story-save-edit'); }
+    });
+    var cacheBtn = root.querySelector('[data-editcache]');
+    if (cacheBtn) cacheBtn.addEventListener('click', function () {
+      saveEditVar();
+      if (T && T.utils) T.utils.toast('已暂存到本地变量');
+    });
+    // 背景图点击聚焦输入
+    var bg = root.querySelector('[data-chbg]');
+    if (bg) bg.addEventListener('click', function () {
+      var inp = root.querySelector('[data-ch="background"]');
+      if (inp) inp.focus();
+    });
   }
 
-  function openModal() { var o = document.getElementById('tf-story-overlay'); if (o) { o.classList.add('open'); renderModal(); } }
-  function closeModal() { var o = document.getElementById('tf-story-overlay'); if (o) o.classList.remove('open'); }
+  /* ================= 主渲染 ================= */
+  function renderBody() {
+    var body = document.getElementById('tf-sheet-body');
+    if (!body || !_story) return;
+    var h = '';
 
-  (async function init() {
+    // --- 角色列表 ---
+    h += '<div class="tf-label">角色列表</div><div class="tf-role-strip">';
+    _story.characters.forEach(function (c, i) {
+      h += '<div class="tf-role-pill' + (i === _selRole ? ' tf-role-pill--active' : '') + '" data-role="' + i + '">'
+        + '<div class="tf-role-pill__avatar">' + (_avatars[i] ? '<img src="' + esc(_avatars[i]) + '">' : esc((c.name || '?').slice(0, 1))) + '</div>'
+        + '<span class="tf-role-pill__name">' + esc(c.name) + '</span></div>';
+    });
+    h += '</div>';
+    if (_story.characters[_selRole]) h += roleDetailHtml(_story.characters[_selRole]);
+
+    // --- 敌人状态 ---
+    h += linkRowHtml('enemies', '敌人状态');
+    h += '<div class="tf-collapse' + collapseOpen('enemies') + '">' + enemiesHtml() + '</div>';
+
+    // --- 故事设定 ---
+    h += linkRowHtml('storySetting', '故事设定');
+    h += '<div class="tf-collapse' + collapseOpen('storySetting') + '">' + storySettingHtml() + '</div>';
+
+    // --- help ---
+    h += linkRowHtml('help', 'help(?) 章节编写说明');
+    h += '<div class="tf-collapse' + collapseOpen('help') + '">' + helpHtml() + '</div>';
+
+    // --- 世界书 ---
+    var wbN = ((_story.worldbook && _story.worldbook.entries) || []).length;
+    h += linkRowHtml('worldbook', '激活的世界书', wbN ? '（' + wbN + '）' : '');
+    h += '<div class="tf-collapse' + collapseOpen('worldbook') + '">' + worldbookHtml() + '</div>';
+
+    // --- 当前章节事件 ---
+    h += linkRowHtml('events', '当前章节事件');
+    h += '<div class="tf-collapse' + collapseOpen('events') + '">' + eventsHtml() + '</div>';
+
+    // --- 对话模式 ---
+    h += linkRowHtml('mode', '对话模式', ' >');
+    h += '<div class="tf-collapse' + collapseOpen('mode') + '">' + modeHtml() + '</div>';
+
+    // --- 故事配置按钮（醒目主按钮样式，对齐 SceneCreate 底部主操作按钮） ---
+    var editorOpen = !!_openSections.editor;
+    h += '<button class="tf-config-btn" data-toggle="editor">'
+      + '<span class="tf-config-btn__icon">✎</span>'
+      + '<span class="tf-config-btn__label">故事配置</span>'
+      + '<span class="tf-config-btn__sub">多章节 · 全局背景 · 章节内容 · 结局条件</span>'
+      + '<span class="tf-config-btn__arrow">' + (editorOpen ? '▾' : '▸') + '</span>'
+      + '</button>';
+    h += '<div class="tf-collapse' + collapseOpen('editor') + '" id="tf-editor-zone">' + editorHtml() + '</div>';
+
+    body.innerHTML = h;
+
+    // 绑定
+    body.querySelectorAll('[data-toggle]').forEach(function (el) {
+      el.addEventListener('click', function () {
+        var k = el.getAttribute('data-toggle');
+        _openSections[k] = !_openSections[k];
+        if (k === 'editor' && _openSections[k] && !_edit) loadEdit().then(renderBody);
+        else renderBody();
+      });
+    });
+    body.querySelectorAll('[data-role]').forEach(function (el) {
+      el.addEventListener('click', function () {
+        _selRole = parseInt(el.getAttribute('data-role'), 10);
+        renderBody();
+      });
+    });
+    // 角色详情折叠 + 查看原文折叠
+    body.querySelectorAll('[data-role-detail]').forEach(function (el) {
+      el.addEventListener('click', function () {
+        var k = el.getAttribute('data-role-detail');
+        _openSections[k] = !_openSections[k];
+        renderBody();
+      });
+    });
+    body.querySelectorAll('[data-role-raw]').forEach(function (el) {
+      el.addEventListener('click', function () {
+        var k = el.getAttribute('data-role-raw');
+        _openSections[k + '__raw'] = !_openSections[k + '__raw'];
+        renderBody();
+      });
+    });
+    body.querySelectorAll('[data-wb]').forEach(function (el) {
+      el.addEventListener('click', function () {
+        if (el.getAttribute('data-wb') === 'prev') _wbPage--; else _wbPage++;
+        renderBody();
+      });
+    });
+    var snapBtn = body.querySelector('[data-toggle="__stateSnap"]');
+    if (snapBtn) snapBtn.addEventListener('click', function () {
+      _openSections.__stateSnap = !_openSections.__stateSnap; renderBody();
+    });
+    // 编辑器
+    if (_edit) bindEditor(body);
+  }
+
+  async function renderSheet() {
+    var titleEl = document.getElementById('tf-head-title');
+    var subEl = document.getElementById('tf-head-sub');
+    var tabName = document.getElementById('tf-tab-name');
+    _story = await buildStory();
+    if (!_story) return;
+    if (titleEl) titleEl.textContent = _story.name;
+    if (tabName) tabName.textContent = _story.name;
+    // 副标题：故事简介
+    var wbE = (_story.worldbook.entries || []).find(function (e) { return /【简介】/.test(e.content || ''); });
+    if (subEl) subEl.textContent = '故事简介：' + (wbE ? (wbE.content || '').replace('【简介】', '').trim().slice(0, 60) : '暂无简介');
     try {
-      var story = null;
-      if (T && T.get) story = T.get(STORY_NS);
-      var tabName = document.getElementById('tf-tab-name');
-      if (story && story.name && tabName) tabName.textContent = story.name;
-      else if (T && T.chat) { var c = await T.chat.current(); if (c && c.name && tabName) tabName.textContent = c.name; }
-    } catch (e) {}
-  })();
+      _avatars = await Promise.all(_story.characters.map(function (c) { return resolveAvatarUrl(c.avatar); }));
+    } catch (e) { _avatars = []; }
+    await loadEdit();
+    renderBody();
+  }
+
+  function openSheet() {
+    var o = document.getElementById('tf-story-overlay');
+    if (o) { o.classList.add('open'); renderSheet(); }
+  }
+  function closeSheet() { var o = document.getElementById('tf-story-overlay'); if (o) o.classList.remove('open'); }
 
   var tab = document.getElementById('tf-story-tab');
   var overlay = document.getElementById('tf-story-overlay');
-  var closeBtn = document.getElementById('tf-modal-close');
-  if (tab) tab.addEventListener('click', openModal);
-  if (overlay) overlay.addEventListener('click', function (e) { if (e.target === overlay) closeModal(); });
-  if (closeBtn) closeBtn.addEventListener('click', closeModal);
+  var closeBtn = document.getElementById('tf-sheet-close');
+  if (tab) tab.addEventListener('click', openSheet);
+  if (overlay) overlay.addEventListener('click', function (e) { if (e.target === overlay) closeSheet(); });
+  if (closeBtn) closeBtn.addEventListener('click', closeSheet);
 
-  // 聊天切换时刷新缓存与 tab 名
-  if (T && T.plugin && T.plugin.on) {
+  // 初始化 tab 名
+  (async function () {
     try {
-      T.plugin.on('chat:updated', function () { _cache = null; loadTabName(); });
-      T.plugin.on('chat:opened', function () { _cache = null; });
+      if (T && T.chat) {
+        var c = await T.chat.current();
+        var tabName = document.getElementById('tf-tab-name');
+        if (c && c.name && tabName) tabName.textContent = c.name;
+      }
     } catch (e) {}
-  }
-  function loadTabName() {
-    if (!T || !T.chat) return;
-    T.chat.current().then(function (c) {
-      var tabName = document.getElementById('tf-tab-name');
-      if (c && c.name && tabName) tabName.textContent = c.name;
-    }).catch(function () {});
-  }
+  })();
 })();
 </script>

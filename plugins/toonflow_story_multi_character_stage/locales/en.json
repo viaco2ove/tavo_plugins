@@ -6,5 +6,6 @@
   "settings.info": "Set responseMode=scenario, orchestrate speakers dynamically.",
   "settings.enabled": "Enable",
   "settings.responseMode": "Response Mode",
+  "settings.showPanel": "Show Orchestration Banner",
   "settings.npcAuto": "NPC Auto"
 }
