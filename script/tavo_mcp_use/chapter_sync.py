@@ -84,7 +84,9 @@ def content_text(result):
 def get_edit(url, token, chat_id):
     r = rpc(url, token, "tavo_variable_get",
             {"scope": "chat", "chatId": chat_id, "name": "tf_story.edit"})
-    return content_text(r) or {}
+    parsed = content_text(r) or {}
+    # 工具返回 {target, name, found, value: {...}}，剥到真正的编辑数据
+    return parsed.get("value", parsed) if isinstance(parsed, dict) else {}
 
 
 def set_chapters(url, token, chat_id, chapters):
@@ -97,7 +99,8 @@ def set_chapters(url, token, chat_id, chapters):
 
 def update_chapter(url, token, chat_id, idx, chapter):
     # 增量更新单章
-    chapters = get_edit(url, token, chat_id).get("chapters") or []
+    cur = get_edit(url, token, chat_id)
+    chapters = cur.get("chapters") or []
     if idx >= len(chapters):
         chapters.append(chapter)
     else:
@@ -196,32 +199,34 @@ def cmd_append(args):
 
 def main():
     ap = argparse.ArgumentParser(description="章节独立管理（chat 变量 tf_story.edit.chapters）")
-    ap.add_argument("--chat-id", type=int, required=True, help="群聊 chatId")
-    ap.add_argument("--url", help="MCP Server URL（覆盖 .env）")
-    ap.add_argument("--token", help="MCP Bearer Token（覆盖 .env）")
+    sub = ap.add_subparsers(dest="cmd", required=True)
 
-    sub = ap.add_subparsers(dest="cmd")
+    def add(name, help, **kw):
+        p = sub.add_parser(name, help=help, **kw)
+        p.add_argument("chat_id", type=int, help="群聊 chatId（必填）")
+        p.add_argument("--url", default='', help="MCP Server URL（覆盖 .env）")
+        p.add_argument("--token", default='', help="MCP Bearer Token（覆盖 .env）")
+        return p
 
-    p = sub.add_parser("list", help="列出所有章节")
-    p.set_defaults(func=cmd_list)
+    add("list", help="列出所有章节").set_defaults(func=cmd_list)
 
-    p = sub.add_parser("get", help="读取单章")
+    p = add("get", help="读取单章")
     p.add_argument("idx", type=int, help="章节索引（0-based）")
     p.set_defaults(func=cmd_get)
 
-    p = sub.add_parser("pull", help="拉取完整 edit 到本地 JSON")
+    p = add("pull", help="拉取完整 edit 到本地 JSON")
     p.add_argument("--out", help="输出文件（默认 edit.json）")
     p.set_defaults(func=cmd_pull)
 
-    p = sub.add_parser("push", help="推送完整 edit 到 chat（覆盖 chapters）")
+    p = add("push", help="推送完整 edit 到 chat（覆盖 chapters）")
     p.add_argument("file", help="本地 edit JSON 文件")
     p.set_defaults(func=cmd_push)
 
-    p = sub.add_parser("upsert", help="按 title 追加或替换单章")
+    p = add("upsert", help="按 title 追加或替换单章")
     p.add_argument("file", help="单章 JSON 文件（含 title 字段）")
     p.set_defaults(func=cmd_upsert)
 
-    p = sub.add_parser("append", help="追加纯文本为一章（自动生成章节名）")
+    p = add("append", help="追加纯文本为一章（自动生成章节名）")
     p.add_argument("file", help="纯文本文件路径（也支持文件内容直接粘进 file 参数）")
     p.set_defaults(func=cmd_append)
 

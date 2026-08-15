@@ -60,17 +60,39 @@ function getScenarioPrompt() {
 - 用户 @旁白、触发世界书、说明技能效果、观察效果时，编排旁白描述场景 / 时间 / 效果，不要替具体角色说话。`;
 }
 
-// 进入聊天：把群聊切到场景模式并写入编排规则
+// 进入聊天：把群聊切到场景模式并写入编排规则（自由模式下放宽规则）
+function getEffectiveScenarioPrompt() {
+  const freeMode = (() => { try { return !!tavo.get('tf_progress.sessionFreeMode'); } catch (e) { return false; } })();
+  const base = getScenarioPrompt();
+  if (!freeMode) return base;
+  // 自由模式追加：可自由讨论、不强制推进剧情、允许对话范围扩展
+  return base + '\n\n# 🆓 自由模式（当前已开启）\n- 故事已完成所有章节，进入自由探索阶段\n- 用户可自由发言、提问、与角色闲聊，不再受章节完成条件约束\n- 可继续推进角色关系 / 探索世界观 / 回答问题 / 触发支线剧情\n- 不再编排新章节、不强制要求每轮推进剧情\n- 维持角色一致性即可';
+}
+
 tavo.plugin.on('chat:opened', async () => {
   const cfg = getConfig();
   if (!cfg.enabled) return;
   try {
     await tavo.chat.update({
       responseMode: cfg.responseMode,
-      overrideScenario: getScenarioPrompt(),
+      overrideScenario: getEffectiveScenarioPrompt(),
     });
   } catch (e) {
     console.warn('[mcs] chat.update failed', e);
+  }
+});
+
+// 自由模式切换时同步 overrideScenario
+tavo.plugin.on('message:added', async () => {
+  const cfg = getConfig();
+  if (!cfg.enabled) return;
+  const freeMode = (() => { try { return !!tavo.get('tf_progress.sessionFreeMode'); } catch (e) { return false; } })();
+  const lastVal = (() => { try { return tavo.get('mcs_free_mode_seen'); } catch (e) { return false; } })();
+  if (freeMode !== lastVal) {
+    try {
+      tavo.set('mcs_free_mode_seen', freeMode, 'chat');
+      await tavo.chat.update({ overrideScenario: getEffectiveScenarioPrompt() });
+    } catch (e) {}
   }
 });
 

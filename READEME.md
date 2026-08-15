@@ -18,4 +18,4 @@ plugins
 https://github.com/viaco2ove/Toonflow-game.git
 
 Toonflow-game 的agent list
-[Toonflow-game_世界知识_agent.md](md/Toonflow-game_%E4%B8%96%E7%95%8C%E7%9F%A5%E8%AF%86_agent.md)
+[Toonflow-game_世界知识_agent.md](md/toonflow-game-md/Toonflow-game_%E4%B8%96%E7%95%8C%E7%9F%A5%E8%AF%86_agent.md)

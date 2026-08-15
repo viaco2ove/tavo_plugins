@@ -1,8 +1,13 @@
 {
   "plugin.name": "Toonflow-Story Panel & Event Manager",
-  "plugin.description": "Story info panel (Toonflow play-sheet style) + story editor + orchestration integration.",
+  "plugin.description": "Story info panel + editor + orchestration + chapter outcome judge + event progress + free mode.",
+  "sidebar.freeMode": "Enter Free Mode",
+  "sidebar.exitFreeMode": "Exit Free Mode",
+  "sidebar.reset": "Reset Story Progress",
   "settings.info": "Tap the '{story} ›' button at chat bottom to open the info panel and story editor.",
   "settings.enabled": "Enable",
   "settings.orchestration": "Disable official group orchestration (use stage plugin)",
-  "settings.orchestrationHint": "When on, chat switches to scenario mode driven by the Toonflow-Stage plugin; falls back to official mode if that plugin is missing."
+  "settings.orchestrationHint": "When on, chat switches to scenario mode driven by the Toonflow-Stage plugin; falls back to official mode if that plugin is missing.",
+  "settings.autoAdvance": "Auto-advance Chapters",
+  "settings.autoFreeMode": "Auto Free Mode when story completes"
 }

@@ -43,9 +43,19 @@
 @keyframes tf-sheet-up { from { transform: translateY(30px); opacity: 0; } to { transform: none; opacity: 1; } }
 
 /* ===== head（对齐 .play-sheet__head--center） ===== */
-.tf-head { position: relative; text-align: center; }
-.tf-head-title { color: #fff; font-size: 18px; font-weight: 900; }
-.tf-head-sub { margin-top: 6px; color: rgba(213,235,255,.84); font-size: 12px; line-height: 1.5; }
+.tf-head { position: relative; text-align: left; padding-right: 64px; min-width: 0; }
+.tf-head-title {
+  color: #fff; font-size: 18px; font-weight: 900;
+  word-break: break-word; overflow-wrap: anywhere;
+}
+#tf-sheet-body {
+    width: 100%;
+    overflow: hidden;
+}
+.tf-head-sub {
+  margin-top: 6px; color: rgba(213,235,255,.84); font-size: 12px; line-height: 1.5;
+  word-break: break-word; overflow-wrap: anywhere;
+}
 .tf-head-close {
   position: absolute; right: 0; top: 0; min-width: 52px; height: 30px;
   border-radius: 999px; border: 1px solid rgba(188,204,226,.32);
@@ -131,6 +141,9 @@
 .tf-event-item__index { color: #fff; font-size: 12px; font-weight: 700; }
 .tf-event-item__meta { color: rgba(191,219,254,.85); font-size: 11px; }
 .tf-event-item__summary { color: rgba(220,238,255,.9); font-size: 12px; line-height: 1.5; }
+.tf-progress-bar { width: 100%; height: 8px; border-radius: 4px; background: rgba(0,0,0,.35); overflow: hidden; margin: 6px 0; }
+.tf-progress-fill { height: 100%; background: linear-gradient(90deg, #7cb3ff, #4ade80); transition: width .3s; }
+.tf-tag { display: inline-block; padding: 2px 8px; border-radius: 10px; background: rgba(255,255,255,.1); color: rgba(220,238,255,.85); font-size: 11px; }
 
 /* ===== 编辑器表单（对齐 SceneCreate 卡片风） ===== */
 .tf-edit-field { display: grid; gap: 5px; }
@@ -152,6 +165,10 @@
   background: rgba(255,255,255,.08); color: #eef5ff; font-size: 13px; font-weight: 700; cursor: pointer;
 }
 .tf-btn--primary { background: rgba(124,179,255,.85); color: #08121f; border: none; }
+.tf-btn--publish {
+  background: linear-gradient(135deg, rgba(99,179,237,.92), rgba(168,85,247,.88));
+  color: #fff; border: none;
+}
 .tf-btn--danger { background: rgba(239,68,68,.2); color: #fecaca; border-color: rgba(239,68,68,.4); }
 .tf-btn-row { display: flex; gap: 8px; flex-wrap: wrap; }
 .tf-chapter-bg { width: 100%; aspect-ratio: 16/9; border-radius: 12px; border: 1px dashed rgba(188,204,226,.3); background: rgba(12,21,35,.5); display: grid; place-items: center; color: rgba(160,185,215,.7); font-size: 12px; cursor: pointer; overflow: hidden; }
@@ -294,31 +311,75 @@
     var d = (c && c.data) ? c.data : (c || {});
     var embedded = extractCardJson(d.description || '');
     var src = (embedded && typeof embedded === 'object') ? embedded : {};
-    var fm = parseFieldMap(d.description || '');
+    var rawFm = parseFieldMap(d.description || '');
+    // 中文字段名 -> 英文 key 映射（覆盖在 rawFm 上）
+    var ZH_TO_KEY = {
+      '角色类型':'role_type','角色名':'name','性别':'gender','年龄':'age',
+      '等级':'level','等级称号':'level_desc','经验值':'exp','下一级所需经验':'next_level_exp',
+      '性格':'personality','外貌':'appearance','音色特点':'voice','音色':'voice',
+      '技能':'skills','物品':'items','装备':'equipment',
+      '血量':'hp','蓝量':'mp','金钱':'money','货币':'money',
+      '当前行为':'role_key_information','关键信息':'role_key_information','角色关键信息':'role_key_information',
+      '其他':'other','原设定':'raw_setting',
+    };
+    var fm = {};
+    for (var k in rawFm) {
+      var zh = String(k).toLowerCase();
+      fm[zh] = rawFm[k];
+      var en = ZH_TO_KEY[zh] || (rawFm[k] && rawFm[k].length && zh); // 保留原 key
+      if (en && en !== zh) fm[en] = rawFm[k];
+    }
     function read() { for (var i = 0; i < arguments.length; i++) { var v = scalar(src[arguments[i]] || fm[String(arguments[i]).toLowerCase()] || d[arguments[i]]); if (v) return v; } return ''; }
+    function readZh() {
+      // 支持传入中文 label 直接查
+      for (var i = 0; i < arguments.length; i++) {
+        var k = String(arguments[i]).toLowerCase();
+        var v = scalar(src[k] || fm[k]);
+        if (v) return v;
+      }
+      return '';
+    }
     var descText = scalar(d.description || '');
-    var roleType = scalar(src.role_type || d.roleType);
+    var roleType = scalar(src.role_type || d.roleType || readZh('role_type','角色类型'));
     if (!roleType) {
       if (/万能角色/.test(descText)) roleType = 'general';
       else if (/系统角色/.test(descText)) roleType = 'system';
       else roleType = 'npc';
     }
-    var level = numOr(src.level ?? fm['level'], null);
-    var level_desc = read('level_desc', 'levelDesc');
-    var hp = numOr(src.hp ?? fm['hp'], null);
-    var mp = numOr(src.mp ?? fm['mp'], null);
-    var gender = read('gender');
+    var level = numOr(src.level ?? fm['level'] ?? readZh('level','等级'), null);
+    var level_desc = read('level_desc', 'levelDesc') || readZh('level_desc','等级称号');
+    var hp = numOr(src.hp ?? fm['hp'] ?? readZh('hp','血量'), null);
+    var mp = numOr(src.mp ?? fm['mp'] ?? readZh('mp','蓝量'), null);
+    var money = numOr(src.money ?? fm['money'] ?? readZh('money','金钱'), null);
+    var gender = read('gender') || readZh('gender','性别');
     if (!gender) { if (/男/.test(descText)) gender = '男'; else if (/女/.test(descText)) gender = '女'; }
+    // 数组类：也支持中文 key
+    function listZh(enKey) {
+      var raw = src[enKey] || fm[enKey];
+      if (raw) return listOr(raw);
+      // 尝试中文
+      for (var k in ZH_TO_KEY) { if (ZH_TO_KEY[k] === enKey && fm[k]) return listOr(fm[k]); }
+      return [];
+    }
+    function textZh(enKey) {
+      return read(enKey) || readZh(enKey);
+    }
     return {
       name: read('name') || d.name || '未命名',
       raw_setting: read('raw_setting') || descText,
-      gender: gender, age: numOr(src.age ?? fm['age'], null),
+      gender: gender, age: numOr(src.age ?? fm['age'] ?? readZh('age','年龄'), null),
       level: level ?? 1, level_desc: level_desc,
-      personality: read('personality'), appearance: read('appearance'), voice: read('voice'),
-      skills: listOr(src.skills ?? fm['skills']), items: listOr(src.items ?? fm['items']),
-      equipment: listOr(src.equipment ?? fm['equipment']),
-      hp: hp ?? 100, mp: mp ?? 0, money: numOr(src.money ?? fm['money'], 0),
-      role_key_information: read('role_key_information', 'information', 'info'),
+      personality: textZh('personality'),
+      appearance: textZh('appearance'),
+      voice: textZh('voice'),
+      skills: listZh('skills'),
+      items: listZh('items'),
+      equipment: listZh('equipment'),
+      hp: hp ?? 100, mp: mp ?? 0, money: money ?? 0,
+      exp: numOr(src.exp ?? fm['exp'] ?? readZh('exp','经验值'), 0),
+      next_level_exp: numOr(src.next_level_exp ?? fm['next_level_exp'] ?? readZh('next_level_exp','下一级所需经验'), 0),
+      role_key_information: textZh('role_key_information'),
+      other: listZh('other'),
       sample: scalar(d.first_mes || d.sample),
       roleType: roleType,
     };
@@ -579,6 +640,54 @@
     return h;
   }
 
+  // 故事进度（章节结局判定器 / 自由模式状态）
+  function progressHtml() {
+    var p = null;
+    try { p = T.get('tf_progress') || null; } catch (e) {}
+    if (!p) return '<div class="tf-card"><div class="tf-card__text">尚未开始判定（用户还没发言）</div></div>';
+    var chapters = (_edit && _edit.chapters) || [];
+    var total = chapters.length;
+    var idx = Math.min(p.currentChapterIndex || 0, Math.max(total - 1, 0));
+    var cur = chapters[idx];
+    var h = '<div class="tf-card">';
+    h += '<div class="tf-card__title">故事进度</div>';
+    h += '<div class="tf-card__text">总章节: ' + total + ' | 已完成: ' + (p.completedChapters || []).length + ' | 失败尝试: ' + (p.failedAttempts || 0) + '</div>';
+    if (p.storyCompleted) h += '<div class="tf-card__text" style="color:#fbbf24;">🎉 故事已完成！</div>';
+    if (p.sessionFreeMode) h += '<div class="tf-card__text" style="color:#7cb3ff;">🆓 自由模式（不再判定章节）</div>';
+    if (cur && !p.storyCompleted) {
+      var pct = total > 0 ? Math.round((p.completedChapters || []).length / total * 100) : 0;
+      h += '<div class="tf-progress-bar"><div class="tf-progress-fill" style="width:' + pct + '%"></div></div>';
+      h += '<div class="tf-card__text">当前章节 (' + (idx + 1) + '/' + total + '): ' + esc(cur.title || '') + '</div>';
+      if (cur.successCondition) {
+        var condText = cur.successCondition.length > 80 ? cur.successCondition.slice(0, 80) + '…' : cur.successCondition;
+        h += '<div class="tf-card__text">完成条件: ' + esc(condText) + '</div>';
+      }
+      // 事件进度（Phase Graph）
+      var phases = p.phases || [];
+      if (phases.length) {
+        h += '<div class="tf-card__text">事件进度 (' + phases.length + ' 阶段):</div>';
+        h += '<div class="tf-event-list">';
+        phases.forEach(function (ph, pi) {
+          var mark = pi < (p.currentPhase || 0) ? '[s]' : (pi === (p.currentPhase || 0) ? '[i]' : '[ ]');
+          h += '<div class="tf-event-item"><div class="tf-event-item__head">'
+            + '<span class="tf-event-item__index">' + mark + ' 阶段 ' + (pi + 1) + ': ' + esc(ph.name || '') + '</span></div>';
+          if (ph.events && ph.events.length) {
+            h += '<div class="tf-event-item__summary">';
+            ph.events.forEach(function (ev, ei) {
+              var em = pi < (p.currentPhase || 0) ? '[s]' : (pi === (p.currentPhase || 0) && ei <= (p.currentEvent || 0) ? '[s]' : '[ ]');
+              h += '<span class="tf-tag" style="margin:2px 4px 2px 0;">' + em + ' ' + esc(ev.name || '') + '</span>';
+            });
+            h += '</div>';
+          }
+          h += '</div>';
+        });
+        h += '</div>';
+      }
+    }
+    h += '</div>';
+    return h;
+  }
+
   /* ================= 编辑器 ================= */
   var _edit = null;
   var _editChapter = 0;
@@ -588,30 +697,24 @@
   }
 
   async function loadEdit() {
-    // 优先变量缓存，其次从世界书解析
+    // 优先 chat 变量（章节独立管理）
     var saved = null;
     try { saved = T.get(STORY_NS + '.edit'); } catch (e) {}
     if (saved && saved.chapters && saved.chapters.length) { _edit = saved; return; }
-    // 从世界书解析
-    var entries = (_story.worldbook && _story.worldbook.entries) || [];
+
+    // 初始化：仅从世界书读简介/全局背景，章节默认空（不给世界书的非简介条目当章节）
     _edit = defaultEdit();
-    _edit.chapters = [];
+    var entries = (_story.worldbook && _story.worldbook.entries) || [];
     entries.forEach(function (e) {
       var c = e.content || '';
-      if (e.strategy === 'constant') {
-        var mi = c.match(/【简介】([\s\S]*?)(?=\n【|$)/); if (mi) _edit.intro = mi[1].trim();
-        var mb = c.match(/【全局背景】([\s\S]*?)(?=\n【|$)/); if (mb) _edit.globalBackground = mb[1].trim();
-        return;
-      }
-      var ch = { title: e.name || '章节', openingRole: '旁白', openingLine: '', background: '', content: '', successCondition: '', conditionVisible: true, entryCondition: '', musicAutoPlay: false };
-      var mo = c.match(/【开场】(.+?)：([\s\S]*?)(?=\n\n|$)/); if (mo) { ch.openingRole = mo[1]; ch.openingLine = mo[2].trim(); }
-      var me = c.match(/【进入条件】([\s\S]*?)(?=\n【|$)/); if (me) ch.entryCondition = me[1].trim();
-      var mc = c.match(/【完成条件】([\s\S]*?)(?=\n【|$)/); if (mc) ch.successCondition = mc[1].trim();
-      ch.content = c.replace(/【开场】[\s\S]*?(\n\n|$)/, '').replace(/【进入条件】[\s\S]*?(?=\n【|$)/, '').replace(/【完成条件】[\s\S]*?(?=\n【|$)/, '').trim();
-      _edit.chapters.push(ch);
+      var mi = c.match(/^【简介】([\s\S]*?)(?=\n【|$)/); if (mi) _edit.intro = mi[1].trim();
+      var mb = c.match(/^【全局背景】([\s\S]*?)(?=\n【|$)/); if (mb) _edit.globalBackground = mb[1].trim();
     });
-    if (!_edit.chapters.length) _edit.chapters = defaultEdit().chapters;
+    if (!_edit.chapters.length) {
+      _edit.chapters = [{ title: '第 1 章', openingRole: '旁白', openingLine: '', background: '', content: '', successCondition: '', conditionVisible: true, entryCondition: '', musicAutoPlay: false }];
+    }
     if (_editChapter >= _edit.chapters.length) _editChapter = 0;
+    saveEditVar();
   }
 
   function saveEditVar() { try { T.set(STORY_NS + '.edit', _edit, 'chat'); } catch (e) {} }
@@ -672,10 +775,22 @@
       + '<div class="tf-edit-field"><textarea rows="4" placeholder="只有用户达成该条件才进入下一章节。为空代表无结束，AI 持续编排。" data-ch="successCondition">' + esc(ch.successCondition) + '</textarea></div>'
       + '<label class="tf-switch-row"><span>结局条件对用户可见</span><input type="checkbox" data-ch="conditionVisible"' + (ch.conditionVisible ? ' checked' : '') + '></label></div>';
 
-    // 操作
-    h += '<div class="tf-btn-row">'
-      + '<button class="tf-btn tf-btn--primary" data-editsave="1">保存（同步到世界书）</button>'
-      + '<button class="tf-btn" data-editcache="1">暂存本地</button>'
+    // 操作：章节保存（动态参数） + 发布（静态参数：简介/背景→世界书）
+    h += '<div class="tf-card">'
+      + '<div class="tf-card__title" style="display:flex;justify-content:space-between;align-items:center;">'
+      + '<span>动态参数 · 章节列表</span><span class="tf-card__text" style="opacity:.7;">共 ' + (_edit.chapters ? _edit.chapters.length : 0) + ' 章</span></div>'
+      + '<div class="tf-card__text">章节独立管理：保存后只写 chat 变量 <code>tf_story.edit.chapters</code>，不污染世界书。</div>'
+      + '<div class="tf-btn-row">'
+      + '<button class="tf-btn tf-btn--primary" data-editsave="1">💾 保存（章节列表 → 动态参数）</button>'
+      + '</div>'
+      + '</div>';
+
+    h += '<div class="tf-card">'
+      + '<div class="tf-card__title">静态参数 · 发布</div>'
+      + '<div class="tf-card__text">把「故事简介」和「全局背景」发布到世界书（constant 入口）。章节内容不会进世界书。</div>'
+      + '<div class="tf-btn-row">'
+      + '<button class="tf-btn tf-btn--publish" data-editpublish="1">🚀 发布（简介 + 背景 → 世界书）</button>'
+      + '</div>'
       + '</div>';
     return h;
   }
@@ -728,11 +843,17 @@
     // 编写说明折叠
     var helpBtn = root.querySelector('[data-helpbtn]');
     if (helpBtn) helpBtn.addEventListener('click', function () { _openSections.__chHelp = !_openSections.__chHelp; renderBody(); });
-    // 保存按钮
+    // 保存按钮（章节）
     var saveBtn = root.querySelector('[data-editsave]');
     if (saveBtn) saveBtn.addEventListener('click', function () {
       saveEditVar();
-      if (T && T.plugin) { T.plugin.emit('sidebar:action', 'tf-story-save-edit'); }
+      if (T && T.utils) T.utils.toast('章节列表已保存到动态参数（' + _edit.chapters.length + ' 章）');
+    });
+    // 发布按钮（静态：简介+背景→世界书）
+    var pubBtn = root.querySelector('[data-editpublish]');
+    if (pubBtn) pubBtn.addEventListener('click', function () {
+      saveEditVar();
+      if (T && T.plugin) { T.plugin.emit('sidebar:action', 'tf-story-publish-edit'); }
     });
     var cacheBtn = root.querySelector('[data-editcache]');
     if (cacheBtn) cacheBtn.addEventListener('click', function () {
@@ -787,6 +908,10 @@
     // --- 对话模式 ---
     h += linkRowHtml('mode', '对话模式', ' >');
     h += '<div class="tf-collapse' + collapseOpen('mode') + '">' + modeHtml() + '</div>';
+
+    // --- 故事进度（章节结局判定 + 事件进度 + 自由模式状态） ---
+    h += linkRowHtml('progress', '故事进度（章节判定 + 事件进度）');
+    h += '<div class="tf-collapse' + collapseOpen('progress') + '">' + progressHtml() + '</div>';
 
     // --- 故事配置按钮（醒目主按钮样式，对齐 SceneCreate 底部主操作按钮） ---
     var editorOpen = !!_openSections.editor;

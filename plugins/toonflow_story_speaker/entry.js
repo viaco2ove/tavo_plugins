@@ -93,8 +93,14 @@ tavo.plugin.onSidebarAction('speaker-test', async () => {
     if (!chat || !chat.characters?.length) { tavo.utils.toast('当前聊天无角色'); return; }
     const char = await tavo.character.get(chat.characters[0].id);
     const state = await buildCastState();
+
+    // 自由模式：放宽台词长度（用户可自由讨论/提问/闲聊）
+    const freeMode = (() => { try { return !!tavo.get('tf_progress.sessionFreeMode'); } catch (e) { return false; } })();
+    const lengthHint = freeMode ? '40~150字，2~4句（自由模式可稍长）' : '40~80字，最多2句';
+
     const prompt = (state ? state + '\n' : '') +
-      `请以 ${char?.name || '角色'} 的身份，基于当前状态生成一句自然台词（40~80字，最多2句）。`;
+      `请以 ${char?.name || '角色'} 的身份，基于当前状态生成一句自然台词（${lengthHint}）。` +
+      (freeMode ? '\n（当前是自由模式，可根据用户提问自由回应，不必推进剧情。）' : '');
     const speech = await tavo.generate(prompt, {
       context: false,
       settings: { temperature: cfg.temperature, maxCompletionTokens: cfg.maxTokens },

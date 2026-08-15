@@ -1,8 +1,13 @@
 {
   "plugin.name": "Toonflow-信息面板与事件管理器",
-  "plugin.description": "故事信息面板（对齐 Toonflow play-sheet）+ 故事编辑器 + 编排联动。",
+  "plugin.description": "故事信息面板 + 故事编辑器 + 编排联动 + 章节结局判定器 + 事件进度追踪 + 自由模式。",
+  "sidebar.freeMode": "进入自由模式",
+  "sidebar.exitFreeMode": "退出自由模式",
+  "sidebar.reset": "重置故事进度",
   "settings.info": "点击聊天页底部的「{故事名} ›」展开信息面板与故事编辑器。",
   "settings.enabled": "启用",
   "settings.orchestration": "禁用官方群聊编排（用编排插件接管）",
-  "settings.orchestrationHint": "开启后群聊切到场景模式，由「Toonflow-角色编排」插件提供编排规则；未安装该插件时自动回退官方模式。"
+  "settings.orchestrationHint": "开启后群聊切到场景模式，由「Toonflow-角色编排」插件提供编排规则；未安装该插件时自动回退官方模式。",
+  "settings.autoAdvance": "自动推进章节",
+  "settings.autoFreeMode": "全部章节完成后自动进入自由模式"
 }

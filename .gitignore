@@ -69,3 +69,5 @@ run.local.ps1
 /script/debug/tavo_app_webview/app_apk_reverse/tavo_decoded/build/
 /script/debug/tavo_app_webview/app_apk_reverse/tavo_decoded/smali/
 /script/debug/tavo_app_webview/app_apk_reverse/tavo_decoded/smali_classes2/
+/.workbuddy/
+/.hide/
