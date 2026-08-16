@@ -747,18 +747,156 @@
     return h;
   }
 
+  // 解析章节内容的 Phase/Stage 结构（对齐 entry.js parseProgress）
+  function parseChapterPhases(content) {
+    var phases = [];
+    var currentPhase = null;
+    var order = 0;
+    var lines = (content || '').split(/\r?\n/);
+    for (var i = 0; i < lines.length; i++) {
+      var line = lines[i];
+      // ## Phase 名
+      if (/^##\s/.test(line)) {
+        var m = line.match(/^##\s+(.+)/);
+        if (m) {
+          currentPhase = { name: m[1].trim(), events: [], index: order++ };
+          phases.push(currentPhase);
+        }
+      }
+      // ### [状态] 事件名
+      else if (/^###\s/.test(line) && currentPhase) {
+        var em = line.match(/^###\s+(?:(\[[\w\]]\s*)?(.+)/);
+        if (em) {
+          var stateMark = em[1] || '';
+          var evtName = em[2].trim();
+          currentPhase.events.push({ name: evtName, state: stateMark });
+        }
+      }
+    }
+    return phases;
+  }
+
+  // 当前进度快照（从 tf_progress 读）
+  function getProgressState() {
+    try {
+      var raw = readVarAnyScope('tf_progress');
+      if (raw && typeof raw === 'object') return raw;
+    } catch (e) {}
+    return {};
+  }
+
+  // 状态标签
+  var STAGE_STATUS_LABELS = { 's': '完成', 'i': '进行中', 'f': '失败' };
+  function stageStateLabel(state) {
+    return STAGE_STATUS_LABELS[state] || '未开始';
+  }
+
+  // Stage 状态颜色
+  var STAGE_STATE_COLOR = { 's': '#4ade80', 'i': '#fbbf24', 'f': '#f87171' };
+
+  // 阶段状态判断：[s]已完成 [i]进行中 [ ]未开始
+  function phaseStateMark(phaseIdx, curPhase, curStage, completedCount) {
+    if (phaseIdx < curPhase) return 's';
+    if (phaseIdx === curPhase) {
+      var stages = phase.events || [];
+      if (curStage >= stages.length) return 's';
+      if (curStage < completedCount) return 's';
+      return curStage < completedCount ? 's' : 'i';
+    }
+    return '';
+  }
+
   function eventsHtml() {
-    // 事件进度来源：tmm 记忆 facts（简化实现，展示当前章节事件状态）
-    var facts = [];
-    var summary = '';
+    var h = '<div class="tf-card"><div class="tf-card__title">当前事件进度</div>';
+
+    // 章节进度条
+    var prog = getProgressState();
+    var chapters = (_edit && _edit.chapters) || [];
+    var curIdx = Math.max(0, Math.min(prog.currentChapterIndex || 0, chapters.length - 1);
+    var curCh = chapters[curIdx] || {};
+    var curChapterContent = curCh.content || '';
+    var cond = curCh.successCondition || '';
+    var total = chapters.length;
+    var completedCount = (prog.completedChapters || []).length;
+
+    // 章节进度条
+    if (total > 0) {
+      var pct = Math.round(completedCount / total * 100);
+      h += '<div class="tf-progress-bar" style="margin-bottom:8px;"><div class="tf-progress-fill" style="width:' + pct + '%"></div></div>';
+    }
+
+    // 当前章节信息
+    h += '<div class="tf-card__text" style="color:#a9ccff;font-size:11px;">章节 ' + (curIdx + 1) + '/' + total
+      + ' | 已完成 ' + completedCount + ' 章 | ' + esc(curCh.title || '?') + '</div>';
+
+    // 完成条件
+    if (cond) {
+      h += '<div class="tf-card__text" style="color:rgba(220,238,255,.7);font-size:11px;">完成条件：' + esc(cond.slice(0, 100)) + '</div>';
+    }
+
+    // 记忆 facts
+    var facts = [], summary = '', memPlayerItems = [], memSummary = '';
     try {
       var mem = readChatVar('tmm');
-      facts = (mem && mem.meta && mem.meta.facts) || [];
-      summary = (mem && mem.meta && mem.meta.summary) || '';
+      if (mem) {
+        facts = (mem.meta && mem.meta.facts) || [];
+        summary = (mem.meta && mem.meta.summary) || '';
+        var playerCard = mem.cards && mem.cards.player;
+        if (playerCard) {
+          memPlayerItems = (playerCard.items || []).slice(0, 5);
+          memSummary = summary;
+        }
+      }
     } catch (e) {}
-    var h = '<div class="tf-card"><div class="tf-card__title">当前事件进度</div>';
-    if (summary) h += '<div class="tf-card__text">事件记忆：' + esc(summary.slice(0, 200)) + '</div>';
-    if (facts.length) {
+
+    if (memSummary) {
+      h += '<div class="tf-card__text" style="color:#fbbf24;font-size:11px;">剧情记忆：' + esc(memSummary.slice(0, 100)) + '…</div>';
+    }
+
+    // Phase/Stage 进度（从章节内容解析）
+    var phases = parseChapterPhases(curChapterContent);
+    var curPhase = Math.max(0, prog.currentPhase || 0);
+    var curStage = Math.max(0, prog.currentEvent || 0);
+
+    if (phases.length) {
+      h += '<div style="margin-top:6px;">';
+      phases.forEach(function (phase, pi) {
+        var isCurrent = pi === curPhase;
+        var phaseState = isCurrent ? 'i' : (pi < curPhase ? 's' : '');
+        var phaseStateColor = STAGE_STATE_COLOR[phaseState] || 'rgba(220,238,255,.35)';
+        var stateIcon = phaseState === 's' ? '✅' : (phaseState === 'i' ? '⏳' : '⬜');
+        h += '<div style="margin-bottom:6px;">';
+        h += '<div class="tf-event-item" style="' + (isCurrent ? 'border-color:rgba(124,179,255,.4);' : '') + '">';
+        h += '<div class="tf-event-item__head" style="display:flex;align-items:center;gap:6px;">'
+          + '<span style="color:' + phaseStateColor + ';font-size:12px;">' + stateIcon + '</span>'
+          + '<span class="tf-event-item__index" style="color:' + phaseStateColor + ';">'
+          + esc(phase.name) + '</span>';
+        if (isCurrent) h += '<span class="tf-tag" style="background:rgba(251,191,36,.15);color:#fbbf24;">进行中</span>';
+        h += '</div>';
+
+        // Stage 列表（当前 Phase 展开）
+        if (phase.events && phase.events.length) {
+          h += '<div style="padding-left:10px;margin-top:4px;">';
+          phase.events.forEach(function (ev, ei) {
+            // Stage 状态判断
+            var evState = '';
+            if (phaseState === 's') evState = 's';
+            else if (isCurrent) {
+              evState = (ei < curStage) ? 's' : (ei === curStage ? 'i' : '');
+            }
+            var evColor = STAGE_STATE_COLOR[evState] || 'rgba(220,238,255,.35)';
+            var evIcon = evState === 's' ? '✅' : (evState === 'i' ? '▶' : '○');
+            h += '<div style="display:flex;align-items:center;gap:4px;padding:2px 0;font-size:11px;">'
+              + '<span style="color:' + evColor + '">' + evIcon + '</span>'
+              + '<span style="color:' + evColor + '">' + esc(ev.name) + '</span></div>';
+          });
+          h += '</div>';
+        }
+        h += '</div></div>';
+      });
+      h += '</div>';
+    } else if (facts.length) {
+      // 无章节内容时降级显示 facts
       h += '<div class="tf-event-list">';
       facts.slice(-5).forEach(function (f, i) {
         h += '<div class="tf-event-item"><div class="tf-event-item__head"><span class="tf-event-item__index">事实 ' + (i + 1) + '</span></div>'
@@ -766,8 +904,14 @@
       });
       h += '</div>';
     } else {
-      h += '<div class="tf-card__text">当前章节事件尚未生成。</div>';
+      h += '<div class="tf-card__text" style="color:rgba(220,238,255,.5);">当前章节事件尚未生成。</div>';
     }
+
+    // 玩家物品
+    if (memPlayerItems.length) {
+      h += '<div style="margin-top:6px;font-size:11px;color:rgba(160,185,215,.7);">持有：' + esc(memPlayerItems.join(' · ')) + '</div>';
+    }
+
     h += '</div>';
     return h;
   }
@@ -936,6 +1080,19 @@
       + '<div class="tf-card__text" id="tf-orch-note">检测中…</div>'
       + '<div class="tf-btn-row"><button class="tf-btn tf-btn--primary" data-orch-apply="1">应用编排</button></div></div>';
 
+    // 意图识别模式（关键词 / 模型 API）
+    var intentMode = (_edit.intentMode || 'keyword');
+    h += '<div class="tf-card"><div class="tf-card__title">意图识别模式</div>'
+      + '<div class="tf-card__text">控制 @记忆管理 等指令的解析方式。</div>'
+      + '<div class="tf-edit-field"><select data-intent-mode style="padding:8px;border-radius:8px;border:1px solid rgba(188,204,226,.2);background:rgba(12,21,35,.55);color:#e8f2ff;width:100%;box-sizing:border-box;">'
+      + '<option value="keyword"' + (intentMode === 'keyword' ? ' selected' : '') + '>关键词模式（确定性解析，直接更新参数卡）</option>'
+      + '<option value="model_api"' + (intentMode === 'model_api' ? ' selected' : '') + '>模型 API 模式（AI 意图分类，调用专用模型）</option>'
+      + '</select></div>'
+      + '<div class="tf-card__text" style="font-size:11px;opacity:.7;">'
+      + '关键词：确定性解析物品/技能/HP/MP/经验，直接落参数卡，速度快不耗 Token。<br>'
+      + '模型 API：AI 分类 + 复杂逻辑推理（当前行为/剧情摘要/状态变化），需要配置专用模型。</div>'
+      + '</div>';
+
     // 台词与演出设置（台词数量：传给 agent 的最近对话条数）
     var lineCount = (_edit.lineCount != null && _edit.lineCount !== '') ? _edit.lineCount : 20;
     h += '<div class="tf-card"><div class="tf-card__title">台词与演出</div>'
@@ -1085,6 +1242,11 @@
     if (lc) lc.addEventListener('input', function () {
       var v = parseInt(lc.value, 10); if (isNaN(v) || v < 1) v = 20;
       _edit.lineCount = v; saveEditVar();
+    });
+    // 意图识别模式
+    var im = root.querySelector('[data-intent-mode]');
+    if (im) im.addEventListener('change', function () {
+      _edit.intentMode = im.value; saveEditVar();
     });
     // 检测编排器插件并提示
     if (root.querySelector('#tf-orch-note')) detectStagePlugin();

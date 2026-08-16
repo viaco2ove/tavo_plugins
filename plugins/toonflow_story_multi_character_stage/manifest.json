@@ -4,7 +4,7 @@
   "name": {
     "$t": "plugin.name"
   },
-  "version": "2.0.2",
+  "version": "2.0.3",
   "minAppVersion": "1.0.0",
   "entry": "entry.js",
   "author": "viaco",
@@ -24,7 +24,8 @@
     "message",
     "generate",
     "variable",
-    "chat"
+    "chat",
+    "lorebook"
   ],
   "contributes": {
     "sidebar": [

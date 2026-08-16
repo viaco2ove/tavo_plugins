@@ -41,6 +41,20 @@ function getConfig() {
   };
 }
 
+// 读取世界书 constant 条目（对齐 Toonflow selectWorldBookForInjection 的 constant 逻辑）
+// constant 条目直接注入；keyword 条目不注入（由模型根据上下文自行决定是否提用）
+async function getWorldbookInject() {
+  try {
+    const chat = await tavo.chat.current();
+    if (!chat || !chat.lorebooks?.length) return '';
+    const lb = await tavo.lorebook.get(chat.lorebooks[0].id);
+    const entries = (lb?.entries || []).filter(e => e.enabled !== false && e.strategy === 'constant');
+    if (!entries.length) return '';
+    const lines = entries.map(e => '## ' + (e.name || '知识') + '\n' + (e.content || ''));
+    return '\n\n【世界知识（常驻）】\n' + lines.join('\n\n');
+  } catch (e) { return ''; }
+}
+
 // 群聊编排设置（来自 event_manager 维护的 tf_story.edit.orchestration）
 // 'system' = 跟随系统（不接管）；缺省 / 'plugin' = 角色编排插件接管
 function getOrchestration() {
@@ -105,12 +119,13 @@ function getScenarioPrompt() {
 }
 
 // 进入聊天：把群聊切到场景模式并写入编排规则（自由模式下放宽规则）
-function getEffectiveScenarioPrompt() {
+async function getEffectiveScenarioPrompt() {
   const freeMode = (() => { try { return !!!!(readChatVar('tf_progress')||{}).sessionFreeMode; } catch (e) { return false; } })();
   const base = getScenarioPrompt();
-  if (!freeMode) return base;
+  const wbInject = await getWorldbookInject();
+  if (!freeMode) return base + wbInject;
   // 自由模式追加：可自由讨论、不强制推进剧情、允许对话范围扩展
-  return base + '\n\n# 🆓 自由模式（当前已开启）\n- 故事已完成所有章节，进入自由探索阶段\n- 用户可自由发言、提问、与角色闲聊，不再受章节完成条件约束\n- 可继续推进角色关系 / 探索世界观 / 回答问题 / 触发支线剧情\n- 不再编排新章节、不强制要求每轮推进剧情\n- 维持角色一致性即可';
+  return base + wbInject + '\n\n# 🆓 自由模式（当前已开启）\n- 故事已完成所有章节，进入自由探索阶段\n- 用户可自由发言、提问、与角色闲聊，不再受章节完成条件约束\n- 可继续推进角色关系 / 探索世界观 / 回答问题 / 触发支线剧情\n- 不再编排新章节、不强制要求每轮推进剧情\n- 维持角色一致性即可';
 }
 
 tavo.plugin.on('chat:opened', async () => {
@@ -120,7 +135,7 @@ tavo.plugin.on('chat:opened', async () => {
   try {
     await tavo.chat.update({
       responseMode: cfg.responseMode,
-      overrideScenario: getEffectiveScenarioPrompt(),
+      overrideScenario: await getEffectiveScenarioPrompt(),
     });
   } catch (e) {
     console.warn('[mcs] chat.update failed', e);
@@ -137,7 +152,7 @@ tavo.plugin.on('message:added', async () => {
   if (freeMode !== lastVal) {
     try {
       tavo.set('mcs_free_mode_seen', freeMode, 'chat');
-      await tavo.chat.update({ overrideScenario: getEffectiveScenarioPrompt() });
+      await tavo.chat.update({ overrideScenario: await getEffectiveScenarioPrompt() });
     } catch (e) {}
   }
 });
@@ -166,7 +181,7 @@ tavo.plugin.onSidebarAction('mcs-toggle', async () => {
   } catch (e) {}
   try {
     if (next === 'plugin') {
-      await tavo.chat.update({ responseMode: cfg.responseMode, overrideScenario: getScenarioPrompt() });
+      await tavo.chat.update({ responseMode: cfg.responseMode, overrideScenario: await getEffectiveScenarioPrompt() });
       tavo.utils.toast('群聊编排：角色编排插件 → 角色发言插件');
     } else {
       await tavo.chat.update({ responseMode: 'natural', overrideScenario: '' });

@@ -685,36 +685,50 @@ def main():
     print("==> %s连接 tavo MCP: %s" % ("[DRY] " if dry else "", url))
     print("==> 故事: %s" % cfg.get("story_name"))
 
-    # 1. 群聊先建（拿 id 供头像上传用）
-    chat_name = cfg.get("chat_name") or (cfg.get("story_name") + " · 第1章")
-    chat_id = search_first_id(url, token, "tavo_chat_search", chat_name)
-    if not chat_id:
-        chat_id = ensure_chat(cfg, url, token, [], None, None, dry)
-    else:
-        print("  [群聊] %s -> 命中 id=%s（稍后重绑）" % (chat_name, chat_id))
+    # 1. 用户身份先建（不依赖 chat_id）
+    persona_id = ensure_persona(cfg, url, token, 0, dry)
 
-    # 2. 世界书
+    # 2. 世界书（不依赖 chat_id）
     lorebook_id = ensure_worldbook(cfg, url, token, dry, args.rebuild_worldbook, story_dir)
 
-    # 3. 用户身份
-    persona_id = ensure_persona(cfg, url, token, chat_id, dry)
+    # 3. 群聊先建（tavo_chat_create 要求 non-empty characterIds）
+    chat_name = cfg.get("chat_name") or (cfg.get("story_name") + " · 第1章")
+    chat_id = search_first_id(url, token, "tavo_chat_search", chat_name)
+    placeholder_id = None
+    if not chat_id:
+        # 建占位角色用于创建群聊
+        inner_ph = call(url, token, "tavo_character_import_card",
+            {"card": {"spec": "chara_card_v3", "spec_version": "3.0",
+                       "data": {"name": "占位", "description": "同步占位角色"}}})
+        placeholder_id = extract_id(inner_ph)
+        chat_id = ensure_chat(cfg, url, token, [placeholder_id], lorebook_id, persona_id, dry)
+        print("  [群聊] %s -> 新建 id=%s（含占位角色 id=%s）" % (chat_name, chat_id, placeholder_id))
+    else:
+        print("  [群聊] %s -> 命中 id=%s" % (chat_name, chat_id))
 
-    # 4. 角色
+    # 4. 角色（有 chat_id 才能上传头像）
     char_ids, replace_map, desired_names = ensure_characters(
         cfg, url, token, chat_id, dry, args.force, story_dir)
 
-    # 5. 群聊绑定（重绑 characterIds + lorebook + persona）
-    if not dry:
-        chat_id = ensure_chat(cfg, url, token, char_ids, lorebook_id, persona_id, dry)
+    # 5. 群聊重绑：替换占位角色为真实角色
+    if char_ids:
+        real_ids = [cid for cid in char_ids if cid and cid != placeholder_id]
+        if not real_ids:
+            real_ids = char_ids
+        if placeholder_id and placeholder_id in real_ids:
+            real_ids = [cid for cid in real_ids if cid != placeholder_id]
+        if real_ids:
+            ensure_chat(cfg, url, token, real_ids, lorebook_id, persona_id, dry)
+            # 占位角色加入清理列表
+            if placeholder_id:
+                replace_map[placeholder_id] = None
 
-    # 5.5 章节开场生成（读取 chapters/，把开场脚本逐条生成成聊天消息）
+    # 6. 章节开场生成
     name_to_id = dict(zip(desired_names, char_ids))
     ensure_chapters(cfg, url, token, chat_id, name_to_id, dry, args.force_chapters)
-
-    # 5.6 章节编辑变量同步（写入 tf_story.edit，含背景图上传，供 event_manager 判定器读取）
     ensure_chapter_edit_variable(cfg, url, token, chat_id, dry)
 
-    # 6. 清理旧卡
+    # 7. 清理旧卡（含占位角色）
     if not dry:
         cleanup(url, token, chat_id, desired_names,
                 (cfg.get("persona") or {}).get("name"), replace_map, dry)

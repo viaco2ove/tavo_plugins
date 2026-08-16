@@ -409,7 +409,7 @@ async function getMemoryItems() {
 
 function defaultEditData() {
   return {
-    intro: '', globalBackground: '', lineCount: 20,
+    intro: '', globalBackground: '', lineCount: 20, intentMode: 'keyword',
     chapters: [{ title: '第 1 章', openingRole: '旁白', openingLine: '', background: '', content: '', successCondition: '', conditionVisible: true, entryCondition: '', musicAutoPlay: false }],
   };
 }
@@ -494,6 +494,73 @@ tavo.plugin.on('message:added', async (event) => {
   } catch (e) {
     console.warn('[tf_story] judge failed', e);
   }
+});
+
+// 整章推进（复用判定成功分支）：进入下一章或完结进入自由模式。供自动判定与手动指令共用。
+async function manualChapterAdvance(chapters, idx, progress) {
+  const nextIdx = idx + 1;
+  if (nextIdx >= chapters.length) {
+    progress.storyCompleted = true;
+    progress.sessionFreeMode = (cfgGet('autoFreeMode', true) !== false);
+    progress.currentChapterIndex = nextIdx;
+    progress.currentPhase = 0;
+    progress.currentEvent = 0;
+    progress.updatedAt = Date.now();
+    setProgress(progress);
+    tavo.utils.toast('🎉 故事已完结！' + (progress.sessionFreeMode ? '已进入自由模式' : ''));
+    try {
+      await tavo.message.append({
+        content: '【故事完结】所有章节已完成。' + (progress.sessionFreeMode ? ' 进入自由模式，用户可继续对话，无需推进章节。' : ''),
+        hidden: false,
+      });
+    } catch (e) {}
+  } else {
+    progress.currentChapterIndex = nextIdx;
+    progress.currentPhase = 0;
+    progress.currentEvent = 0;
+    progress.failedAttempts = 0;
+    progress.updatedAt = Date.now();
+    setProgress(progress);
+    const nextCh = chapters[nextIdx];
+    tavo.utils.toast('✅ 进入「' + (nextCh.title || '下一章') + '」');
+    try {
+      let openingLine = '（场景切换至 ' + (nextCh.title || '下一章') + '）';
+      if (nextCh.openingLine) openingLine = nextCh.openingLine;
+      await tavo.message.append({ content: openingLine, hidden: false });
+    } catch (e) {}
+  }
+}
+
+// 手动推进指令：@事件进度检测 下个事件 / @下个事件 / @下一个事件 / @下个章节 / @下一个章节
+// 先取消原发送，再整章推进（与判定成功分支一致，确保指令真正生效）。
+async function advanceManually(rawText) {
+  try {
+    if (cfgGet('enabled', true) === false) return;
+    const progress = getProgress();
+    if (progress.storyCompleted) {
+      tavo.utils.toast('故事已完结（自由模式），无需推进');
+      return;
+    }
+    const edit = getEdit();
+    const chapters = edit.chapters || [];
+    if (!chapters.length) { tavo.utils.toast('无章节数据'); return; }
+    const idx = progress.currentChapterIndex || 0;
+    const chapter = chapters[idx];
+    if (!chapter) { tavo.utils.toast('无当前章节'); return; }
+    await manualChapterAdvance(chapters, idx, progress);
+  } catch (e) {
+    console.warn('[tf_story] manual advance failed', e);
+    tavo.utils.toast('推进失败：' + (e && e.message ? e.message : e));
+  }
+}
+
+tavo.plugin.on('input:beforeSend', async (event) => {
+  if (cfgGet('enabled', true) === false) return;
+  const text = String((event && event.text) || '').trim();
+  if (!/^@(事件进度检测\s*下个?事件|下个?事件|下个?章节)/.test(text)) return;
+  try { if (event && typeof event.cancel === 'function') event.cancel(); } catch (e) {}
+  tavo.utils.toast('事件推进指令处理中…');
+  advanceManually(text).catch(err => console.warn('[tf_story] manual advance failed', err));
 });
 
 // =========================================================================
