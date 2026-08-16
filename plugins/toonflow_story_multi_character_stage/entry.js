@@ -128,10 +128,25 @@ async function getEffectiveScenarioPrompt() {
   return base + wbInject + '\n\n# 🆓 自由模式（当前已开启）\n- 故事已完成所有章节，进入自由探索阶段\n- 用户可自由发言、提问、与角色闲聊，不再受章节完成条件约束\n- 可继续推进角色关系 / 探索世界观 / 回答问题 / 触发支线剧情\n- 不再编排新章节、不强制要求每轮推进剧情\n- 维持角色一致性即可';
 }
 
+// 等 tf_story.boot.status === 'ready' 才接管（让 bootSequence 先恢复数据 + 播开场白）
+async function waitForBoot(maxMs) {
+  const start = Date.now();
+  while (Date.now() - start < (maxMs || 30000)) {
+    try {
+      const b = readChatVar('tf_story.boot');
+      if (b && b.status === 'ready' && b.openingDone) return true;
+    } catch (e) {}
+    await new Promise(r => setTimeout(r, 200));
+  }
+  return false;
+}
+
 tavo.plugin.on('chat:opened', async () => {
   const cfg = getConfig();
   if (!cfg.enabled) return;
   if (getOrchestration() === 'system') return; // 跟随系统：不接管群聊
+  // 等 story_event_manager 的 boot 序列完成（最多 30 秒）
+  await waitForBoot(30000);
   try {
     await tavo.chat.update({
       responseMode: cfg.responseMode,

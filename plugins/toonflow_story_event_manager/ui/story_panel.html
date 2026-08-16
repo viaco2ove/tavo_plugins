@@ -141,6 +141,7 @@
 .tf-event-item__index { color: #fff; font-size: 12px; font-weight: 700; }
 .tf-event-item__meta { color: rgba(191,219,254,.85); font-size: 11px; }
 .tf-event-item__summary { color: rgba(220,238,255,.9); font-size: 12px; line-height: 1.5; }
+.tf-event-item__facts { color: rgba(191,219,254,.75); font-size: 11px; line-height: 1.5; margin-top: 2px; }
 .tf-progress-bar { width: 100%; height: 8px; border-radius: 4px; background: rgba(0,0,0,.35); overflow: hidden; margin: 6px 0; }
 .tf-progress-fill { height: 100%; background: linear-gradient(90deg, #7cb3ff, #4ade80); transition: width .3s; }
 .tf-tag { display: inline-block; padding: 2px 8px; border-radius: 10px; background: rgba(255,255,255,.1); color: rgba(220,238,255,.85); font-size: 11px; }
@@ -208,6 +209,22 @@
 .tf-role-detail-label { font-size: 10.5px; color: rgba(160,185,215,.75); margin-bottom: 3px; }
 .tf-role-detail-value { font-size: 12.5px; color: #eef5ff; line-height: 1.5; word-break: break-word; }
 .tf-collapse.open { max-height: 4000px; opacity: 1; }
+</style>
+
+<!-- 故事加载中遮罩（boot 进行时显示） -->
+<div id="tf-boot-overlay" style="display:none;position:fixed;inset:0;z-index:99999;background:rgba(8,24,43,.92);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);display:flex;align-items:center;justify-content:center;flex-direction:column;gap:14px;color:#eef5ff;font-family:system-ui,sans-serif;">
+  <div style="font-size:24px;font-weight:900;">⏳ 故事加载中</div>
+  <div id="tf-boot-stage" style="font-size:13px;color:rgba(191,219,254,.85);">检测会话状态…</div>
+  <div id="tf-boot-session" style="font-size:11px;color:rgba(160,185,215,.7);"></div>
+  <div style="display:flex;gap:4px;margin-top:6px;">
+    <span class="tf-boot-dot"></span><span class="tf-boot-dot"></span><span class="tf-boot-dot"></span>
+  </div>
+</div>
+<style>
+@keyframes tf-boot-bounce { 0%,80%,100% { opacity: .3; } 40% { opacity: 1; } }
+.tf-boot-dot { display:inline-block; width:6px; height:6px; border-radius:50%; background:#7cb3ff; animation: tf-boot-bounce 1.4s infinite; }
+.tf-boot-dot:nth-child(2) { animation-delay: .2s; }
+.tf-boot-dot:nth-child(3) { animation-delay: .4s; }
 </style>
 
 <!-- 底部触发器 -->
@@ -673,25 +690,40 @@
     var wb = (_story.worldbook && _story.worldbook.entries) || [];
     var introE = wb.find(function (e) { return /【简介】/.test(e.content || ''); });
     var bgE = wb.find(function (e) { return /【全局背景】/.test(e.content || ''); });
-    var chapterEs = wb.filter(function (e) { return e.strategy !== 'constant'; });
-    var curCh = chapterEs[0];
-    var curName = curCh ? curCh.name : '当前章节';
-    var opening = '', cond = '', entryCond = '';
-    if (curCh) {
-      var mo = (curCh.content || '').match(/【开场】(.+?)：([\s\S]*?)(?=\n\n|$)/);
-      if (mo) opening = mo[2].trim();
-      var mc = (curCh.content || '').match(/【完成条件】([\s\S]*?)(?=\n【|$)/);
-      if (mc) cond = mc[1].trim();
-      var me = (curCh.content || '').match(/【进入条件】([\s\S]*?)(?=\n【|$)/);
-      if (me) entryCond = me[1].trim();
-    }
+
+    // 当前章节：从 tf_story.edit.chapters 读（章节不再放世界书）
+    var prog = getProgressState();
+    var chapters = (_edit && _edit.chapters) || [];
+    var curIdx = Math.max(0, Math.min(prog.currentChapterIndex || 0, Math.max(chapters.length - 1, 0)));
+    var curCh = chapters[curIdx] || {};
+    var curName = curCh.title || '当前章节';
+    // 开场白：openingRole + openingLine（对齐 Toonflow chapterOpeningDisplay）
+    var openingRole = curCh.openingRole || '旁白';
+    var openingLine = curCh.openingLine || '';
+    var opening = openingLine ? (openingRole + '：' + openingLine) : '';
+    var cond = curCh.successCondition || '';
+    var entryCond = curCh.entryCondition || '';
+    // 章节状态（对齐 chapterStatusItems）
+    var statusItems = [
+      { label: '章节序号', value: String(curIdx + 1) },
+      { label: '完成条件', value: curCh.conditionVisible === false ? '隐藏' : '可见' },
+      { label: '章节状态', value: (prog.completedChapters || []).indexOf(curIdx) >= 0 ? '已完成' : '进行中' },
+    ];
+
     var h = '<div class="tf-card">';
-    h += '<div class="tf-card__text">故事背景：' + esc(bgE ? (bgE.content || '').replace('【全局背景】', '').trim() : '暂无世界背景') + '</div>';
     h += '<div class="tf-card__text">章节：' + esc(curName) + '</div>';
-    h += '<div class="tf-card__text">开场白：' + esc(opening || '（无）') + '</div>';
+    h += '<div class="tf-card__text">开场白：' + esc(opening || '无') + '</div>';
     h += '<div class="tf-card__text">章节编排：仅供编排师内部使用，游玩时不直接展示。</div>';
     h += '<div class="tf-card__text">章节进入条件：' + esc(entryCond || '无') + '</div>';
     h += '<div class="tf-card__text">章节完成条件：' + esc(cond || '无') + '</div>';
+    // 章节状态 chips
+    if (statusItems.length) {
+      h += '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;">';
+      statusItems.forEach(function (it) {
+        h += '<span class="tf-tag">' + esc(it.label) + '：' + esc(it.value) + '</span>';
+      });
+      h += '</div>';
+    }
     // 运行状态快照
     h += '<button class="tf-inline-toggle" data-toggle="__stateSnap"><span>运行状态快照</span><span>' + (_openSections.__stateSnap ? '收起 >' : '展开 >') + '</span></button>';
     h += '<div class="tf-collapse' + collapseOpen('__stateSnap') + '"><pre class="tf-state-pre">' + esc(stateSnapshotText()) + '</pre></div>';
@@ -765,7 +797,7 @@
       }
       // ### [状态] 事件名
       else if (/^###\s/.test(line) && currentPhase) {
-        var em = line.match(/^###\s+(?:(\[[\w\]]\s*)?(.+)/);
+        var em = line.match(/^###\s+(?:\[(\w)\]\s*)?(.+)/);
         if (em) {
           var stateMark = em[1] || '';
           var evtName = em[2].trim();
@@ -809,107 +841,87 @@
   function eventsHtml() {
     var h = '<div class="tf-card"><div class="tf-card__title">当前事件进度</div>';
 
-    // 章节进度条
     var prog = getProgressState();
     var chapters = (_edit && _edit.chapters) || [];
-    var curIdx = Math.max(0, Math.min(prog.currentChapterIndex || 0, chapters.length - 1);
+    var curIdx = Math.max(0, Math.min(prog.currentChapterIndex || 0, Math.max(chapters.length - 1, 0)));
     var curCh = chapters[curIdx] || {};
-    var curChapterContent = curCh.content || '';
     var cond = curCh.successCondition || '';
-    var total = chapters.length;
-    var completedCount = (prog.completedChapters || []).length;
 
-    // 章节进度条
-    if (total > 0) {
-      var pct = Math.round(completedCount / total * 100);
-      h += '<div class="tf-progress-bar" style="margin-bottom:8px;"><div class="tf-progress-fill" style="width:' + pct + '%"></div></div>';
+    // 顶部：当前事件目标（当前事件的 stage 链，带状态标记）
+    var phases = parseChapterPhases(curCh.content || '');
+    var curPhaseIdx = Math.max(0, prog.currentPhase || 0);
+    var curStageIdx = Math.max(0, prog.currentEvent || 0);
+    var curPhase = phases[curPhaseIdx];
+    if (curPhase && curPhase.events && curPhase.events.length) {
+      var stageChain = curPhase.events.map(function (ev, ei) {
+        var st = ei < curStageIdx ? 's' : (ei === curStageIdx ? 'i' : '');
+        return '[' + st + ']' + ev.name;
+      }).join(' -> ');
+      h += '<div class="tf-card__text">当前事件目标：' + esc(stageChain) + '</div>';
     }
 
-    // 当前章节信息
-    h += '<div class="tf-card__text" style="color:#a9ccff;font-size:11px;">章节 ' + (curIdx + 1) + '/' + total
-      + ' | 已完成 ' + completedCount + ' 章 | ' + esc(curCh.title || '?') + '</div>';
+    // 扁平事件列表（对齐 Toonflow chapterOutlineEventItems：## Phase = 一条事件）
+    var completedEvents = {};
+    ((prog.completedEvents || []) || []).forEach(function (id) { completedEvents[id] = true; });
+    var currentPhaseId = 'phase:' + curPhaseIdx;
 
-    // 完成条件
+    var h2 = '';
+    var hasVisible = false;
+    phases.forEach(function (phase, pi) {
+      if (/^非事件/.test(phase.name)) return; // 非事件段不进列表
+      hasVisible = true;
+      var isCurrent = (pi === curPhaseIdx) && !completedEvents['phase:' + pi];
+      var isCompleted = completedEvents['phase:' + pi] === true || pi < curPhaseIdx;
+      var statusLabel = isCompleted ? '已完成' : (isCurrent ? '进行中' : '未开始');
+      var statusColor = isCompleted ? '#4ade80' : (isCurrent ? '#fbbf24' : 'rgba(220,238,255,.45)');
+      // 事件摘要：stage 链（带状态标记）
+      var chain = (phase.events || []).map(function (ev, ei) {
+        var st = '';
+        if (isCompleted) st = 's';
+        else if (isCurrent) st = ei < curStageIdx ? 's' : (ei === curStageIdx ? 'i' : '');
+        return '[' + st + ']' + ev.name;
+      }).join(' -> ');
+
+      h2 += '<div class="tf-event-item"' + (isCurrent ? ' style="border-color:rgba(124,179,255,.45);"' : '') + '>'
+        + '<div class="tf-event-item__head">'
+        + '<span class="tf-event-item__index">事件 ' + (pi + 1) + '</span>'
+        + '<span class="tf-event-item__meta" style="color:' + statusColor + ';">章节内容 · 场景事件 · ' + statusLabel + '</span>'
+        + '</div>'
+        + '<div class="tf-event-item__summary">' + esc(chain || phase.name) + '</div>'
+        + '</div>';
+    });
+
+    // 末尾固定事件：结束条件检查（对齐 Toonflow chapter_ending_check）
     if (cond) {
-      h += '<div class="tf-card__text" style="color:rgba(220,238,255,.7);font-size:11px;">完成条件：' + esc(cond.slice(0, 100)) + '</div>';
+      var endActive = phases.length && curPhaseIdx >= phases.length;
+      h2 += '<div class="tf-event-item">'
+        + '<div class="tf-event-item__head">'
+        + '<span class="tf-event-item__index">事件 ' + (phases.length + 1) + '</span>'
+        + '<span class="tf-event-item__meta" style="color:rgba(191,219,254,.85);">结束条件检查 · 固定事件</span>'
+        + '</div>'
+        + '<div class="tf-event-item__summary">结束条件：' + esc(cond) + '</div>'
+        + '<div class="tf-event-item__facts"> 事实：成功条件：' + esc(cond) + '</div>'
+        + '</div>';
+      hasVisible = true;
     }
 
-    // 记忆 facts
-    var facts = [], summary = '', memPlayerItems = [], memSummary = '';
-    try {
-      var mem = readChatVar('tmm');
-      if (mem) {
-        facts = (mem.meta && mem.meta.facts) || [];
-        summary = (mem.meta && mem.meta.summary) || '';
-        var playerCard = mem.cards && mem.cards.player;
-        if (playerCard) {
-          memPlayerItems = (playerCard.items || []).slice(0, 5);
-          memSummary = summary;
-        }
-      }
-    } catch (e) {}
-
-    if (memSummary) {
-      h += '<div class="tf-card__text" style="color:#fbbf24;font-size:11px;">剧情记忆：' + esc(memSummary.slice(0, 100)) + '…</div>';
-    }
-
-    // Phase/Stage 进度（从章节内容解析）
-    var phases = parseChapterPhases(curChapterContent);
-    var curPhase = Math.max(0, prog.currentPhase || 0);
-    var curStage = Math.max(0, prog.currentEvent || 0);
-
-    if (phases.length) {
-      h += '<div style="margin-top:6px;">';
-      phases.forEach(function (phase, pi) {
-        var isCurrent = pi === curPhase;
-        var phaseState = isCurrent ? 'i' : (pi < curPhase ? 's' : '');
-        var phaseStateColor = STAGE_STATE_COLOR[phaseState] || 'rgba(220,238,255,.35)';
-        var stateIcon = phaseState === 's' ? '✅' : (phaseState === 'i' ? '⏳' : '⬜');
-        h += '<div style="margin-bottom:6px;">';
-        h += '<div class="tf-event-item" style="' + (isCurrent ? 'border-color:rgba(124,179,255,.4);' : '') + '">';
-        h += '<div class="tf-event-item__head" style="display:flex;align-items:center;gap:6px;">'
-          + '<span style="color:' + phaseStateColor + ';font-size:12px;">' + stateIcon + '</span>'
-          + '<span class="tf-event-item__index" style="color:' + phaseStateColor + ';">'
-          + esc(phase.name) + '</span>';
-        if (isCurrent) h += '<span class="tf-tag" style="background:rgba(251,191,36,.15);color:#fbbf24;">进行中</span>';
-        h += '</div>';
-
-        // Stage 列表（当前 Phase 展开）
-        if (phase.events && phase.events.length) {
-          h += '<div style="padding-left:10px;margin-top:4px;">';
-          phase.events.forEach(function (ev, ei) {
-            // Stage 状态判断
-            var evState = '';
-            if (phaseState === 's') evState = 's';
-            else if (isCurrent) {
-              evState = (ei < curStage) ? 's' : (ei === curStage ? 'i' : '');
-            }
-            var evColor = STAGE_STATE_COLOR[evState] || 'rgba(220,238,255,.35)';
-            var evIcon = evState === 's' ? '✅' : (evState === 'i' ? '▶' : '○');
-            h += '<div style="display:flex;align-items:center;gap:4px;padding:2px 0;font-size:11px;">'
-              + '<span style="color:' + evColor + '">' + evIcon + '</span>'
-              + '<span style="color:' + evColor + '">' + esc(ev.name) + '</span></div>';
-          });
-          h += '</div>';
-        }
-        h += '</div></div>';
-      });
-      h += '</div>';
-    } else if (facts.length) {
-      // 无章节内容时降级显示 facts
-      h += '<div class="tf-event-list">';
-      facts.slice(-5).forEach(function (f, i) {
-        h += '<div class="tf-event-item"><div class="tf-event-item__head"><span class="tf-event-item__index">事实 ' + (i + 1) + '</span></div>'
-          + '<div class="tf-event-item__summary">' + esc(f) + '</div></div>';
-      });
-      h += '</div>';
+    if (hasVisible) {
+      h += '<div class="tf-event-list">' + h2 + '</div>';
     } else {
       h += '<div class="tf-card__text" style="color:rgba(220,238,255,.5);">当前章节事件尚未生成。</div>';
     }
 
-    // 玩家物品
-    if (memPlayerItems.length) {
-      h += '<div style="margin-top:6px;font-size:11px;color:rgba(160,185,215,.7);">持有：' + esc(memPlayerItems.join(' · ')) + '</div>';
+    // 剧情记忆摘要（对齐 Toonflow memorySummary）
+    var facts = [], memSummary = '';
+    try {
+      var mem = readChatVar('tmm');
+      if (mem) {
+        facts = (mem.meta && mem.meta.facts) || [];
+        memSummary = (mem.meta && mem.meta.summary) || '';
+      }
+    } catch (e) {}
+    if (memSummary) {
+      h += '<div class="tf-card__text" style="color:#fbbf24;font-size:11px;margin-top:6px;">剧情记忆：' + esc(memSummary.slice(0, 120)) + '</div>';
     }
 
     h += '</div>';

@@ -483,16 +483,19 @@ def ensure_chapters(cfg, url, token, chat_id, name_to_id, dry, force_chapters):
     chapters.sort(key=lambda x: x[0])
     _, fname, chapter = chapters[0]
 
-    # 幂等：仅在群聊为空（或 --force-chapters）时生成，避免重复
+    # 不再自动生成开场消息：由 toonflow_story_event_manager 的 bootSequence 接管
+    # （playChapterOpening 按章节 openingLine 单独播报，避免重复 + 头像错配）
     if not dry:
         try:
             cnt = call(url, token, "tavo_message_count", {"chatId": chat_id})
             cur = (cnt.get("count") if isinstance(cnt, dict) else cnt) or 0
         except Exception:
             cur = 0
-        if cur > 0 and not force_chapters:
-            print("  [章节] 群聊已有 %d 条消息，跳过开场生成（--force-chapters 可重生成）" % cur)
-            return
+        if cur > 0:
+            print("  [章节] 群聊已有 %d 条消息，跳过开场生成" % cur)
+        else:
+            print("  [章节] 群聊为空，跳过自动开场（由插件 bootSequence 接管）")
+        return
 
     beats = parse_chapter_script(chapter.get("content", ""),
                                 chapter.get("openingText"),
@@ -591,9 +594,13 @@ def ensure_chapter_edit_variable(cfg, url, token, chat_id, dry):
             print("    ... 还有 %d 章" % (len(edit["chapters"]) - 3))
         return
     try:
+        # 双写：chat + global。global 写入不能带 chatId（带了会静默失败）。
+        # tavo_chat_reset 会清 chat scope，global 是重启后的恢复来源。
         call(url, token, "tavo_variable_set",
              {"scope": "chat", "chatId": chat_id, "name": "tf_story.edit", "value": edit})
-        print("  [章节变量] tf_story.edit 已写入 %d 章（含背景图引用）" % len(edit["chapters"]))
+        call(url, token, "tavo_variable_set",
+             {"scope": "global", "name": "tf_story.edit", "value": edit})
+        print("  [章节变量] tf_story.edit 已双写 chat+global（%d 章，含背景图引用）" % len(edit["chapters"]))
     except Exception as e:
         print("  [章节变量] 写入失败: %s" % e)
 

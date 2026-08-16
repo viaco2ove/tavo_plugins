@@ -266,6 +266,44 @@ function parseProgress(content) {
   return phases;
 }
 
+// 事件级推进（对齐 Toonflow event_progress_judge 的确定性规则）：
+// - 用户每次发言 -> 当前 stage 完成（currentEvent+1）
+// - 若消费后的下一个 stage 是「用户发言」，一并跳过（等待用户阶段已被这次发言满足）
+// - phase 事件全部完成 -> 进入下一 phase（跳过「非事件」段）
+// - 全 phase 完成 -> 停留在最后（章节结局判定器接管）
+function advanceEventProgress(progress) {
+  const phases = progress.phases || [];
+  if (!phases.length) return;
+  let pi = Math.max(0, progress.currentPhase || 0);
+  // 跳过非事件 phase
+  while (pi < phases.length && /^非事件/.test(phases[pi].name || '')) pi++;
+  if (pi >= phases.length) return;
+  progress.currentPhase = pi;
+  const phase = phases[pi];
+  const events = phase.events || [];
+  if (!events.length) return;
+  let ei = Math.max(0, progress.currentEvent || 0);
+  // 当前 stage 完成
+  ei += 1;
+  // 连续「用户发言」消费：发言后若下一 stage 也是用户发言节点，视为此前已满足，跳过
+  while (ei < events.length && /用户发言/.test(events[ei].name || '')) ei += 1;
+  if (ei >= events.length) {
+    // 本 phase 完成 -> 下一 phase（跳过非事件段）
+    let np = pi + 1;
+    while (np < phases.length && /^非事件/.test(phases[np].name || '')) np++;
+    progress.currentPhase = np;
+    progress.currentEvent = 0;
+    // 新 phase 的第一个 stage 若是「用户发言」也消费掉（用户刚说完话）
+    const nEvents = (phases[np] && phases[np].events) || [];
+    let ne = 0;
+    while (ne < nEvents.length && /用户发言/.test(nEvents[ne].name || '')) ne++;
+    progress.currentEvent = ne;
+  } else {
+    progress.currentEvent = ei;
+  }
+  progress.updatedAt = Date.now();
+}
+
 // =========================================================================
 // 故事进度推进
 // =========================================================================
@@ -325,6 +363,9 @@ async function judgeAndAdvance(messageContext) {
     progress.currentEvent = 0;
     progress.chaptersKey = chapters.length + ':' + idx;
   }
+  advanceEventProgress(progress);
+  // 事件推进结果必须落盘（即使章节未完成，面板也要显示最新 stage 状态）
+  setProgress(progress);
 
   // 收集判定上下文
   const ctx = {
@@ -447,11 +488,287 @@ function isValidChapter(ch) {
 }
 
 // =========================================================================
-// Hooks
+// Boot Controller（启动控制器）-- 完全接管官方启动行为
 // =========================================================================
+// 五种会话状态（对齐你的设计）：
+//   uninitialized       - 首次打开聊天，静态数据全空（global 也没有）
+//   reset               - 重启聊天（global 有数据，chat 为空）
+//   resumption_start    - 继聊开始（chat 有消息，boot 序列启动）
+//   data_loaded         - 数据已加载（静态恢复 + 动态重建完成）
+//   ready               - 数据已加载 + 开场白已播报，编排可接管
+// 流程：
+//   uninitialized | reset | resumption_start -> 加载数据 -> data_loaded -> 播开场白 -> ready
+// 任何阶段失败/未 ready 时阻断官方自动发言
+const BOOT_NS = 'tf_story.boot';
+const BOOT_STAGES = ['uninitialized', 'reset', 'resumption_start', 'data_loaded', 'ready'];
+let _bootState = 'uninitialized'; // 内存态镜像
+let _bootGuard = 0;              // 并发保护
+let _bootStage = '';              // 当前阶段文字描述（给 UI 显示）
+
+function readBoot() {
+  const v = readVarAnyScope(BOOT_NS);
+  return (v && typeof v === 'object') ? v : { status: 'uninitialized', chatId: null, openedAt: 0, openingDone: false, stage: 'uninitialized' };
+}
+function writeBoot(b) {
+  // boot 状态必须写 global scope，否则 tavo_chat_reset 后丢失，无法感知「已就绪」
+  try { tavo.set(BOOT_NS, b, 'global'); } catch (e) {}
+  // 同时写 chat scope 用于 hot read
+  try { tavo.set(BOOT_NS, b, 'chat'); } catch (e) {}
+  _bootState = b.status || 'uninitialized';
+  _bootStage = b.stage || b.status || '';
+}
+
+// 通知 htmlFragment 更新加载遮罩（如果已挂载）
+function notifyBootStage(stage, detail) {
+  try {
+    var el = document.getElementById('tf-boot-stage');
+    if (el) el.textContent = detail || stage;
+    var se = document.getElementById('tf-boot-session');
+    if (se && stage) se.textContent = '会话：' + stage;
+    var overlay = document.getElementById('tf-boot-overlay');
+    if (overlay) overlay.style.display = (stage === 'ready') ? 'none' : 'flex';
+  } catch (e) {}
+}
+
+// 恢复静态数据：global -> chat（tavo_chat_reset 清了 chat，global 是权威备份）
+function restoreStaticData() {
+  let restored = false;
+  const names = [NS + '.edit', 'tmm_story_static'];
+  for (const name of names) {
+    try {
+      // chat 里还有就跳过（正常续玩）
+      const cv = readChatVar(name);
+      if (cv && typeof cv === 'object' && Object.keys(cv).length) continue;
+      // 从 global 恢复
+      const gv = (() => {
+        try {
+          let g = tavo.get(name, 'global');
+          let guard = 0;
+          while (g && typeof g === 'object' && g.found !== undefined && 'value' in g && guard < 5) { g = g.value; guard++; }
+          return g;
+        } catch (e) { return null; }
+      })();
+      if (gv && typeof gv === 'object' && Object.keys(gv).length) {
+        tavo.set(name, gv, 'chat');
+        restored = true;
+      }
+    } catch (e) {}
+  }
+  return restored;
+}
+
+// 重建动态数据（对齐 Toonflow「重启聊天 = 动态数据重新生成」）：
+// tf_progress 若丢失 -> 按静态章节重新生成；tmm 记忆丢失 -> 重新初始化
+function rebuildDynamicData() {
+  let rebuilt = false;
+  // tf_progress
+  let prog = readVarAnyScope(PROGRESS_NS);
+  const edit = readVarAnyScope(NS + '.edit') || defaultEditData();
+  const chapters = edit.chapters || [];
+  if (!prog || typeof prog !== 'object' || !Array.isArray(prog.completedChapters)) {
+    prog = defaultProgress();
+    if (chapters.length) prog.phases = parseProgress(chapters[0].content || '');
+    setProgress(prog);
+    rebuilt = true;
+  } else if (!prog.phases || !prog.phases.length) {
+    // 进度在但 phases 空（换章后）-> 重新解析当前章节
+    const idx = Math.min(prog.currentChapterIndex || 0, Math.max(chapters.length - 1, 0));
+    if (chapters[idx]) {
+      prog.phases = parseProgress(chapters[idx].content || '');
+      prog.currentPhase = 0;
+      prog.currentEvent = 0;
+      setProgress(prog);
+      rebuilt = true;
+    }
+  }
+  return rebuilt;
+}
+
+// 官方劫持检测：boot ready 之前落地的 assistant 消息 = 官方自动开场发言 -> 删
+async function purgeOfficialHijack() {
+  try {
+    const count = await tavo.message.count();
+    if (!count) return 0;
+    const msgs = await tavo.message.find([0, Math.min(count, 20) - 1]);
+    let deleted = 0;
+    for (const m of (msgs || [])) {
+      if (m && m.role === 'assistant' && !(m.hidden)) {
+        // 只删 boot 期间产生的（boot 标记存在之前的旧消息不动）
+        const boot = readBoot();
+        if (boot.status === 'ready' && boot.openingDone) break; // 已就绪：不删
+        try { await tavo.message.delete(m.id); deleted++; } catch (e) {}
+      }
+    }
+    return deleted;
+  } catch (e) { return 0; }
+}
+
+// 播报章节开场白（对齐 Toonflow introduction 流程）：
+// 优先按 chat.characters 查找 role 对应的 characterId；
+// 旁白匹配专用的"旁白"角色（story_sync 创建的 id）防 fallback 到第一个 NPC。
+async function playChapterOpening() {
+  try {
+    const edit = getEdit();
+    const chapters = edit.chapters || [];
+    if (!chapters.length) return false;
+    const progress = getProgress();
+    const idx = Math.min(progress.currentChapterIndex || 0, chapters.length - 1);
+    const ch = chapters[idx];
+    if (!ch || !ch.openingLine) return false;
+    const role = ch.openingRole || '旁白';
+
+    // 开场白标记（防重复播报）
+    const boot = readBoot();
+    if (boot.openingDone) return false;
+
+    // 按角色名在 chat 里找 characterId；旁白/通用则精确匹配
+    let characterId;
+    try {
+      const chat = await tavo.chat.current();
+      const chars = chat.characters || [];
+      const hit = chars.find(c => c.name === role)
+        || chars.find(c => c.name === '旁白') // 兜底：用专门的"旁白"角色
+        || null;
+      if (hit) characterId = hit.id;
+    } catch (e) {}
+
+    await tavo.message.append({
+      role: 'assistant',
+      characterId,
+      content: ch.openingLine,
+      hidden: false,
+    });
+    // 标记开场白已播（状态由 bootSequence 最终统一写入 ready）
+    boot.openingDone = true;
+    boot.currentChapterIndex = idx;
+    writeBoot(boot);
+    return true;
+  } catch (e) {
+    console.warn('[tf_story] playChapterOpening failed', e);
+    return false;
+  }
+}
+
+// 完整 Boot 序列（5 阶段：uninitialized/reset/resumption_start -> data_loaded -> ready）
+async function bootSequence() {
+  const myGuard = ++_bootGuard;
+  let chatId = null;
+  try { const c = await tavo.chat.current(); chatId = c && c.id; } catch (e) {}
+
+  // 0) 立刻切到 natural 模式 + 清空 overrideScenario，阻断官方 scenario 默认开场
+  try {
+    await tavo.chat.update({ responseMode: 'natural', overrideScenario: '' });
+  } catch (e) {}
+
+  const boot = readBoot();
+  // 1) 判定会话类型（首次 vs 重启 vs 继聊）
+  let count = 0;
+  try { count = await tavo.message.count(); } catch (e) {}
+  let sessionStage;
+  if (count === 0) {
+    // global 是否有数据判定 uninitialized vs reset
+    const gv = (() => { try { let g = tavo.get('tf_story.edit', 'global'); let i=0; while (g && typeof g==='object' && 'value' in g && i<5){g=g.value;i++;} return g; } catch(e){return null;} })();
+    sessionStage = (gv && typeof gv === 'object' && Array.isArray(gv.chapters) && gv.chapters.length) ? 'reset' : 'uninitialized';
+  } else {
+    sessionStage = 'resumption_start';
+  }
+
+  writeBoot({
+    status: 'loading',
+    stage: sessionStage,
+    chatId,
+    openedAt: Date.now(),
+    openingDone: false,
+    sessionType: sessionStage,
+  });
+  notifyBootStage(sessionStage, '检测会话：' + sessionStage);
+
+  // 2) 加载静态数据（global -> chat）
+  const restored = restoreStaticData();
+  notifyBootStage('data_loaded', '恢复静态数据' + (restored ? '（global -> chat）' : '（无 global 备份）'));
+
+  // 3) 重建动态数据
+  const rebuilt = rebuildDynamicData();
+
+  // 4) 若不是继聊：清掉官方劫持的首条发言
+  if (sessionStage !== 'resumption_start') {
+    const purged = await purgeOfficialHijack();
+    if (purged > 0) console.log('[tf_story] purged official hijack messages:', purged);
+  }
+
+  // 5) 标记 data_loaded（静态 + 动态数据已就位）
+  writeBoot({
+    status: 'loading',
+    stage: 'data_loaded',
+    chatId,
+    openedAt: Date.now(),
+    openingDone: false,
+    sessionType: sessionStage,
+    restored,
+    rebuilt,
+  });
+  notifyBootStage('data_loaded', '数据已加载，准备开场白…');
+
+  // 6) 播报开场白（非继聊场景）
+  if (sessionStage !== 'resumption_start') {
+    _bootState = 'opening';
+    await playChapterOpening();
+  }
+
+  // 7) 进入 ready（编排插件接管 scenario 的前提）
+  const finalBoot = {
+    status: 'ready',
+    stage: 'ready',
+    chatId,
+    openedAt: Date.now(),
+    openingDone: (sessionStage === 'resumption_start'),
+    sessionType: sessionStage,
+    restored,
+    rebuilt,
+    readyAt: Date.now(),
+  };
+  writeBoot(finalBoot);
+  _bootState = 'ready';
+  notifyBootStage('ready', '故事已就绪');
+  // 短暂保留遮罩一帧再隐藏（避免闪烁）
+  setTimeout(function () { notifyBootStage('ready', ''); }, 400);
+
+  console.log('[tf_story] boot ready:', JSON.stringify({ sessionType: sessionStage, restored, rebuilt, count }));
+
+  // 8) 应用编排模式（编排插件会自己再确认 boot ready）
+  await applyOrchestrationMode();
+  return sessionStage;
+}
+
+// boot 未就绪时拦截所有生成（阻止官方开场白/第一个角色自动发言）
+tavo.plugin.on('generation:prepare', async (event) => {
+  if (_bootState !== 'ready') {
+    // boot 未完成：把请求文本置空阻断（tavo 会忽略无效文本继续，但至少不注入编排上下文）
+    try { event.text = ''; } catch (e) {}
+  }
+});
+
+// 官方首条消息落地即删（message:added 里做二次保险）
+tavo.plugin.on('message:added', async (event) => {
+  const msg = event && event.message;
+  if (!msg || msg.role !== 'assistant') return;
+  const boot = readBoot();
+  // boot ready 且开场白已播 -> 正常消息
+  if (boot.status === 'ready' && boot.openingDone) return;
+  // 否则视为官方劫持 -> 删除
+  // 但要小心：我们自己的 playChapterOpening 也会 append assistant 消息，
+  // 用 openingDone 标记区分（playChapterOpening append 前先标记后写入会来不及，
+  // 所以 append 前先把内存 _bootState 设为 opening）
+  if (_bootState === 'opening') return; // 自己的开场白
+  try {
+    await tavo.message.delete(msg.id);
+    console.log('[tf_story] deleted official hijack message', msg.id);
+  } catch (e) {}
+});
 
 tavo.plugin.on('chat:opened', async () => {
-  await applyOrchestrationMode();
+  // Boot 序列接管：数据恢复 -> 官方劫持清理 -> 开场白 -> 编排应用
+  await bootSequence();
 
   // 章节修复（仅补全缺失字段，绝不清空/丢弃已有章节 —— 静态故事数据受保护）
   const cur = getEdit();
@@ -483,10 +800,13 @@ tavo.plugin.on('chat:opened', async () => {
   setProgress(progress);
 });
 
-// 判定器入口：每轮对话后评估章节结局
+// 判定器入口：每轮对话后评估章节结局（仅 boot ready 后生效）
 tavo.plugin.on('message:added', async (event) => {
   if (!event || !event.message) return;
   if (event.message.role !== 'user') return; // 只在用户发言后判定
+  // boot 未完成时不判定（避免官方劫持阶段误判）
+  const boot = readBoot();
+  if (!boot || boot.status !== 'ready' || !boot.openingDone) return;
   try {
     let count = 0;
     try { count = await tavo.message.count(); } catch (e) {}
