@@ -1,8 +1,7 @@
 # 项目长期记忆（tavo_plugins）
 
 ## tavo MCP 推送流程（Toonflow-game 故事）
-- 连接配置在 `tavo_plugins/.env`：`tavo_mcp_url` / `tavo_mcp_toekn`（注意键名是 **toekn** 拼写）。
-- tavo 是移动端 App（iOS/Android），开发者 Bitbear Limited；文档仅提到 "Dart"（格式转换层），未提及 Flutter。需「设置 → MCP Server → 启用」才会监听端口（7347）。**手机 IP 随 WiFi 变化**：换网后先 `adb shell ip addr show wlan0 | grep inet` 查当前 IP，再更新 `.env` 的 `tavo_mcp_url`。曾用过 10.10.2.208（公司段）/ 192.168.31.219（家庭段）。
+- 连接配置在 `tavo_plugins/.env`：`tavo_mcp_url` / `tavo_mcp_toekn`（注意键名是 **toekn** 拼写）。`.env` 主配（未注释）= **手机** `http://192.168.1.23:7347/mcp` + token `3ts67a`；注释行 `127.0.0.1:7347` + `34rxzr` = **AVD 模拟器**本机 ADB 通道。**手机与模拟器是两个独立 tavo 实例，chat id 不通用**：手机上故事《谁让这个山大王修仙的》= **chat 8**（12 NPC id 7-18 + persona 3）；模拟器上同名故事 = chat 2（NPC id 25-36 + persona 2）。**推送/上传必须对 `.env` 主配的目标实例**，别误连模拟器把数据上错地方。手机 IP 随 WiFi 变化：曾用 10.10.2.208（公司段）/ 192.168.31.219（家庭段）/ 192.168.1.23（当前）。换网后先 `adb shell ip addr show wlan0 | grep inet` 查 IP 再改 `.env`。
 - 推送脚本：`tavo_plugins/.cache/story/<故事名>/push_to_tavo.py`，支持 `--check`(连通自检) / `--dry`(dryRun 预演) / 正式推送；角色+世界书均先 search 复用、否则 create，**可安全重跑不重复**。
 - **tavo 字段约定（务必遵守）**：
   - chat 对象用 camelCase：`characterIds`、`lorebookIds`、`responseMode`(enum natural/everyone/manual/scenario)、`title`(或 name 别名)。
@@ -42,6 +41,29 @@
   1. 世界知识 Agent 设计：`toonflow-game-app\md\curr_design\剧情编排\自由模式\世界书\复刻酒馆\世界知识_agent.md`
   2. Toonflow-game 提示词库（多 Agent 编排）：`toonflow-game-app\src\lib\fixDB.prompts.ts`
 
-### 关键设计约束（来自两份参考，设计 tavo_plugins 必须遵守）
+## 章节背景图业务（chapters_import.py 已落地）
+- **根因澄清**：章节 JSON 里 `backgroundPrompt` 是 AI 生图提示词（调 `tavo_image_generate`），**不是**图片路径；`background` 字段是源 JSON 里指向本地缓存图的路径（如 `image/bg.jpg`）。`chapters_import.py` 旧代码把 `backgroundPrompt` 当字符串塞进 `background` → 面板把提示词当图路径。
+- **正确流程（已写入 `script/tavo_mcp_use/chapters_import.py`）**：
+  - `--bg auto`（默认）：优先上传本地 `background`/约定 `image/<base>_background.<ext>` 图（`tavo_file_save` → `files/<scope>/<name>`）；本地没有才调 `tavo_image_generate` 生图。
+  - `--bg local`：只上传本地图；`--bg generate`：只 AI 生图；`--bg skip`：不动背景。
+  - `--bg-scope {chat,global}`（默认 chat）；`--force-bg` 强制重传/重生；`--dry` 纯本地预览（不联网）。
+  - 失败绝不崩：生图端点不可用时告警并继续（auto 回退本地），绝不把提示词当路径写进去。
+- **⚠️ tavo 图像端点当前不可用**：`tavo_image_generate` 在 AVD 实例返回 `500: Unsupported resource type: imageEndpoint`（服务端没配图像生成后端）。要在代码里启用 AI 生图，需先在 tavo App 开启/配置图像生成；在那之前 `--bg generate` 会失败，`--bg auto` 自动回退本地上传（现在就能出真实背景）。
+- 落库：`background` 写 `files/chat/<name>` 虚拟路径，面板可渲染；`backgroundPrompt` 原样保留。
+
+## 连接/通道与 chat 编号（实测，2026-08-16）
+- **本机 ADB 通道比 WiFi IP 更稳**：`.env` 主配 `192.168.1.23:7347`(家庭段, token `3ts67a`) 经常 502（手机不在该 WiFi）；注释里的 `127.0.0.1:7347` + token `34rxzr` 走 ADB 端口转发，只要 `adb` 转发在、tavo App 开着就通。脚本可用 `--url http://127.0.0.1:7347/mcp --token 34rxzr` 覆盖 `.env` 跑，无需改 `.env`。
+- **故事聊天是 chat 2（id=2）**，名「谁让这个山大王修仙的！ · 第1章」。用户口中的「chat 8」在当前实例不存在（`Resource not found`）——应是记混或属于另一个不可达实例（192.168.1.23 现在 502）。凡涉及该故事，默认操作 chat 2。
+- `tavo_chat_list` 工具**不存在**（报 Method not found），查 chat 用 `tavo_chat_search`/`tavo_chat_get`。
+- `tavo_chat_reset` 会清 chat 作用域变量（`tf_story.edit` 等）——所以 `chapters_import`/`build_static` 对关键变量双写 global+chat，且 `tmm_story_static` 走 global 受保护；但 `files/chat/*` 背景图若用 chat 作用域，reset 后文件可能丢（路径字符串仍在，图裂）。要更抗 reset 用 `--bg-scope global`。
+
+### 插件发布到 hub（不是 MCP，是独立脚本）
+- **发布机制在 `script/tavo_pluginhub/pluginhub.py`**，对接 `https://hub.tavo.cc/api/v1/creator/plugins`（hub 网页版 `hub.tavoai.dev`）。**MCP 没有发布/hub 工具**（只有 install/package/set_enabled 等本地管理），所以"发布到 hub"必须走这个脚本，别在 MCP 工具里找。
+- 认证：`.env` 的 `sid=xxx`（从 hub.tavoai.dev 登录后取；当前 `sid=3f164505-cf78-4aed-9572-a4da480f310c`）。
+- 流程：先把插件打包成 `.tpg`（zip 即 .tpg，可用 `plugin_install.build_zip` 或 `tavo_plugin_package`，但后者 sourcePath 必须是手机端目录、传本机路径报 Invalid params）；再 `pluginhub.py list` 查已发布 `_id`；已存在走 `update <_id> <tpg>`（check-package+publish 两步），不存在走 `publish <tpg>`（id 已存在会报 package_id_taken）。
+- 注意 Python 传参必须用 Windows 路径（`D:/...` 或 `D:\...`），不能用 Git Bash 的 `/d/...`，否则 FileNotFoundError。
+- 已发布清单（2026-08-16）：multi-character-stage/style/speaker/event-manager/memory-manager 5 个；eruda 调试面板未发布。event-manager 现 published v1.3.4。
+
+## 关键设计约束（来自两份参考，设计 tavo_plugins 必须遵守）
 1. **世界知识 = 上下文注入，不是脚本章节**：worldbook entry 只把 `content` 发给模型；`title`/`keys`/`category`/`order`/`agentList` 仅用于匹配筛选+前端展示。`agentList` 控制注入范围（空或含"all"=全 Agent 可见；填具体 Agent Key=只发给该 Agent）。注入引擎逻辑：constant 全收；非 constant 按 `keys` 匹配 scanText + category 白名单 + token 预算截断。→ tavo lorebook 的 `keywords` 对应 Toonflow 的 `keys`；**绝不要把"所有 keyword entry"当章节脚本自动推进**（这是之前 toonflow_story_event_manager 污染聊天的根因）。
 2. **多 Agent 剧情编排模式（fixDB.prompts.ts）**：总调度 story_main / 编排师 story_orchestrator(NPC优先) / 发言器 story_speaker / 记忆管理器 story_memory / 章节判定 story_chapter / 事件进度 story_event_progress / 小游戏解析 / 意图分析 intent_analyzer / 任务编排 task_director+task_speaker。**NPC优先原则**：优先 NPC 或万能角色发言推进，旁白只做场景描述/时间流转/技能说明。万能角色不能替代列表里已存在的具体角色；`@角色名`=指名编排该角色发言。数值(hp/mp/exp/level)必须纯数字，禁止中文替代。
