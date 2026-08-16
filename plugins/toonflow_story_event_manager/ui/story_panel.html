@@ -276,6 +276,15 @@
           '- @记忆管理 更新所有人的当前行为',
           '- @记忆管理 我到达了宗门',
           '- @事件进度检测 下个事件',] },
+    { title: '插件代码', lines: [
+      'https://github.com/viaco2ove/tavo_plugins.git',
+            '- 故事demo',
+            '- toonflow 插件',
+            '- 调试 插件 webview',
+            '- mcp 安装插件',
+            '- mcp 安装故事',
+            '- mcp 功能大全',
+    ] },
     { title: '怎么写章节内容', lines: [
       '把这一章真正会发生的内容写在这里，例如场景变化、人物行动、冲突推进、用户会被要求做什么。',
       '对白请直接写成"@角色名：台词"，旁白也一样，例如"@旁白：乌坦城的风沙停了下来"。',
@@ -831,32 +840,61 @@
   }
 
   async function loadEdit() {
-    // 优先读已保存的 chat 变量（章节独立管理）；务必先解包 Tavo 的 {found,value} 包装
+    // 优先读已保存变量（global → chat）。tavo_chat_reset 后 chat 清空，但 global 仍在。
     var saved = null;
     try { saved = readVarAnyScope(STORY_NS + '.edit'); } catch (e) {}
-    if (saved && typeof saved === 'object') {
+    if (saved && typeof saved === 'object' && (saved.chapters || saved.intro || saved.globalBackground)) {
       _edit = saved;
       if (!_edit.chapters) _edit.chapters = [];
       if (_edit.lineCount == null || _edit.lineCount === '') _edit.lineCount = 20;
       if (!_edit.orchestration) _edit.orchestration = 'plugin';
-      // 注意：这里【绝不】调用 saveEditVar()，避免把读到的真实配置又用默认覆盖写回
       return;
     }
 
-    // 没读到任何已保存配置：仅在内存里用默认填充，等待用户真正编辑后才落库。
-    // 这样即使读变量失败，也不会把真实配置（若后续能被读到）清空。
+    // 兜底1：世界书 entry 「章节备份」（tavo global 大 object 写不进去，世界书是最后防线）
     _edit = defaultEdit();
-    var entries = (_story.worldbook && _story.worldbook.entries) || [];
-    entries.forEach(function (e) {
-      var c = e.content || '';
-      var mi = c.match(/^【简介】([\s\S]*?)(?=\n【|$)/); if (mi) _edit.intro = mi[1].trim();
-      var mb = c.match(/^【全局背景】([\s\S]*?)(?=\n【|$)/); if (mb) _edit.globalBackground = mb[1].trim();
-    });
+    var wbEntries = (_story.worldbook && _story.worldbook.entries) || [];
+    var backEntry = wbEntries.filter(function (e) { return e.name === '章节备份' || e.name === '静态数据'; })[0];
+    if (backEntry && backEntry.content) {
+      var c = backEntry.content;
+      var mi = c.match(/【简介】\s*([\s\S]*?)(?=\s*【全局背景】|$)/);
+      if (mi) _edit.intro = mi[1].trim();
+      var mb = c.match(/【全局背景】\s*([\s\S]*?)(?=\s*===\s|$)/);
+      if (mb) _edit.globalBackground = mb[1].trim();
+      // 解析章节：每章以 "=== 标题 ===" 起头
+      var creg = /===\s+([^=\n]+?)\s+===\s*\n\[openingRole:\s*([^\]]*)\]\s*\n\[openingLine:\s*([^\]]*)\]\s*\n\[successCondition:\s*([^\]]*)\][\s\S]*?(?====\s|$)/g;
+      var m;
+      while ((m = creg.exec(c)) !== null) {
+        _edit.chapters.push({
+          title: m[1].trim(),
+          openingRole: m[2].trim() || '旁白',
+          openingLine: m[3].trim(),
+          successCondition: m[4].trim(),
+          background: '', content: '', conditionVisible: true,
+          entryCondition: '', musicAutoPlay: false,
+        });
+      }
+    }
+    // 兜底2：简介/全局背景从「故事简介」「全局背景」单条 entry 读
+    if (!_edit.intro) {
+      var introE = wbEntries.filter(function (e) { return e.name === '故事简介' || /【简介】/.test(e.name); })[0];
+      if (introE) {
+        var m2 = (introE.content || '').match(/【简介】\s*([\s\S]*?)(?=\s*【|$)/);
+        if (m2) _edit.intro = m2[1].trim();
+      }
+    }
+    if (!_edit.globalBackground) {
+      var bgE = wbEntries.filter(function (e) { return e.name === '全局背景' || /【全局背景】/.test(e.name); })[0];
+      if (bgE) {
+        var m3 = (bgE.content || '').match(/【全局背景】\s*([\s\S]*?)(?=\s*【|$)/);
+        if (m3) _edit.globalBackground = m3[1].trim();
+      }
+    }
+
     if (!_edit.chapters.length) {
       _edit.chapters = [{ title: '第 1 章', openingRole: '旁白', openingLine: '', background: '', content: '', successCondition: '', conditionVisible: true, entryCondition: '', musicAutoPlay: false }];
     }
     if (_editChapter >= _edit.chapters.length) _editChapter = 0;
-    // 不自动 saveEditVar()
   }
 
   function saveEditVar() {

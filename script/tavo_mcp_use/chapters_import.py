@@ -74,13 +74,30 @@ def rpc(url, token, method, arguments, timeout=120):
 
 
 def var_get(url, token, chat_id, name):
+    # 优先 global（tavo_chat_reset 不影响），回退 chat scope
+    try:
+        r = rpc(url, token, "tavo_variable_get", {"scope": "global", "name": name})
+        v = r.get("value", r) if isinstance(r, dict) else None
+        if isinstance(v, dict) and v.get("chapters") is not None:
+            return v
+    except Exception:
+        pass
     r = rpc(url, token, "tavo_variable_get", {"scope": "chat", "chatId": chat_id, "name": name})
     return r.get("value") if isinstance(r, dict) and "value" in r else (r or {})
 
 
 def var_set(url, token, chat_id, name, value):
-    return rpc(url, token, "tavo_variable_set",
-               {"scope": "chat", "chatId": chat_id, "name": name, "value": value})
+    """双写：global + chat scope。tavo_chat_reset 会清 chat，但 global 不受影响。"""
+    r1 = r2 = None
+    try:
+        r1 = rpc(url, token, "tavo_variable_set", {"scope": "global", "name": name, "value": value})
+    except Exception as e:
+        r1 = {"__error": str(e)}
+    try:
+        r2 = rpc(url, token, "tavo_variable_set", {"scope": "chat", "chatId": chat_id, "name": name, "value": value})
+    except Exception as e:
+        r2 = {"__error": str(e)}
+    return {"global": r1, "chat": r2}
 
 
 def load_chapters(story_dir):

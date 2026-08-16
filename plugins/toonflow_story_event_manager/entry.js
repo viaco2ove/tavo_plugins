@@ -34,6 +34,33 @@ function readChatVar(name) {
   } catch (e) { return null; }
 }
 
+// 读变量（先 global 后 chat）：tavo_chat_reset 会清 chat scope，但 global scope 不受影响。
+// 故事数据（tf_story.edit / tf_progress）必须双写到 global 才能抗 reset。
+function readVarAnyScope(name) {
+  // 1) global scope
+  try {
+    let g;
+    if (typeof tavo.get === 'function') {
+      // tavo.get(name, scope) -> {name,found,value}
+      try { g = tavo.get(name, 'global'); } catch (e) { g = null; }
+      if (g && typeof g === 'object' && 'value' in g && g.found === false) g = null;
+      if (g && typeof g === 'object' && 'value' in g) g = g.value;
+    }
+    if (g !== null && g !== undefined) return g;
+  } catch (e) {}
+  // 2) chat scope
+  return readChatVar(name);
+}
+
+// 写变量：双写 chat + global，确保 reset 后仍能恢复
+function writeVarDual(name, value) {
+  let ok = false;
+  try { tavo.set(name, value, 'chat'); ok = true; } catch (e) {}
+  // global scope：去掉 chat 专属后缀，写同名变量
+  try { tavo.set(name, value, 'global'); } catch (e) {}
+  return ok;
+}
+
 // ---------- 编排插件检测 ----------
 // 实测：tavo.plugin.search 不带 query 时会返回空列表，**不能**因为"查不到"就判定未安装
 // —— 那会把 tf_story.edit.orchestration 的默认值错设成 'system'（跟随系统，插件不接管）。
@@ -264,7 +291,7 @@ function getProgress() {
 }
 
 function setProgress(p) {
-  try { tavo.set(PROGRESS_NS, p, 'chat'); return true; } catch (e) { return false; }
+  try { writeVarDual(PROGRESS_NS, p); return true; } catch (e) { return false; }
 }
 
 // 评估每条用户消息对当前章节的影响
@@ -409,7 +436,7 @@ function getEdit() {
   return (v && typeof v === 'object') ? v : defaultEditData();
 }
 function setEdit(edit) {
-  try { tavo.set(NS + '.edit', edit, 'chat'); return true; } catch (e) { return false; }
+  try { writeVarDual(NS + '.edit', edit); return true; } catch (e) { return false; }
 }
 
 function isValidChapter(ch) {
