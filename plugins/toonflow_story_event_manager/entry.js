@@ -652,90 +652,85 @@ async function playChapterOpening() {
 // 完整 Boot 序列（5 阶段：uninitialized/reset/resumption_start -> data_loaded -> ready）
 async function bootSequence() {
   const myGuard = ++_bootGuard;
+  console.log('[tf_story][boot] start, myGuard=' + myGuard);
   let chatId = null;
-  try { const c = await tavo.chat.current(); chatId = c && c.id; } catch (e) {}
+  try { const c = await tavo.chat.current(); chatId = c && c.id; console.log('[tf_story][boot] chatId=' + chatId); } catch (e) { console.warn('[tf_story][boot] chat.current failed', e); }
 
   // 0) 立刻切到 natural 模式 + 清空 overrideScenario，阻断官方 scenario 默认开场
   try {
     await tavo.chat.update({ responseMode: 'natural', overrideScenario: '' });
-  } catch (e) {}
+    console.log('[tf_story][boot] step0 natural mode set');
+  } catch (e) { console.warn('[tf_story][boot] step0 chat.update failed', e); }
 
   const boot = readBoot();
-  // 1) 判定会话类型（首次 vs 重启 vs 继聊）
   let count = 0;
-  try { count = await tavo.message.count(); } catch (e) {}
-  let sessionStage;
-  if (count === 0) {
-    // global 是否有数据判定 uninitialized vs reset
-    const gv = (() => { try { let g = tavo.get('tf_story.edit', 'global'); let i=0; while (g && typeof g==='object' && 'value' in g && i<5){g=g.value;i++;} return g; } catch(e){return null;} })();
-    sessionStage = (gv && typeof gv === 'object' && Array.isArray(gv.chapters) && gv.chapters.length) ? 'reset' : 'uninitialized';
-  } else {
-    sessionStage = 'resumption_start';
-  }
+  try { count = await tavo.message.count(); console.log('[tf_story][boot] message count=' + count); } catch (e) { console.warn('[tf_story][boot] count failed', e); }
 
-  writeBoot({
-    status: 'loading',
-    stage: sessionStage,
-    chatId,
-    openedAt: Date.now(),
-    openingDone: false,
-    sessionType: sessionStage,
-  });
+  // 关键判定：必须根据「boot 全局状态」+ 「global 数据」+ 「当前消息数」三方面综合判断
+  // 之前只按 count==0 判定 reset 是错的——tavo 自动开场会插一条消息
+  let sessionStage;
+  const gv = (() => { try { let g = tavo.get('tf_story.edit', 'global'); let i=0; while (g && typeof g==='object' && 'value' in g && i<5){g=g.value;i++;} return g; } catch(e){return null;} })();
+  const globalHasData = (gv && typeof gv === 'object' && Array.isArray(gv.chapters) && gv.chapters.length);
+  const bootIsFresh = (boot.status === 'uninitialized' && !boot.chatId);
+  const bootIsCurrent = (boot.chatId === chatId && boot.status === 'ready');
+
+  if (!globalHasData) {
+    // global 都没有数据 -> 全新故事
+    sessionStage = 'uninitialized';
+  } else if (bootIsFresh) {
+    // global 有数据，但 boot 标记是 uninitialized（重启了 tavo_chat_reset）
+    sessionStage = 'reset';
+  } else if (bootIsCurrent && count > 0) {
+    // boot 已就绪且是这个 chat，且有消息 -> 继聊
+    sessionStage = 'resumption_start';
+  } else if (bootIsCurrent && count === 0) {
+    // boot 已就绪但消息被清空（手动 reset）-> 视作 reset
+    sessionStage = 'reset';
+    // 强制把 boot 状态回滚到 uninitialized 以便后续正确重播开场白
+    writeBoot({ status: 'uninitialized', stage: 'uninitialized', chatId: null, openedAt: 0, openingDone: false });
+  } else if (count === 0) {
+    // global 有数据，消息为空（reset 后首次进入）
+    sessionStage = 'reset';
+  } else {
+    // global 有数据，boot 状态异常（比如 plugin 卸载过 / 数据迁移）但消息存在 -> 也算 reset 重置
+    sessionStage = 'reset';
+  }
+  console.log('[tf_story][boot] sessionStage=' + sessionStage + ' globalHasData=' + !!globalHasData + ' bootIsFresh=' + bootIsFresh + ' bootIsCurrent=' + bootIsCurrent);
+
+  writeBoot({ status: 'loading', stage: sessionStage, chatId, openedAt: Date.now(), openingDone: false, sessionType: sessionStage });
   notifyBootStage(sessionStage, '检测会话：' + sessionStage);
 
-  // 2) 加载静态数据（global -> chat）
   const restored = restoreStaticData();
-  notifyBootStage('data_loaded', '恢复静态数据' + (restored ? '（global -> chat）' : '（无 global 备份）'));
+  console.log('[tf_story][boot] restored=' + restored);
+  notifyBootStage(sessionStage, '恢复静态数据' + (restored ? '（global -> chat）' : '（无 global 备份）'));
 
-  // 3) 重建动态数据
   const rebuilt = rebuildDynamicData();
+  console.log('[tf_story][boot] rebuilt=' + rebuilt);
 
-  // 4) 若不是继聊：清掉官方劫持的首条发言
   if (sessionStage !== 'resumption_start') {
     const purged = await purgeOfficialHijack();
-    if (purged > 0) console.log('[tf_story] purged official hijack messages:', purged);
+    if (purged > 0) console.log('[tf_story][boot] purged ' + purged + ' official hijack');
   }
 
-  // 5) 标记 data_loaded（静态 + 动态数据已就位）
-  writeBoot({
-    status: 'loading',
-    stage: 'data_loaded',
-    chatId,
-    openedAt: Date.now(),
-    openingDone: false,
-    sessionType: sessionStage,
-    restored,
-    rebuilt,
-  });
+  writeBoot({ status: 'loading', stage: 'data_loaded', chatId, openedAt: Date.now(), openingDone: false, sessionType: sessionStage, restored, rebuilt });
   notifyBootStage('data_loaded', '数据已加载，准备开场白…');
 
-  // 6) 播报开场白（非继聊场景）
   if (sessionStage !== 'resumption_start') {
     _bootState = 'opening';
-    await playChapterOpening();
+    try {
+      const played = await playChapterOpening();
+      console.log('[tf_story][boot] playChapterOpening result=' + played);
+    } catch (e) { console.warn('[tf_story][boot] playChapterOpening failed', e); }
   }
 
-  // 7) 进入 ready（编排插件接管 scenario 的前提）
-  const finalBoot = {
-    status: 'ready',
-    stage: 'ready',
-    chatId,
-    openedAt: Date.now(),
-    openingDone: (sessionStage === 'resumption_start'),
-    sessionType: sessionStage,
-    restored,
-    rebuilt,
-    readyAt: Date.now(),
-  };
+  const finalBoot = { status: 'ready', stage: 'ready', chatId, openedAt: Date.now(), openingDone: (sessionStage === 'resumption_start'), sessionType: sessionStage, restored, rebuilt, readyAt: Date.now() };
   writeBoot(finalBoot);
   _bootState = 'ready';
   notifyBootStage('ready', '故事已就绪');
-  // 短暂保留遮罩一帧再隐藏（避免闪烁）
   setTimeout(function () { notifyBootStage('ready', ''); }, 400);
 
-  console.log('[tf_story] boot ready:', JSON.stringify({ sessionType: sessionStage, restored, rebuilt, count }));
+  console.log('[tf_story][boot] DONE sessionType=' + sessionStage + ' restored=' + restored + ' rebuilt=' + rebuilt);
 
-  // 8) 应用编排模式（编排插件会自己再确认 boot ready）
   await applyOrchestrationMode();
   return sessionStage;
 }
