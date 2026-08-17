@@ -43,21 +43,30 @@ def rpc(http_url, token, method, arguments, timeout=120):
         sys.exit("MCP 连接失败: %s" % e)
     if "error" in body:
         sys.exit("MCP Error: %s" % body["error"])
-    return body.get("result", {})
+    raw = body.get("result", {})
+    # MCP 返回 {content: [{text: '{"path': 'files/chat/...', ...}] 包裹，解开
+    try:
+        content = raw.get("content", [])
+        if content and isinstance(content, list):
+            inner = json.loads(content[0].get("text", "{}"))
+            return inner
+    except Exception:
+        pass
+    return raw
 
-def file_save(http_url, token, name, local_path, scope="chat"):
+def file_save(http_url, token, chat_id, chat_id, name, local_path, scope="chat"):
     if not os.path.isfile(local_path):
         return None
     with open(local_path, "rb") as f:
         data_b64 = base64.b64encode(f.read()).decode()
     res = rpc(http_url, token, "tavo_file_save", {
-        "name": name, "content": data_b64,
+        "chatId": chat_id, "name": name, "content": data_b64,
         "options": {"scope": scope, "encoding": "base64"}})
-    return res.get("path") or res.get("name")
+    return res.get("path") or res.get("name") or ""
 
-def variable_set(http_url, token, name, value, scope="chat"):
+def variable_set(http_url, token, chat_id, name, value, scope="chat"):
     rpc(http_url, token, "tavo_variable_set",
-        {"scope": scope, "name": name, "value": value})
+        {"scope": scope, "chatId": chat_id, "name": name, "value": value})
 
 def main(http_url, token, story_dir, chat_id, force):
     ex_avatars = os.path.join(story_dir, "ex", "avatars")
@@ -105,7 +114,7 @@ def main(http_url, token, story_dir, chat_id, force):
                 continue
             key = fname.replace(".png", "").replace("_bg", "").replace("_cover", "").replace("_background", "")
             dest = "chapter_bg_%s.png" % key
-            saved = file_save(http_url, token, dest, os.path.join(image_dir, fname), "chat")
+            saved = file_save(http_url, token, chat_id, dest, os.path.join(image_dir, fname), "chat")
             if saved:
                 chapter_bgs[key] = saved
                 print("  [%s] -> %s" % (fname, saved))
@@ -115,7 +124,7 @@ def main(http_url, token, story_dir, chat_id, force):
     for cand in ["cover.jpg", "bg.jpg"]:
         p = os.path.join(image_dir, cand)
         if os.path.isfile(p):
-            saved = file_save(http_url, token, "fallback_bg.jpg", p, "chat")
+            saved = file_save(http_url, token, chat_id, "fallback_bg.jpg", p, "chat")
             if saved:
                 fallback_bg = saved
                 print("  [fallback] %s -> %s" % (cand, saved))
@@ -143,7 +152,7 @@ def main(http_url, token, story_dir, chat_id, force):
             src_path = os.path.join(ex_dir, src) if os.path.isdir(ex_dir) else None
             if src_path and os.path.isfile(src_path):
                 dest = "%s_%s%s" % (prefix, tavo_id, ext)
-                s = file_save(http_url, token, dest, src_path, "chat")
+                s = file_save(http_url, token, chat_id, dest, src_path, "chat")
                 if s:
                     entry["fg"] = s
                     saved_fg = s
@@ -153,7 +162,7 @@ def main(http_url, token, story_dir, chat_id, force):
         # 第三兜底：旧版大头像
         if not saved_fg and os.path.isfile(old_path):
             dest = "sprite_fg_%s.png" % tavo_id
-            s = file_save(http_url, token, dest, old_path, "chat")
+            s = file_save(http_url, token, chat_id, dest, old_path, "chat")
             if s:
                 entry["fg"] = s
                 print("  [%s] old_avatar.png (fallback) -> %s" % (char_name, s))
@@ -162,7 +171,7 @@ def main(http_url, token, story_dir, chat_id, force):
         bg_src = os.path.join(ex_dir, "background.png") if os.path.isdir(ex_dir) else None
         if bg_src and os.path.isfile(bg_src):
             dest = "sprite_bg_%s.png" % tavo_id
-            s = file_save(http_url, token, dest, bg_src, "chat")
+            s = file_save(http_url, token, chat_id, dest, bg_src, "chat")
             if s:
                 entry["bg"] = s
                 print("  [%s] bg -> %s" % (char_name, s))
@@ -176,14 +185,14 @@ def main(http_url, token, story_dir, chat_id, force):
 
     # 写变量
     if sprites_by_name:
-        variable_set(http_url, token, "tf_sprites",
+        variable_set(http_url, token, chat_id, "tf_sprites",
             {"byName": sprites_by_name, "byId": sprites_by_id}, "chat")
         print("tf_sprites 写入 (%d 角色)" % len(sprites_by_name))
     if chapter_bgs:
-        variable_set(http_url, token, "tf_chapter_backgrounds", chapter_bgs, "chat")
+        variable_set(http_url, token, chat_id, "tf_chapter_backgrounds", chapter_bgs, "chat")
         print("tf_chapter_backgrounds 写入 (%d)" % len(chapter_bgs))
     if fallback_bg:
-        variable_set(http_url, token, "tf_sprite_fallback_bg", fallback_bg, "chat")
+        variable_set(http_url, token, chat_id, "tf_sprite_fallback_bg", fallback_bg, "chat")
         print("tf_sprite_fallback_bg 写入: " + fallback_bg)
 
     print("\n=== 完成 ===")

@@ -1,0 +1,56 @@
+{
+  "id": "npc_6",
+  "roleType": "npc",
+  "name": "陆青山",
+  "description": "主角出生入死的兄弟，核心盟友。\n\n宗门长老，为人正直，被主角救过命。\n\n在主角卷入栽赃陷害阴谋时，主角曾保护他。\n\n**性别**：男\n**年龄**：40 岁左右\n**性格**：正直、重情义、果断、有担当\n**外貌**：中年男子，穿着长老服饰，面容刚毅，留着短须\n**音色特点**：洪亮的中年男声，有威严\n**技能**：高阶剑法、长老权限、宗门阵法\n**物品**：长老令牌、丹药若干\n**装备**：长老服饰、宝剑\n**等级**：25 级\n**境界**：金丹 5 层\n**血量**：500\n**蓝量**：500\n**金钱**：较多灵石",
+  "avatarImagePrompt": "",
+  "attributes": {},
+  "voiceMode": "prompt_voice",
+  "voicePromptText": "中年男声,洪亮有威严,刚毅沉稳,语速稳健,长者气势,正气担当",
+  "parameterCardJson": {
+    "name": "陆青山",
+    "raw_setting": "主角出生入死的兄弟，核心盟友。宗门长老，为人正直，被主角救过命。在主角卷入栽赃陷害阴谋时，主角曾保护他。",
+    "gender": "男",
+    "age": 40,
+    "level": 25,
+    "level_desc": "金丹5层",
+    "personality": "正直、重情义、果断、有担当",
+    "appearance": "中年男子，穿着长老服饰，面容刚毅，留着短须",
+    "voice": "洪亮的中年男声，有威严",
+    "skills": [
+      "高阶剑法",
+      "长老权限",
+      "宗门阵法"
+    ],
+    "items": [
+      "长老令牌",
+      "丹药若干"
+    ],
+    "equipment": [
+      "长老服饰",
+      "宝剑"
+    ],
+    "hp": 500,
+    "mp": 500,
+    "money": 0,
+    "other": [],
+    "roleType": "npc",
+    "information": "主角出生入死的核心盟友，曾被主角相救，在主角遭遇栽赃陷害时受过主角保护，身为宗门长老立场正直重情义",
+    "role_key_information": "主角出生入死的核心盟友，曾被主角相救，在主角遭遇栽赃陷害时受过主角保护，身为宗门长老立场正直重情义",
+    "exp": 0,
+    "next_level_exp": 2500
+  },
+  "avatarSourcePath": "/1/game/world-copy/41/aeabdd93-efac-4f6b-b903-c740446e_fe02f3eecaf4.png",
+  "avatarPath": "/1/game/world-copy/41/0d60e964-a7ea-4264-9aef-53cf6d42_0ff4c3c175ae.webp",
+  "avatarBgPath": "/1/game/world-copy/41/37509b6f-1bd6-4aac-ad6c-841f1349_9d9d46539a6b.png",
+  "voiceMixVoices": [],
+  "voice": "提示词：中年男声,洪亮有威严,刚",
+  "voicePresetId": "",
+  "voiceReferenceAudioPath": "/1/game/world-copy/41/prompt_voice_eb84e1d6f47881b1_9d1db9624d15.wav",
+  "voiceReferenceAudioName": "prompt_voice_eb84e1d6f47881b1.wav",
+  "voiceReferenceText": "恭喜，已成功复刻并合成了属于自己的声音。现在，请保持自然、清晰、稳定的语气，完整读出这段固定示例文本，用于校验音色、节奏与发音质量。愿这份新的声音陪伴你进入故事，清楚表达每一句话，也让角色在之后的对话中拥有稳定、真实、可辨识的声音表现。",
+  "voiceGeneratedDownloadUrl": "http://122.51.232.171/voice/audioProxy?configId=63&source=%2Fuser%2F1%2Fgame%2Fvoice-preview%2F107e74a5-c900-4249-b2b7-d141c40a9800.wav&token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MSwibmFtZSI6ImFkbWluIiwiaWF0IjoxNzgzNTA5OTUxLCJleHAiOjE3OTkwNjE5NTF9.3_uUmkUDlw_w_3VbBp0WcgQ8kFHPCWzGmjtv0y1yU8A",
+  "avatarVideoPath": "/1/game/world-copy/41/b4f40057-ca66-46b7-96a0-f5a5a74c_8a4fc53c5499.mp4",
+  "avatarFirstFramePath": "/1/game/world-copy/41/659aaf55-8550-4546-ac06-01cf3db7_73449b56f6c0.png",
+  "avatarDurationMs": 5056
+}

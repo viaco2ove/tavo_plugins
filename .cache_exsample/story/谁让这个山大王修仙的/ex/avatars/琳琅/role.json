@@ -1,0 +1,55 @@
+{
+  "id": "npc_7",
+  "roleType": "npc",
+  "name": "琳琅",
+  "description": "圣地圣女，眼馋主角实力，自愿当压寨夫人。\n\n性格高冷，但被主角的\"匪道\"吸引。\n\n后期重要女性角色之一。\n\n**性别**：女\n**年龄**：20 岁左右\n**性格**：高冷、骄傲、有主见、被主角吸引\n**外貌**：绝美女子，穿着白色或银色圣女服饰，气质出尘\n**音色特点**：清冷的女声，带有圣地威严\n**技能**：圣地功法、圣女特权\n**物品**：圣女令牌、圣地宝物\n**装备**：圣女服饰、法宝\n**等级**：35 级\n**境界**：元婴 5 层\n**血量**：600\n**蓝量**：600\n**金钱**：大量灵石",
+  "avatarImagePrompt": "",
+  "attributes": {},
+  "voiceMode": "prompt_voice",
+  "voicePromptText": "女声，清冷高傲，圣女气质，威严疏离，语速偏慢",
+  "parameterCardJson": {
+    "name": "琳琅",
+    "raw_setting": "圣地圣女，眼馋主角实力，自愿当压寨夫人。性格高冷，但被主角的\"匪道\"吸引，后期重要女性角色之一。",
+    "gender": "女",
+    "age": 20,
+    "level": 35,
+    "level_desc": "元婴5层",
+    "personality": "高冷、骄傲、有主见、被主角吸引",
+    "appearance": "绝美女子，穿着白色或银色圣女服饰，气质出尘",
+    "voice": "清冷的女声，带有圣地威严，音色清冷高傲，具备圣女气质",
+    "skills": [
+      "圣地功法",
+      "圣女特权"
+    ],
+    "items": [
+      "圣女令牌",
+      "圣地宝物"
+    ],
+    "equipment": [
+      "圣女服饰",
+      "法宝"
+    ],
+    "hp": 600,
+    "mp": 600,
+    "money": 0,
+    "other": [],
+    "roleType": "npc",
+    "information": "圣地圣女，自愿成为主角的压寨夫人，是故事后期重要女性角色",
+    "role_key_information": "圣地圣女，自愿成为主角的压寨夫人，是故事后期重要女性角色",
+    "exp": 0,
+    "next_level_exp": 3500
+  },
+  "avatarSourcePath": "/1/game/world-copy/41/c7926712-6e49-42a2-bb33-03756fbb_7e3b4f1e4f30.png",
+  "avatarPath": "/1/game/world-copy/41/e93292a4-77b6-4c5d-bb25-41492fdd_11d1c4e722ed.webp",
+  "avatarBgPath": "/1/game/world-copy/41/8ee09ac9-8585-4178-ba08-5b2a8c11_28f7d19dcb4f.png",
+  "voiceMixVoices": [],
+  "voice": "提示词：女声，清冷高傲，圣女气质",
+  "voicePresetId": "",
+  "voiceReferenceAudioPath": "/1/game/world-copy/41/prompt_voice_0260379b535cc510_67786cf8b0a9.wav",
+  "voiceReferenceAudioName": "prompt_voice_0260379b535cc510.wav",
+  "voiceReferenceText": "恭喜，已成功复刻并合成了属于自己的声音。现在，请保持自然、清晰、稳定的语气，完整读出这段固定示例文本，用于校验音色、节奏与发音质量。愿这份新的声音陪伴你进入故事，清楚表达每一句话，也让角色在之后的对话中拥有稳定、真实、可辨识的声音表现。",
+  "voiceGeneratedDownloadUrl": "http://122.51.232.171/voice/audioProxy?configId=63&source=%2Fuser%2F1%2Fgame%2Fvoice-preview%2F89a6a505-2690-46c8-9f3e-56c3d99c9e11.wav&token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MSwibmFtZSI6ImFkbWluIiwiaWF0IjoxNzgzNTA5OTUxLCJleHAiOjE3OTkwNjE5NTF9.3_uUmkUDlw_w_3VbBp0WcgQ8kFHPCWzGmjtv0y1yU8A",
+  "avatarVideoPath": "/1/game/world-copy/41/31dd9680-c993-4e47-9c38-994e440f_ce2b7942c2bb.mp4",
+  "avatarFirstFramePath": "/1/game/world-copy/41/64605527-4a18-4096-83fd-baf471f7_b53cd05bd010.png",
+  "avatarDurationMs": 5008
+}

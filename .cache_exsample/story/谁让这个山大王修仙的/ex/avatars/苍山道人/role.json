@@ -1,0 +1,56 @@
+{
+  "id": "npc_9",
+  "roleType": "npc",
+  "name": "苍山道人",
+  "description": "后期登场的对手，第 260-308 章出现。\n\n与殿主失踪阴谋相关。\n\n实力强大，立场不明。\n\n**性别**：男\n**年龄**：60 岁左右\n**性格**：神秘、强大、立场不明\n**外貌**：老年男子，穿着青色道袍，面容严肃\n**音色特点**：低沉的老年男声，有威严\n**技能**：高阶功法、阵法、殿主权限\n**物品**：殿主令牌、神秘宝物\n**装备**：青色道袍、法宝\n**等级**：55 级\n**境界**：炼虚 5 层\n**血量**：1000\n**蓝量**：1000\n**金钱**：未知",
+  "avatarImagePrompt": "",
+  "attributes": {},
+  "voiceMode": "prompt_voice",
+  "voicePromptText": "老年男声,低沉,威严,神秘,沉稳,缓慢",
+  "parameterCardJson": {
+    "name": "苍山道人",
+    "raw_setting": "后期登场的对手，第260-308章出现。与殿主失踪阴谋相关。实力强大，立场不明。性别：男，年龄：60岁左右，性格：神秘、强大、立场不明，外貌：老年男子，穿着青色道袍，面容严肃，音色特点：低沉的老年男声，有威严，技能：高阶功法、阵法、殿主权限，物品：殿主令牌、神秘宝物，装备：青色道袍、法宝，等级：55级，境界：炼虚5层，血量：1000，蓝量：1000，金钱：未知",
+    "gender": "男",
+    "age": 60,
+    "level": 55,
+    "level_desc": "炼虚5层",
+    "personality": "神秘、强大、立场不明",
+    "appearance": "老年男子，穿着青色道袍，面容严肃",
+    "voice": "低沉的老年男声，有威严",
+    "skills": [
+      "高阶功法",
+      "阵法",
+      "殿主权限"
+    ],
+    "items": [
+      "殿主令牌",
+      "神秘宝物"
+    ],
+    "equipment": [
+      "青色道袍",
+      "法宝"
+    ],
+    "hp": 1000,
+    "mp": 1000,
+    "money": 0,
+    "other": [],
+    "roleType": "npc",
+    "information": "后期登场的对手，与殿主失踪阴谋相关，实力强大立场不明",
+    "role_key_information": "后期登场的对手，与殿主失踪阴谋相关，实力强大立场不明",
+    "exp": 0,
+    "next_level_exp": 5500
+  },
+  "avatarSourcePath": "/1/game/world-copy/41/1a73c021-56a2-4134-a7e8-df7cc193_67173176a5e7.png",
+  "avatarPath": "/1/game/world-copy/41/d08adbde-a6df-434d-9009-43fc9694_b0884c2fbb4f.webp",
+  "avatarBgPath": "/1/game/world-copy/41/229f5584-bb46-49b9-85f0-01bd40ed_3bbcadb77aa2.png",
+  "voiceMixVoices": [],
+  "voice": "提示词：老年男声,低沉,威严,神",
+  "voicePresetId": "",
+  "voiceReferenceAudioPath": "/1/game/world-copy/41/prompt_voice_87780e257ed794b0_7186a4fb3246.wav",
+  "voiceReferenceAudioName": "prompt_voice_87780e257ed794b0.wav",
+  "voiceReferenceText": "恭喜，已成功复刻并合成了属于自己的声音。现在，请保持自然、清晰、稳定的语气，完整读出这段固定示例文本，用于校验音色、节奏与发音质量。愿这份新的声音陪伴你进入故事，清楚表达每一句话，也让角色在之后的对话中拥有稳定、真实、可辨识的声音表现。",
+  "voiceGeneratedDownloadUrl": "http://122.51.232.171/voice/audioProxy?configId=63&source=%2Fuser%2F1%2Fgame%2Fvoice-preview%2F4f0cd2d6-25aa-41ad-924e-1d76e3f22cdf.wav&token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MSwibmFtZSI6ImFkbWluIiwiaWF0IjoxNzgzNTA5OTUxLCJleHAiOjE3OTkwNjE5NTF9.3_uUmkUDlw_w_3VbBp0WcgQ8kFHPCWzGmjtv0y1yU8A",
+  "avatarVideoPath": "/1/game/world-copy/41/407bc8e9-4a83-4836-af7e-a7e67163_5ecb6bbf1b1a.mp4",
+  "avatarFirstFramePath": "/1/game/world-copy/41/ae5be74c-bc02-4db9-8aac-a5ef06af_3246c4ece3bc.png",
+  "avatarDurationMs": 5008
+}
