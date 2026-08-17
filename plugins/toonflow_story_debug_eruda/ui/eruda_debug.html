@@ -11,7 +11,7 @@
       s.textContent = ERUDA_SRC;
       (targetDoc.head || targetDoc.documentElement).appendChild(s);
       var s2 = targetDoc.createElement('script');
-      s2.textContent = "try{if(window.eruda){window.eruda.init({tool:['console','elements','network','resources','info','snippets']});window.eruda.show();}}catch(e){console.error('[eruda-debug] init fail',e);}";
+      s2.textContent = "try{if(window.eruda){window.eruda.init({tool:['console','elements','network','resources','info','snippets']});window.eruda.hide();}}catch(e){console.error('[eruda-debug] init fail',e);}";
       (targetDoc.head || targetDoc.documentElement).appendChild(s2);
       console.log('[eruda-debug] injected into ' + label);
     } catch(e) {

@@ -54,7 +54,7 @@ def rpc(http_url, token, method, arguments, timeout=120):
         pass
     return raw
 
-def file_save(http_url, token, chat_id, chat_id, name, local_path, scope="chat"):
+def file_save(http_url, token, chat_id, name, local_path, scope="chat"):
     if not os.path.isfile(local_path):
         return None
     with open(local_path, "rb") as f:
@@ -67,6 +67,17 @@ def file_save(http_url, token, chat_id, chat_id, name, local_path, scope="chat")
 def variable_set(http_url, token, chat_id, name, value, scope="chat"):
     rpc(http_url, token, "tavo_variable_set",
         {"scope": scope, "chatId": chat_id, "name": name, "value": value})
+
+def search_character(http_url, token, name):
+    """按名字搜索角色，返回 id 或 None"""
+    res = rpc(http_url, token, "tavo_character_search", {"query": name, "match": "exact", "limit": 3})
+    items = res.get("items") or res.get("characters") or []
+    if isinstance(items, list):
+        for it in items:
+            if it.get("name") == name:
+                return it.get("id")
+    return None
+
 
 def main(http_url, token, story_dir, chat_id, force):
     ex_avatars = os.path.join(story_dir, "ex", "avatars")
@@ -85,13 +96,18 @@ def main(http_url, token, story_dir, chat_id, force):
 
     persona = config.get("persona", {})
     pname = persona.get("name", "")
-    if persona.get("toonflow_id"):
-        char_map[pname] = str(persona["toonflow_id"])
+    tid = persona.get("toonflow_id")
+    if not tid and pname:
+        tid = search_character(http_url, token, pname)
+    if tid and pname:
+        char_map[pname] = str(tid)
         role_types[pname] = "player"
 
     for c in config.get("characters", []):
         name = c.get("name", "")
         tid = c.get("toonflow_id")
+        if not tid and name:
+            tid = search_character(http_url, token, name)
         if tid and name:
             char_map[name] = str(tid)
             role_types[name] = c.get("roleType", "npc")
