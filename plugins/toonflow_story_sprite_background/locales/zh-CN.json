@@ -1,0 +1,14 @@
+{
+  "plugin.name": "Toonflow-立绘背景",
+  "plugin.description": "在 tavo 聊天页复刻 Toonflow-game 的 LayeredAvatar 立绘效果：章节场景背景 + 角色前景立绘。",
+  "sidebar.toggle": "立绘开关",
+  "sidebar.bind": "立绘绑定",
+  "settings.info": "立绘插件：在聊天页渲染章节背景 + 角色前景立绘。请先通过 MCP 脚本上传立绘图片，再在此绑定角色。",
+  "settings.enabled": "启用立绘",
+  "settings.showForNarrator": "旁白也显示立绘",
+  "settings.useAvatarAsSprite": "无立绘时用角色头像替代",
+  "settings.backgroundMode": "背景模式",
+  "settings.fgBottom": "立绘距底部距离",
+  "settings.fgWidth": "立绘宽度",
+  "settings.fgHeight": "立绘高度"
+}

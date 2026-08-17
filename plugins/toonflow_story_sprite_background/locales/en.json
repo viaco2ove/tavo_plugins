@@ -1,0 +1,14 @@
+{
+  "plugin.name": "Toonflow-Sprite Background",
+  "plugin.description": "Render chapter backgrounds and character foreground sprites in tavo chat page.",
+  "sidebar.toggle": "Sprite Toggle",
+  "sidebar.bind": "Sprite Bindings",
+  "settings.info": "Sprite plugin: renders chapter background + character sprite. Upload sprites via MCP script first, then bind roles here.",
+  "settings.enabled": "Enable Sprites",
+  "settings.showForNarrator": "Show sprite for narrator",
+  "settings.useAvatarAsSprite": "Use avatar as fallback sprite",
+  "settings.backgroundMode": "Background Mode",
+  "settings.fgBottom": "Sprite bottom offset",
+  "settings.fgWidth": "Sprite width",
+  "settings.fgHeight": "Sprite height"
+}

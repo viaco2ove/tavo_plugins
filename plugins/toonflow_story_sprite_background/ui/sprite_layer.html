@@ -1,0 +1,418 @@
+<!-- toonflow_story_sprite_background - 立绘层（两层：背景 + 前景） -->
+<style>
+/* ===== 立绘根层 ===== */
+#tf-sprite-layer {
+  position: fixed;
+  left: 0; right: 0; top: 0; bottom: 0;
+  pointer-events: none;
+  z-index: 0;
+  display: none; /* 默认隐藏，由 JS 按需显示 */
+}
+#tf-sprite-layer.visible { display: block; }
+
+/* ===== 背景层 ===== */
+#tf-sprite-bg-wrap {
+  position: absolute; inset: 0; z-index: 1;
+  /* 背景 fallback 链: 1)章节背景图 2)cover.jpg 3)深色渐变 */
+  background: linear-gradient(160deg, #1a0a2e 0%, #16213e 40%, #0f3460 70%, #1a0a2e 100%);
+}
+.tf-sprite-bg {
+  width: 100%; height: 100%;
+  object-fit: cover;
+  opacity: 1;
+  transition: opacity 0.5s ease;
+}
+
+/* ===== 前景立绘层 ===== */
+#tf-sprite-fg-wrap {
+  position: absolute;
+  left: 50%;
+  bottom: 80px;
+  transform: translateX(-50%);
+  z-index: 2;
+  pointer-events: none;
+}
+.tf-sprite-fg {
+  display: block;
+  object-fit: contain;
+  object-position: center bottom;
+  filter: drop-shadow(0 10px 30px rgba(0,0,0,0.35));
+  opacity: 1;
+  transition: opacity 0.4s ease;
+}
+.tf-sprite-fg.hidden { opacity: 0; }
+
+/* ===== 叠加模式（both）下层氛围图 ===== */
+#tf-sprite-atmo-wrap {
+  position: absolute; inset: 0; z-index: 1;
+  opacity: 0;
+  transition: opacity 0.5s ease;
+}
+.tf-sprite-atmo { width: 100%; height: 100%; object-fit: cover; }
+
+/* ===== 绑定编辑器面板 ===== */
+.tf-sprite-bind-card {
+  padding: 12px;
+  border-radius: 14px;
+  background: rgba(8,24,43,.96);
+  border: 1px solid rgba(166,188,218,.2);
+  margin-top: 10px;
+}
+.tf-sprite-bind-row {
+  display: grid;
+  grid-template-columns: 80px 1fr 1fr 60px;
+  gap: 6px;
+  align-items: center;
+  padding: 6px 0;
+  border-bottom: 1px solid rgba(166,188,218,.1);
+}
+.tf-sprite-bind-row:last-child { border-bottom: none; }
+.tf-sprite-bind-role { font-size: 12px; color: #e8f2ff; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.tf-sprite-bind-input {
+  background: rgba(12,21,35,.55);
+  border: 1px solid rgba(188,204,226,.2);
+  border-radius: 6px;
+  color: #e8f2ff;
+  font-size: 11px;
+  padding: 4px 6px;
+  width: 100%;
+  box-sizing: border-box;
+}
+.tf-sprite-bind-input:focus { outline: none; border-color: rgba(124,179,255,.6); }
+.tf-sprite-bind-del {
+  background: rgba(239,68,68,.2); border: 1px solid rgba(239,68,68,.4);
+  color: #fecaca; border-radius: 6px; font-size: 11px; cursor: pointer; padding: 4px 8px;
+}
+.tf-sprite-bind-add {
+  background: rgba(124,179,255,.85); border: none;
+  color: #081222; border-radius: 8px; font-size: 12px; cursor: pointer;
+  padding: 6px 12px; margin-top: 8px; width: 100%; font-weight: 700;
+}
+.tf-sprite-bind-add:hover { filter: brightness(1.1); }
+.tf-sprite-bind-hint { font-size: 11px; color: rgba(160,185,215,.6); margin-bottom: 6px; }
+</style>
+
+<!-- 立绘渲染层 -->
+<div id="tf-sprite-layer">
+  <!-- 背景层（章节场景或角色氛围） -->
+  <div id="tf-sprite-bg-wrap">
+    <img id="tf-sprite-bg" class="tf-sprite-bg" src="" alt="chapter background" />
+  </div>
+  <!-- 叠加模式下层角色氛围图 -->
+  <div id="tf-sprite-atmo-wrap">
+    <img id="tf-sprite-atmo" class="tf-sprite-atmo" src="" alt="character atmosphere" />
+  </div>
+  <!-- 前景立绘层 -->
+  <div id="tf-sprite-fg-wrap">
+    <img id="tf-sprite-fg" class="tf-sprite-fg" src="" alt="character sprite" />
+  </div>
+</div>
+
+<!-- 绑定编辑器面板（藏在 sheet 底部，供 HTML 片段渲染） -->
+<div id="tf-sprite-bind-editor" style="display:none;padding:8px;">
+  <div class="tf-sprite-bind-hint">填写 files/chat/ 下的图片路径，或点击「上传立绘」由 MCP 脚本自动绑定。</div>
+  <div id="tf-sprite-bind-list"></div>
+  <button class="tf-sprite-bind-add" id="tf-sprite-bind-add-btn">＋ 添加角色绑定</button>
+</div>
+
+<script>
+(function () {
+  var NS = 'tf_sprites';
+  var CFG_NS = 'tf_sprite_config';
+  var BG_NS = 'tf_chapter_backgrounds';
+
+  // ===== 变量读取 =====
+  function unwrap(v) {
+    if (!v) return null;
+    var guard = 0;
+    while (v && typeof v === 'object' && v.found !== undefined && 'value' in v && guard < 5) {
+      v = v.value; guard++;
+    }
+    return v;
+  }
+  function readVar(name, scope) {
+    try {
+      var r = scope ? tavo.get(name, scope) : tavo.get(name);
+      return unwrap(r);
+    } catch(e) { return null; }
+  }
+  function writeVar(name, val, scope) {
+    try { tavo.set(name, val, scope || 'chat'); return true; } catch(e) { return false; }
+  }
+
+  // ===== 配置读写 =====
+  function cfg(key, fb) {
+    try {
+      var v = tavo.plugin.config.get(key);
+      return (v === undefined || v === null) ? fb : v;
+    } catch(e) { return fb; }
+  }
+
+  // ===== 当前说话角色 =====
+  function getLastSpeaker() {
+    try {
+      var cnt = tavo.message.count();
+      if (!cnt) return null;
+      var msgs = tavo.message.find([Math.max(0, cnt - 5), cnt - 1]);
+      if (!Array.isArray(msgs) || !msgs.length) return null;
+      for (var i = msgs.length - 1; i >= 0; i--) {
+        if (msgs[i] && msgs[i].characterName) return msgs[i].characterName;
+      }
+    } catch(e) {}
+    return null;
+  }
+
+  // ===== 立绘层元素 =====
+  var layer = document.getElementById('tf-sprite-layer');
+  var bgImg = document.getElementById('tf-sprite-bg');
+  var atmoWrap = document.getElementById('tf-sprite-atmo-wrap');
+  var atmoImg = document.getElementById('tf-sprite-atmo');
+  var fgWrap = document.getElementById('tf-sprite-fg-wrap');
+  var fgImg = document.getElementById('tf-sprite-fg');
+
+  // ===== 渲染引擎 =====
+  function resolveImgUrl(path) {
+    if (!path) return '';
+    // files/chat/ 路径直接用 tavo.file.url 解析
+    if (path.startsWith('files/')) {
+      try { return tavo.file.url(path, 'chat') || path; } catch(e) { return path; }
+    }
+    // http 直接返回
+    if (/^https?:\/\//.test(path)) return path;
+    // 兜底：插件自身的 cover.png
+    if (path === 'cover' || path === 'cover.png') {
+      try { return tavo.file.url('cover.png') || ''; } catch(e) { return ''; }
+    }
+    return path;
+  }
+
+  function applyFgStyle() {
+    var bottom = cfg('fgBottom', '80px');
+    var w = cfg('fgWidth', 'min(80vw, 600px)');
+    var h = cfg('fgHeight', 'min(70vh, 700px)');
+    fgWrap.style.bottom = bottom;
+    fgWrap.style.width = w;
+    fgWrap.style.height = h;
+    fgImg.style.width = '100%';
+    fgImg.style.height = '100%';
+  }
+
+  function updateSprite(speakerName) {
+    if (!cfg('enabled', true)) {
+      if (layer.classList.contains('visible')) layer.classList.remove('visible');
+      return;
+    }
+
+    var sprites = readVar(NS, 'chat') || {};
+    var byName = sprites.byName || {};
+    var byId = sprites.byId || {};
+    var chapterBgs = readVar(BG_NS, 'chat') || {};
+    var storyEdit = readVar('tf_story.edit', 'chat') || {};
+    var curChapterIdx = storyEdit.currentChapterIndex || 0;
+    var roleTypes = { narrator: true, general: true };
+
+    var entry = byName[speakerName] || null;
+    if (!entry && speakerName) {
+      // 按 id 匹配（byId）
+      for (var k in byId) {
+        if (byId[k] && byId[k].name === speakerName) { entry = byId[k]; break; }
+      }
+    }
+
+    var roleType = entry && entry.roleType;
+    var showNarrator = cfg('showForNarrator', false);
+    var noSprite = !entry || (!entry.fg && !entry.avatar);
+
+    // 旁白/万能角色默认不显示
+    if (roleTypes[roleType] && !showNarrator) noSprite = true;
+
+    layer.classList.add('visible');
+
+    // --- 前景立绘 ---
+    var fgPath = entry && entry.fg ? entry.fg : '';
+    if (!fgPath && cfg('useAvatarAsSprite', false) && entry && entry.avatar) fgPath = entry.avatar;
+    if (!fgPath) {
+      fgImg.classList.add('hidden');
+      fgImg.src = '';
+    } else {
+      fgImg.classList.remove('hidden');
+      var url = resolveImgUrl(fgPath);
+      if (fgImg.src !== url) fgImg.src = url;
+    }
+
+    // --- 背景 ---
+    var bgMode = cfg('backgroundMode', 'chapter');
+    var bgPath = '';
+
+    if (bgMode === 'character' && entry && entry.bg) {
+      bgPath = entry.bg;
+    } else if (bgMode === 'both' && entry && entry.bg) {
+      // chapter 为底，character 为叠加
+      atmoImg.src = resolveImgUrl(entry.bg);
+      atmoWrap.style.opacity = '0.45';
+    } else {
+      // 默认：章节场景背景
+      var chapterKeys = Object.keys(chapterBgs);
+      var key = chapterKeys[curChapterIdx] || chapterKeys[0] || '';
+      bgPath = chapterBgs[key] || '';
+      if (bgMode === 'both') {
+        atmoWrap.style.opacity = '0';
+      }
+    }
+
+    // 三层 fallback: 1) 章节/角色图 2) cover.jpg (files/chat/fallback_bg.jpg) 3) 插件封面 cover.png 4) CSS 渐变
+    var fbBg = readVar('tf_sprite_fallback_bg', 'chat') || '';
+    var finalBgPath = bgPath || fbBg;
+    if (finalBgPath) {
+      var bgUrl = resolveImgUrl(finalBgPath);
+      if (bgImg.src !== bgUrl) bgImg.src = bgUrl;
+    } else {
+      // 彻底无图，CSS 渐变兜底（已在 background 中预设）
+      bgImg.src = '';
+    }
+
+    applyFgStyle();
+  }
+
+  // ===== 监听新消息 =====
+  tavo.plugin.on('message:added', function(event) {
+    var msg = event && event.message;
+    if (!msg || !msg.characterName) return;
+    // 忽略 assistant 消息（立绘跟 NPC/旁白发言，不跟用户）
+    if (msg.role === 'user') return;
+    updateSprite(msg.characterName);
+  });
+
+  // ===== 监听章节切换（event_manager 写入 tf_story.edit.currentChapterIndex）=====
+  tavo.plugin.on('variable:changed', function(event) {
+    var name = event && event.name;
+    if (!name) return;
+    // tf_story.edit 里的任意字段变化都重渲染（currentChapterIndex 变化时切章节背景）
+    if (name === 'tf_story.edit' || name.indexOf('tf_story') === 0) {
+      updateSprite(getLastSpeaker());
+    }
+  });
+
+  // ===== 监听配置变化 =====
+  try {
+    if (tavo.plugin && tavo.plugin.config) {
+      tavo.plugin.config.onChange(function(key) {
+        applyFgStyle();
+        updateSprite(getLastSpeaker());
+      });
+    }
+  } catch(e) {}
+
+  // ===== 初始化 =====
+  applyFgStyle();
+  updateSprite(getLastSpeaker());
+
+  // ===== 绑定编辑器 =====
+  var bindEditor = document.getElementById('tf-sprite-bind-editor');
+  var bindList = document.getElementById('tf-sprite-bind-list');
+  var addBtn = document.getElementById('tf-sprite-bind-add-btn');
+
+  function getRoles() {
+    try {
+      var chat = tavo.chat.current();
+      var chars = chat && chat.characters ? chat.characters : [];
+      var pf = null;
+      try { if (chat.personaId) pf = tavo.persona.get(chat.personaId); } catch(e) {}
+      var roles = [];
+      if (pf && pf.name) roles.push({ name: pf.name, roleType: 'player' });
+      chars.forEach(function(c) { roles.push({ name: c.name, roleType: c.roleType || 'npc' }); });
+      return roles;
+    } catch(e) { return []; }
+  }
+
+  function renderBindList() {
+    var sprites = readVar(NS, 'chat') || {};
+    var byName = sprites.byName || {};
+    var roles = getRoles();
+    var html = '';
+    roles.forEach(function(r) {
+      var entry = byName[r.name] || {};
+      var fg = entry.fg || '';
+      var bg = entry.bg || '';
+      var avatar = entry.avatar || '';
+      html += '<div class="tf-sprite-bind-row" data-role="' + esc(r.name) + '">';
+      html += '<div class="tf-sprite-bind-role">' + esc(r.name) + '</div>';
+      html += '<input class="tf-sprite-bind-input" placeholder="前景立绘（fg）" value="' + esc(fg) + '" data-field="fg" />';
+      html += '<input class="tf-sprite-bind-input" placeholder="氛围背景（bg）" value="' + esc(bg) + '" data-field="bg" />';
+      html += '<button class="tf-sprite-bind-del" data-role="' + esc(r.name) + '">×</button>';
+      html += '</div>';
+    });
+    bindList.innerHTML = html;
+
+    // 绑定输入事件
+    bindList.querySelectorAll('.tf-sprite-bind-input').forEach(function(inp) {
+      inp.addEventListener('input', function() {
+        var role = inp.closest('.tf-sprite-bind-row').getAttribute('data-role');
+        var field = inp.getAttribute('data-field');
+        saveBinding(role, field, inp.value);
+      });
+    });
+    bindList.querySelectorAll('.tf-sprite-bind-del').forEach(function(btn) {
+      btn.addEventListener('click', function() {
+        var role = btn.getAttribute('data-role');
+        clearBinding(role);
+      });
+    });
+  }
+
+  function saveBinding(role, field, value) {
+    var sprites = readVar(NS, 'chat') || {};
+    var byName = sprites.byName || {};
+    if (!byName[role]) byName[role] = { name: role, roleType: 'npc' };
+    if (value) byName[role][field] = value;
+    else if (byName[role][field]) delete byName[role][field];
+    sprites.byName = byName;
+    writeVar(NS, sprites, 'chat');
+    // 同步 byId
+    var byId = {};
+    Object.keys(byName).forEach(function(name) {
+      var e = byName[name];
+      if (e && e.id) byId[String(e.id)] = e;
+    });
+    sprites.byId = byId;
+    writeVar(NS, sprites, 'chat');
+    updateSprite(getLastSpeaker());
+    tavo.utils.toast('已保存绑定');
+  }
+
+  function clearBinding(role) {
+    var sprites = readVar(NS, 'chat') || {};
+    var byName = sprites.byName || {};
+    delete byName[role];
+    sprites.byName = byName;
+    writeVar(NS, sprites, 'chat');
+    var byId = {};
+    Object.keys(byName).forEach(function(name) {
+      var e = byName[name];
+      if (e && e.id) byId[String(e.id)] = e;
+    });
+    sprites.byId = byId;
+    writeVar(NS, sprites, 'chat');
+    renderBindList();
+    updateSprite(getLastSpeaker());
+    tavo.utils.toast('已清除绑定');
+  }
+
+  addBtn && addBtn.addEventListener('click', function() {
+    var role = window.prompt('角色名：');
+    if (!role) return;
+    saveBinding(role.trim(), 'fg', '');
+    saveBinding(role.trim(), 'bg', '');
+    renderBindList();
+  });
+
+  // 暴露 renderBindList 供 HTML 片段调用
+  window.__tfSpriteBindRender = renderBindList;
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function(m) {
+      return { '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[m];
+    });
+  }
+})();
+</script>

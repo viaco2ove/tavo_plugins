@@ -67,3 +67,28 @@
 ## 关键设计约束（来自两份参考，设计 tavo_plugins 必须遵守）
 1. **世界知识 = 上下文注入，不是脚本章节**：worldbook entry 只把 `content` 发给模型；`title`/`keys`/`category`/`order`/`agentList` 仅用于匹配筛选+前端展示。`agentList` 控制注入范围（空或含"all"=全 Agent 可见；填具体 Agent Key=只发给该 Agent）。注入引擎逻辑：constant 全收；非 constant 按 `keys` 匹配 scanText + category 白名单 + token 预算截断。→ tavo lorebook 的 `keywords` 对应 Toonflow 的 `keys`；**绝不要把"所有 keyword entry"当章节脚本自动推进**（这是之前 toonflow_story_event_manager 污染聊天的根因）。
 2. **多 Agent 剧情编排模式（fixDB.prompts.ts）**：总调度 story_main / 编排师 story_orchestrator(NPC优先) / 发言器 story_speaker / 记忆管理器 story_memory / 章节判定 story_chapter / 事件进度 story_event_progress / 小游戏解析 / 意图分析 intent_analyzer / 任务编排 task_director+task_speaker。**NPC优先原则**：优先 NPC 或万能角色发言推进，旁白只做场景描述/时间流转/技能说明。万能角色不能替代列表里已存在的具体角色；`@角色名`=指名编排该角色发言。数值(hp/mp/exp/level)必须纯数字，禁止中文替代。
+
+## tavo 立绘（sprite）可行性结论（2026-08-17 分析）
+- **制作**：PC 抠图（BiRefNet/MODNet/云API）→ `tavo_file_save` 上传 `files/chat/sprite_<characterId>.png`。手机本地抠图❌（算力）；云API⚠️（依赖网络/密钥）。`tavo_image_generate` 当前不可用（500），抠图必须 PC 侧完成。
+- **存储**：不用角色卡非标字段（Tavo 不持久化，roleType 实测被忽略❌）；用 chat 变量 `tf_sprites={角色名:图路径}` 或命名约定 `sprite_<characterId>.png`。✅
+- **显示**：tavo 原生不支持「背景+去背立绘分层融合」❌，必须插件。方案=新建 toonflow_story_sprite：htmlFragment 挂立绘层（position 悬浮，z-index 介于原生背景层与消息流层之间）+ entry.js 监听 message:added，`tavo.message.find` 取最新消息 `characterName` → 查 `tf_sprites` → 切 `<img src>`。
+
+## 立绘 / sprite 设计约定（toonflow-game 对齐，2026-08-17）
+- **Toonflow-game 立绘真源**：`Toonflow-game-web/src/components/LayeredAvatar.vue`：两层图片，`backgroundPath` 全铺 cover + `foregroundPath` 底部居中 contain。角色字段：`StoryRole.avatarPath`→foreground，`avatarBgPath`→background，`avatarSourcePath`→分离前原图。
+- **下载资源映射**（`.cache/story/<故事>/ex/avatars/<角色>/`）：
+  - `original.png` (1024×1024 RGB) → foreground 立绘 / source 原图
+  - `background.png` (768×768 RGB) → 立绘氛围背景（不是透明去背，是虚化/氛围）
+  - `avatar.webp/png` (512×512 RGBA) → 小头像
+  - `voice.wav` → 音色参考
+- **tavo 侧实现方式**：不用角色卡 `data.avatar`（MCP 写不进去，已踩坑），所有图走 `tavo_file_save` 上传到 `files/chat/sprite_fg_<id>.png`、`files/chat/sprite_bg_<id>.png` 等，再用 chat 变量 `tf_sprites` / `tf_chapter_backgrounds` / `tf_story_config` 做映射；插件 `toonflow_story_sprite_background` 用 htmlFragment 挂前景+背景层，监听 `message:added` 按当前说话角色切换。
+- **设计文档**：`md/currdesign/toonflow_sprite_background/toonflow_sprite_background_design.md`。
+- **与现有插件协作**：`event_manager` 维护 `tf_story.edit.chapterIndex` 用于切章节背景；`speaker/multi_character_stage` 提供角色识别，sprite 只负责视觉层。
+- **未实测风险**：`files/chat/sprite_*.png` 在插件 htmlFragment 的 `<img>` 里是否真渲染；立绘层 z-index 能否卡在原生背景之上、消息气泡之下。
+- **已验证 API**：htmlFragments 可挂 `/chat/body/start|end`；`tavo.message.find([s,e])` 返回含 `characterName`；`tavo.get(name,'chat')` 须解包；`files/chat/<name>` 虚拟路径可被前端渲染（章节背景 background 已验证）。
+- **两个待实测风险**：① 立绘 `<img src="files/chat/x.png">` 是否真能渲染（高概率可行，未实测）；② 立绘层 z-index 能否卡在原生背景之上、消息流之下（需探 tavo DOM 层级）。
+- **[用户澄清 2026-08-17] 头像≠立绘，tavo 原生做不了真立绘**：
+  - 角色卡（CCv3）只有单 `data.avatar` 字段，**无 Gallery/多图**（Grep 全项目无 gallery/imageList 证据）；`avatar` 必须文件引用（`charaCard/...png` 或 `files/global/...`），不能 base64（客户端不渲染内嵌 base64）。
+  - tavo 图能力仅两体系：① 头像 `avatar`（气泡旁小图，四种样式 avatar/radius/name）；② 背景 `background.image`（`files/chat/...` 或网图）+ 可设 `useAvatar:true` 把**当前角色头像铺满当背景**。
+  - `useAvatar:true` 看似"立绘"实为"头像放大铺满"，无分层/透叠/消息流居中层次，**不是真立绘**。APNG 只是让头像动起来，本质仍是头像。
+  - 抠图全身图塞进 avatar：要么被裁成气泡小图，要么靠 useAvatar 糊满屏，均非立绘。→ 立绘必须插件 + 全局 `files/` 存储（每角色 `sprite_<id>.png`）+ 变量/插件按 id 映射取，角色卡本身不存立绘。
+  - 格式：静态 webp 上传循环含 `("png","jpg","jpeg","webp")`（chapters_import/story_sync 实证），Flutter/Android 原生支持显示；APNG 用户记忆 v0.62.2+ 支持动画头像；animated webp 未证实。格式支持 ≠ 立绘支持。

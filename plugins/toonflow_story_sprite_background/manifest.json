@@ -1,0 +1,123 @@
+{
+  "specVersion": 2,
+  "id": "com.toonflow.story-sprite-background",
+  "name": {
+    "$t": "plugin.name"
+  },
+  "version": "1.0.0",
+  "minAppVersion": "1.0.0",
+  "entry": "entry.js",
+  "author": "viaco",
+  "description": {
+    "$t": "plugin.description"
+  },
+  "localization": {
+    "defaultLocale": "zh-CN",
+    "resources": {
+      "en": "locales/en.json",
+      "zh-CN": "locales/zh-CN.json"
+    }
+  },
+  "cover": "cover.png",
+  "permissions": [
+    "file",
+    "variable",
+    "message",
+    "chat"
+  ],
+  "contributes": {
+    "htmlFragments": [
+      {
+        "id": "tf-sprite-layer",
+        "src": "ui/sprite_layer.html",
+        "mount": "/chat/body/end"
+      }
+    ],
+    "sidebar": [
+      {
+        "id": "tf-sprite-toggle",
+        "label": {
+          "$t": "sidebar.toggle"
+        }
+      },
+      {
+        "id": "tf-sprite-bind",
+        "label": {
+          "$t": "sidebar.bind"
+        }
+      }
+    ],
+    "settings": {
+      "schema": [
+        {
+          "type": "info",
+          "text": {
+            "$t": "settings.info"
+          },
+          "icon": "info"
+        },
+        {
+          "key": "enabled",
+          "type": "switch",
+          "label": {
+            "$t": "settings.enabled"
+          },
+          "default": true
+        },
+        {
+          "key": "showForNarrator",
+          "type": "switch",
+          "label": {
+            "$t": "settings.showForNarrator"
+          },
+          "default": false
+        },
+        {
+          "key": "useAvatarAsSprite",
+          "type": "switch",
+          "label": {
+            "$t": "settings.useAvatarAsSprite"
+          },
+          "default": false
+        },
+        {
+          "key": "backgroundMode",
+          "type": "select",
+          "label": {
+            "$t": "settings.backgroundMode"
+          },
+          "default": "chapter",
+          "options": [
+            { "label": "章节场景背景", "value": "chapter" },
+            { "label": "角色氛围背景", "value": "character" },
+            { "label": "叠加模式（章节+角色）", "value": "both" }
+          ]
+        },
+        {
+          "key": "fgBottom",
+          "type": "text",
+          "label": {
+            "$t": "settings.fgBottom"
+          },
+          "default": "80px"
+        },
+        {
+          "key": "fgWidth",
+          "type": "text",
+          "label": {
+            "$t": "settings.fgWidth"
+          },
+          "default": "min(80vw, 600px)"
+        },
+        {
+          "key": "fgHeight",
+          "type": "text",
+          "label": {
+            "$t": "settings.fgHeight"
+          },
+          "default": "min(70vh, 700px)"
+        }
+      ]
+    }
+  }
+}

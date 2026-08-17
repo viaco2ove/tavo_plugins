@@ -332,6 +332,17 @@ function setProgress(p) {
   try { writeVarDual(PROGRESS_NS, p); return true; } catch (e) { return false; }
 }
 
+// 章节推进时同步写入 tf_story.edit.currentChapterIndex（供 sprite 等插件监听）
+function syncChapterIndex(idx) {
+  try {
+    const edit = getEdit();
+    if (edit.currentChapterIndex !== idx) {
+      edit.currentChapterIndex = idx;
+      setEdit(edit);
+    }
+  } catch (e) {}
+}
+
 // 评估每条用户消息对当前章节的影响
 async function judgeAndAdvance(messageContext) {
   if (cfgGet('enabled', true) === false) return;
@@ -401,6 +412,7 @@ async function judgeAndAdvance(messageContext) {
     progress.currentChapterIndex = nextIdx;
     progress.updatedAt = Date.now();
     setProgress(progress);
+    syncChapterIndex(nextIdx);
     tavo.utils.toast('🎉 故事已完结！' + (progress.sessionFreeMode ? '已进入自由模式' : ''));
     // 注入故事完结旁白（隐藏消息，方便模型感知）
     try {
@@ -416,6 +428,7 @@ async function judgeAndAdvance(messageContext) {
     progress.failedAttempts = 0;
     progress.updatedAt = Date.now();
     setProgress(progress);
+    syncChapterIndex(nextIdx);
     const nextCh = chapters[nextIdx];
     tavo.utils.toast('✅ 进入「' + (nextCh.title || '下一章') + '」');
     // 注入章节切换旁白
@@ -682,6 +695,7 @@ async function playChapterOpening() {
     boot.openingDone = true;
     boot.currentChapterIndex = idx;
     writeBoot(boot);
+    syncChapterIndex(idx); // 同步到 tf_story.edit（供 sprite 插件监听）
     // 开场白后把事件进度推进到「第一个用户发言」处：
     // 首 phase 的 stage 播完即停（currentEvent = 已播 stage 数）
     const prog = getProgress();
@@ -874,6 +888,7 @@ async function manualChapterAdvance(chapters, idx, progress) {
     progress.currentEvent = 0;
     progress.updatedAt = Date.now();
     setProgress(progress);
+    syncChapterIndex(nextIdx);
     tavo.utils.toast('🎉 故事已完结！' + (progress.sessionFreeMode ? '已进入自由模式' : ''));
     try {
       await tavo.message.append({
@@ -888,6 +903,7 @@ async function manualChapterAdvance(chapters, idx, progress) {
     progress.failedAttempts = 0;
     progress.updatedAt = Date.now();
     setProgress(progress);
+    syncChapterIndex(nextIdx);
     const nextCh = chapters[nextIdx];
     tavo.utils.toast('✅ 进入「' + (nextCh.title || '下一章') + '」');
     try {
