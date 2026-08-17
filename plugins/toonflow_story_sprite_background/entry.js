@@ -165,11 +165,46 @@ function updateSprite(speakerName) {
 }
 
 // ===== 事件监听 =====
-tavo.plugin.on('message:added', (event) => {
+let _charNameCache = null;
+let _charNameCacheAt = 0;
+
+tavo.plugin.on('message:added', async (event) => {
   const msg = event && event.message;
-  if (!msg || !msg.characterName || msg.role === 'user') return;
-  console.log('[sprite] message:added speaker=' + msg.characterName);
-  updateSprite(msg.characterName);
+  console.log('[sprite] message:added raw event=' + JSON.stringify(event || {}).slice(0, 300));
+  if (!msg) { console.log('[sprite] no msg in event'); return; }
+  if (msg.role === 'user') { console.log('[sprite] user msg, skip'); return; }
+
+  // characterName 可能不在 event.message 里（tavo 没实时解析），尝试自己 resolve
+  let speakerName = msg.characterName || null;
+  let speakerId = msg.characterId || null;
+
+  if (!speakerName && speakerId) {
+    // 从缓存的群聊角色列表里找 name
+    if (!_charNameCache || Date.now() - _charNameCacheAt > 30000) {
+      try {
+        const chat = await tavo.chat.current();
+        _charNameCache = {};
+        (chat?.characters || []).forEach(c => { _charNameCache[c.id] = c.name; });
+        _charNameCacheAt = Date.now();
+      } catch (e) { _charNameCache = {}; }
+    }
+    speakerName = _charNameCache[speakerId] || null;
+    console.log('[sprite] resolved characterId=' + speakerId + ' → name=' + speakerName);
+  }
+
+  if (!speakerName) { console.log('[sprite] no speakerName resolved, skip'); return; }
+
+  const sprites = readVar(NS) || {};
+  const byName = sprites.byName || {};
+  const entry = byName[speakerName] || null;
+  console.log('[sprite] message:added → characterName=' + speakerName + ' characterId=' + speakerId + ' entry=' + JSON.stringify(entry));
+  console.log('[sprite] allSpriteNames: ' + Object.keys(byName).join(', '));
+
+  // DOM 检查
+  const fgImg = document.getElementById('tf-sprite-fg');
+  console.log('[sprite] DOM check: #tf-sprite-fg exists=' + !!fgImg + ' src=' + (fgImg ? fgImg.src : 'N/A') + ' classList=' + (fgImg ? fgImg.className : 'N/A'));
+
+  updateSprite(speakerName);
 });
 
 try {

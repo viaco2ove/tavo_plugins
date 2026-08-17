@@ -185,15 +185,83 @@ tavo.plugin.on('message:added', async () => {
 });
 
 // 编排进行中标记（供 htmlFragment 显示「编排中…」）
-tavo.plugin.on('generation:prepare', async () => {
+tavo.plugin.on('generation:prepare', async (event) => {
   const cfg = getConfig();
   if (!cfg.enabled) return;
   if (getOrchestration() === 'system') return; // 跟随系统：不显示「编排中」
   try { tavo.set(ORCH_FLAG, true, 'chat'); } catch (e) {}
+
+  // 打印编排意图：分析最近对话，决定谁该发言
+  try {
+    const msgs = tavo.message.find([Math.max(0, tavo.message.count() - 8), tavo.message.count() - 1]) || [];
+    const lastMsg = msgs[msgs.length - 1];
+    const lastSpeaker = lastMsg ? (lastMsg.characterName || '（用户）') : '（无）';
+    const chat = await tavo.chat.current();
+    const chars = (chat?.characters || []).map(c => c.name).join('、') || '（无）';
+
+    // 当前章节/事件/进度
+    const edit = readChatVar('tf_story.edit') || {};
+    const chapters = edit.chapters || [];
+    const progress = readChatVar('tf_progress') || {};
+    const chapterIdx = (typeof progress.currentChapterIndex === 'number') ? progress.currentChapterIndex : 0;
+    const chapter = chapters[chapterIdx];
+    const events = chapter?.events || [];
+    const eventIdx = (typeof progress.currentEventIndex === 'number') ? progress.currentEventIndex : 0;
+    const event = events[eventIdx];
+    const totalEvents = events.length;
+
+    // 编排动机推断
+    let motive = 'NPC优先推进剧情';
+    if (lastMsg && lastMsg.role === 'user') {
+      motive = '用户发言，需角色回应';
+    } else if (lastMsg) {
+      motive = '「' + lastSpeaker + '」发言完毕，下一步推进';
+    }
+
+    console.log('🎭 [mcs] 编排 → 发声者：NPC（模型自主决定） | 动机：' + motive);
+    console.log('🎭 [mcs] 在场角色：' + chars);
+    console.log('🎭 [mcs] 最近发言者：' + lastSpeaker);
+    console.log('🎭 [mcs] 章节进度：第 ' + (chapterIdx + 1) + ' 章 / 共 ' + chapters.length + ' 章 | ' + (chapter?.title || '（无标题）'));
+    console.log('🎭 [mcs] 事件进度：第 ' + (eventIdx + 1) + ' 事件 / 共 ' + totalEvents + ' 事件 | ' + (event?.title || event?.description || '（无标题）'));
+    console.log('🎭 [mcs] 事件状态：' + JSON.stringify({
+      currentChapterIndex: chapterIdx,
+      currentEventIndex: eventIdx,
+      totalChapters: chapters.length,
+      totalEvents: totalEvents,
+      chapterTitle: chapter?.title,
+      eventTitle: event?.title || event?.description,
+      eventProgress: eventIdx + ' / ' + totalEvents,
+    }));
+    console.log('🎭 [mcs] generation:prepare payload:', JSON.stringify(event || {}).slice(0, 200));
+  } catch (e) { console.warn('[mcs] prepare log error', e); }
 });
-tavo.plugin.on('generation:success', async () => { try { tavo.set(ORCH_FLAG, false, 'chat'); } catch (e) {} });
-tavo.plugin.on('generation:error', async () => { try { tavo.set(ORCH_FLAG, false, 'chat'); } catch (e) {} });
-tavo.plugin.on('generation:cancelled', async () => { try { tavo.set(ORCH_FLAG, false, 'chat'); } catch (e) {} });
+
+tavo.plugin.on('generation:success', async (event) => {
+  console.log('🎯 [mcs] generation:success → event=' + JSON.stringify(event || {}).slice(0, 300));
+  try { tavo.set(ORCH_FLAG, false, 'chat'); } catch (e) {}
+  try {
+    const cnt = tavo.message.count();
+    console.log('🎯 [mcs] message count after gen=' + cnt);
+    if (cnt > 0) {
+      const msgs = tavo.message.find([Math.max(0, cnt - 3), cnt]) || [];
+      console.log('🎯 [mcs] recent msgs:', JSON.stringify(msgs.map(m => ({name: m.characterName, role: m.role, content: (m.content||'').slice(0,30)}))));
+      const resultMsg = msgs[msgs.length - 1];
+      if (resultMsg) {
+        const preview = (resultMsg.content || '').slice(0, 80);
+        console.log('✅ [mcs] 发言结果 → 角色：「' + (resultMsg.characterName || '未知') + '」 | 内容：「' + preview + '」');
+      }
+    }
+  } catch (e) { console.warn('❌ [mcs] success log error', e); }
+});
+
+tavo.plugin.on('generation:error', async (event) => {
+  console.error('❌ [mcs] generation:error → event=' + JSON.stringify(event || {}).slice(0, 300));
+  try { tavo.set(ORCH_FLAG, false, 'chat'); } catch (e) {}
+});
+tavo.plugin.on('generation:cancelled', async () => {
+  console.log('⚠️ [mcs] generation:cancelled');
+  try { tavo.set(ORCH_FLAG, false, 'chat'); } catch (e) {}
+});
 
 // 侧边栏：当前模式开关（即时生效，不持久化）
 tavo.plugin.onSidebarAction('mcs-toggle', async () => {
