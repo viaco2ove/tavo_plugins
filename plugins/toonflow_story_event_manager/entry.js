@@ -603,49 +603,104 @@ async function purgeOfficialHijack() {
   } catch (e) { return 0; }
 }
 
-// 播报章节开场白（对齐 Toonflow introduction 流程）：
-// 优先按 chat.characters 查找 role 对应的 characterId；
-// 旁白匹配专用的"旁白"角色（story_sync 创建的 id）防 fallback 到第一个 NPC。
+// 播报章节开场白 + 事件链首段自动编排（对齐 Toonflow introduction 流程）：
+// 开场白 -> 继续按章节 content 的事件链自动播 NPC/旁白台词 -> 遇到「### 用户发言」停下等用户。
+// 旁白消息挂专用「旁白」角色（story_sync 创建），NPC 消息按角色名找 characterId。
+// 返回播报的消息条数。
+function parseChapterBeats(content, openingText) {
+  // 解析章节脚本 -> [{role, text}]，遇到第一个「用户发言」停止
+  const beats = [];
+  const openNorm = (openingText || '').replace(/\s/g, '');
+  for (const raw of (content || '').split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line) continue;
+    if (/^###/.test(line) && /用户发言/.test(line)) break;
+    if (line.startsWith('@')) {
+      const body = line.slice(1);
+      const sep = body.indexOf('：') >= 0 ? body.indexOf('：') : body.indexOf(':');
+      if (sep < 0) continue;
+      const role = body.slice(0, sep).trim();
+      const text = body.slice(sep + 1).trim();
+      if (!text) continue;
+      // 去重：openingText 已覆盖的短句不重复播
+      if (openNorm && text.replace(/\s/g, '').length < openNorm.length
+          && openNorm.includes(text.replace(/\s/g, ''))) continue;
+      beats.push({ role, text });
+    }
+  }
+  return beats;
+}
+
 async function playChapterOpening() {
   try {
     const edit = getEdit();
     const chapters = edit.chapters || [];
-    if (!chapters.length) return false;
+    if (!chapters.length) return 0;
     const progress = getProgress();
     const idx = Math.min(progress.currentChapterIndex || 0, chapters.length - 1);
     const ch = chapters[idx];
-    if (!ch || !ch.openingLine) return false;
-    const role = ch.openingRole || '旁白';
+    if (!ch) return 0;
 
     // 开场白标记（防重复播报）
     const boot = readBoot();
-    if (boot.openingDone) return false;
+    if (boot.openingDone) return 0;
 
-    // 按角色名在 chat 里找 characterId；旁白/通用则精确匹配
-    let characterId;
-    try {
-      const chat = await tavo.chat.current();
-      const chars = chat.characters || [];
-      const hit = chars.find(c => c.name === role)
-        || chars.find(c => c.name === '旁白') // 兜底：用专门的"旁白"角色
-        || null;
-      if (hit) characterId = hit.id;
-    } catch (e) {}
+    // 角色 id 映射（旁白用专用角色）
+    let chat = null;
+    try { chat = await tavo.chat.current(); } catch (e) {}
+    const chars = (chat && chat.characters) || [];
+    const findChar = (name) => chars.find(c => c.name === name)
+      || (name === '旁白' || name === 'narrator' ? chars.find(c => c.name === '旁白') : null);
+    const narratorChar = chars.find(c => c.name === '旁白') || null;
 
-    await tavo.message.append({
-      role: 'assistant',
-      characterId,
-      content: ch.openingLine,
-      hidden: false,
-    });
-    // 标记开场白已播（状态由 bootSequence 最终统一写入 ready）
+    let played = 0;
+    // 1) 开场白（openingRole + openingLine）
+    if (ch.openingLine) {
+      const opener = findChar(ch.openingRole || '旁白') || narratorChar;
+      await tavo.message.append({
+        role: 'assistant',
+        characterId: opener ? opener.id : undefined,
+        content: ch.openingLine,
+        hidden: false,
+      });
+      played++;
+    }
+    // 2) 事件链首段（到第一个「用户发言」为止）
+    const beats = parseChapterBeats(ch.content || '', ch.openingLine);
+    for (const b of beats) {
+      const c = findChar(b.role) || narratorChar;
+      await tavo.message.append({
+        role: 'assistant',
+        characterId: c ? c.id : undefined,
+        content: b.text.replace(/用户/g, '你'),
+        hidden: false,
+      });
+      played++;
+    }
+
+    // 标记开场白已播
     boot.openingDone = true;
     boot.currentChapterIndex = idx;
     writeBoot(boot);
-    return true;
+    // 开场白后把事件进度推进到「第一个用户发言」处：
+    // 首 phase 的 stage 播完即停（currentEvent = 已播 stage 数）
+    const prog = getProgress();
+    const firstPhase = (prog.phases || [])[0];
+    if (firstPhase) {
+      let ne = 0;
+      const evs = firstPhase.events || [];
+      // 数到第一个「用户发言」
+      while (ne < evs.length && !/用户发言/.test(evs[ne].name || '')) ne++;
+      prog.currentPhase = 0;
+      prog.currentEvent = Math.max(0, ne - 1);
+      prog.updatedAt = Date.now();
+      setProgress(prog);
+    }
+    console.log('[tf_story] opening played ' + played + ' messages');
+    return played;
   } catch (e) {
     console.warn('[tf_story] playChapterOpening failed', e);
-    return false;
+    return 0;
   }
 }
 
@@ -666,36 +721,28 @@ async function bootSequence() {
   let count = 0;
   try { count = await tavo.message.count(); console.log('[tf_story][boot] message count=' + count); } catch (e) { console.warn('[tf_story][boot] count failed', e); }
 
-  // 关键判定：必须根据「boot 全局状态」+ 「global 数据」+ 「当前消息数」三方面综合判断
-  // 之前只按 count==0 判定 reset 是错的——tavo 自动开场会插一条消息
+  // 关键判定：chat_reset 清空 chat scope 变量但保留 global。
+  // 「chat scope 的 boot 镜像是否还在」是判断「是否刚 reset」的可靠信号：
+  //   - chat boot 丢失 + global 数据在       => 刚 reset（reset 后 tavo 可能自动插 1 条消息，count 不可靠）
+  //   - chat boot 在 + status ready + 有消息 => 正常继聊
+  //   - global 数据都没有                    => 全新故事
   let sessionStage;
-  const gv = (() => { try { let g = tavo.get('tf_story.edit', 'global'); let i=0; while (g && typeof g==='object' && 'value' in g && i<5){g=g.value;i++;} return g; } catch(e){return null;} })();
-  const globalHasData = (gv && typeof gv === 'object' && Array.isArray(gv.chapters) && gv.chapters.length);
-  const bootIsFresh = (boot.status === 'uninitialized' && !boot.chatId);
-  const bootIsCurrent = (boot.chatId === chatId && boot.status === 'ready');
+  const chatBoot = readChatVar(BOOT_NS);
+  const globalHasData = (() => {
+    const gv = (() => { try { let g = tavo.get('tf_story.edit', 'global'); let i=0; while (g && typeof g==='object' && 'value' in g && i<5){g=g.value;i++;} return g; } catch(e){return null;} })();
+    return !!(gv && typeof gv === 'object' && Array.isArray(gv.chapters) && gv.chapters.length);
+  })();
 
   if (!globalHasData) {
-    // global 都没有数据 -> 全新故事
-    sessionStage = 'uninitialized';
-  } else if (bootIsFresh) {
-    // global 有数据，但 boot 标记是 uninitialized（重启了 tavo_chat_reset）
-    sessionStage = 'reset';
-  } else if (bootIsCurrent && count > 0) {
-    // boot 已就绪且是这个 chat，且有消息 -> 继聊
-    sessionStage = 'resumption_start';
-  } else if (bootIsCurrent && count === 0) {
-    // boot 已就绪但消息被清空（手动 reset）-> 视作 reset
-    sessionStage = 'reset';
-    // 强制把 boot 状态回滚到 uninitialized 以便后续正确重播开场白
-    writeBoot({ status: 'uninitialized', stage: 'uninitialized', chatId: null, openedAt: 0, openingDone: false });
-  } else if (count === 0) {
-    // global 有数据，消息为空（reset 后首次进入）
-    sessionStage = 'reset';
+    sessionStage = 'uninitialized';            // 故事从未初始化（global 空）
+  } else if (!chatBoot) {
+    sessionStage = 'reset';                    // 刚 reset：chat boot 被清，global 还在
+  } else if (chatBoot.status === 'ready' && count > 0) {
+    sessionStage = 'resumption_start';         // 正常继聊
   } else {
-    // global 有数据，boot 状态异常（比如 plugin 卸载过 / 数据迁移）但消息存在 -> 也算 reset 重置
-    sessionStage = 'reset';
+    sessionStage = 'reset';                    // 兜底：global 有数据但状态异常
   }
-  console.log('[tf_story][boot] sessionStage=' + sessionStage + ' globalHasData=' + !!globalHasData + ' bootIsFresh=' + bootIsFresh + ' bootIsCurrent=' + bootIsCurrent);
+  console.log('[tf_story][boot] sessionStage=' + sessionStage + ' globalHasData=' + globalHasData + ' chatBoot=' + (chatBoot ? chatBoot.status : 'null') + ' count=' + count);
 
   writeBoot({ status: 'loading', stage: sessionStage, chatId, openedAt: Date.now(), openingDone: false, sessionType: sessionStage });
   notifyBootStage(sessionStage, '检测会话：' + sessionStage);
@@ -738,7 +785,12 @@ async function bootSequence() {
 // boot 未就绪时拦截所有生成（阻止官方开场白/第一个角色自动发言）
 tavo.plugin.on('generation:prepare', async (event) => {
   if (_bootState !== 'ready') {
-    // boot 未完成：把请求文本置空阻断（tavo 会忽略无效文本继续，但至少不注入编排上下文）
+    try { event.text = ''; } catch (e) {}
+    return;
+  }
+  // memory_manager 的 tmm 未就绪时也阻断（防止其他插件读未初始化 tmm 报错）
+  const tmm = readChatVar('tmm');
+  if (!tmm || typeof tmm !== 'object' || !('summary' in tmm)) {
     try { event.text = ''; } catch (e) {}
   }
 });
@@ -872,6 +924,28 @@ async function advanceManually(rawText) {
 tavo.plugin.on('input:beforeSend', async (event) => {
   if (cfgGet('enabled', true) === false) return;
   const text = String((event && event.text) || '').trim();
+
+  // 故事加载门：boot 未 ready（数据未加载 / 开场白未播）时禁止一切用户发言
+  if (_bootState !== 'ready') {
+    try { if (event && typeof event.cancel === 'function') event.cancel('故事加载中…'); } catch (e) {}
+    tavo.utils.toast('⏳ 故事加载中，请稍候…');
+    return;
+  }
+  const boot = readBoot();
+  if (!boot || boot.status !== 'ready' || !boot.openingDone) {
+    try { if (event && typeof event.cancel === 'function') event.cancel('故事加载中…'); } catch (e) {}
+    tavo.utils.toast('⏳ 故事加载中，请稍候…');
+    return;
+  }
+
+  // 内存管理器初始化门：tmm 变量未就绪时（memory_manager 的 chat:opened 还未执行完）也禁止发言
+  const tmm = readChatVar('tmm');
+  if (!tmm || typeof tmm !== 'object' || !('summary' in tmm)) {
+    try { if (event && typeof event.cancel === 'function') event.cancel('记忆加载中…'); } catch (e) {}
+    tavo.utils.toast('⏳ 记忆加载中，请稍候…');
+    return;
+  }
+
   if (!/^@(事件进度检测\s*下个?事件|下个?事件|下个?章节)/.test(text)) return;
   try { if (event && typeof event.cancel === 'function') event.cancel(); } catch (e) {}
   tavo.utils.toast('事件推进指令处理中…');
