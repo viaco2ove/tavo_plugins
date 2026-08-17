@@ -143,15 +143,27 @@ async function waitForBoot(maxMs) {
 
 tavo.plugin.on('chat:opened', async () => {
   const cfg = getConfig();
-  if (!cfg.enabled) return;
-  if (getOrchestration() === 'system') return; // 跟随系统：不接管群聊
+  if (!cfg.enabled) {
+    console.log('[mcs] skip: enabled=false');
+    return;
+  }
+  if (getOrchestration() === 'system') {
+    console.log('[mcs] skip: orchestration=system');
+    return;
+  }
+  console.log('[mcs] chat:opened waiting for boot...');
   // 等 story_event_manager 的 boot 序列完成（最多 30 秒）
-  await waitForBoot(30000);
+  const booted = await waitForBoot(30000);
+  console.log('[mcs] boot waited result=' + booted + ' responseMode=' + cfg.responseMode);
   try {
-    await tavo.chat.update({
+    const scen = await getEffectiveScenarioPrompt();
+    console.log('[mcs] applying scenario, len=' + scen.length);
+    const res = await tavo.chat.update({
       responseMode: cfg.responseMode,
-      overrideScenario: await getEffectiveScenarioPrompt(),
+      overrideScenario: scen,
+      allowSelfResponses: false,  // 禁止角色发言后继续触发其他角色回复（防「全员轮着发言」）
     });
+    console.log('[mcs] chat.update result=' + JSON.stringify(res));
   } catch (e) {
     console.warn('[mcs] chat.update failed', e);
   }

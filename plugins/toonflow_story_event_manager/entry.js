@@ -784,7 +784,8 @@ async function bootSequence() {
     } catch (e) { console.warn('[tf_story][boot] playChapterOpening failed', e); }
   }
 
-  const finalBoot = { status: 'ready', stage: 'ready', chatId, openedAt: Date.now(), openingDone: (sessionStage === 'resumption_start'), sessionType: sessionStage, restored, rebuilt, readyAt: Date.now() };
+  // openingDone：reset/uninitialized 都为 true（开场白已播），resumption 也为 true（直接用历史消息）
+  const finalBoot = { status: 'ready', stage: 'ready', chatId, openedAt: Date.now(), openingDone: true, sessionType: sessionStage, restored, rebuilt, readyAt: Date.now() };
   writeBoot(finalBoot);
   _bootState = 'ready';
   notifyBootStage('ready', '故事已就绪');
@@ -941,22 +942,28 @@ tavo.plugin.on('input:beforeSend', async (event) => {
   if (cfgGet('enabled', true) === false) return;
   const text = String((event && event.text) || '').trim();
 
+  const boot = readBoot();
+  const tmm = readChatVar('tmm');
+  const tmmOk = !!(tmm && typeof tmm === 'object' && ('summary' in tmm));
+  console.log('[tf_story][input:beforeSend] ★ _bootState=' + _bootState + ' boot.status=' + (boot && boot.status) + ' openingDone=' + (boot && boot.openingDone) + ' tmm_ok=' + tmmOk);
+
   // 故事加载门：boot 未 ready（数据未加载 / 开场白未播）时禁止一切用户发言
   if (_bootState !== 'ready') {
+    console.log('[tf_story][input:beforeSend] ✗ blocked: _bootState=' + _bootState);
     try { if (event && typeof event.cancel === 'function') event.cancel('故事加载中…'); } catch (e) {}
     tavo.utils.toast('⏳ 故事加载中，请稍候…');
     return;
   }
-  const boot = readBoot();
   if (!boot || boot.status !== 'ready' || !boot.openingDone) {
+    console.log('[tf_story][input:beforeSend] ✗ blocked: boot.status=' + (boot && boot.status) + ' openingDone=' + (boot && boot.openingDone));
     try { if (event && typeof event.cancel === 'function') event.cancel('故事加载中…'); } catch (e) {}
     tavo.utils.toast('⏳ 故事加载中，请稍候…');
     return;
   }
 
   // 内存管理器初始化门：tmm 变量未就绪时（memory_manager 的 chat:opened 还未执行完）也禁止发言
-  const tmm = readChatVar('tmm');
-  if (!tmm || typeof tmm !== 'object' || !('summary' in tmm)) {
+  if (!tmmOk) {
+    console.log('[tf_story][input:beforeSend] ✗ blocked: tmm not ready');
     try { if (event && typeof event.cancel === 'function') event.cancel('记忆加载中…'); } catch (e) {}
     tavo.utils.toast('⏳ 记忆加载中，请稍候…');
     return;
