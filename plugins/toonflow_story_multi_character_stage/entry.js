@@ -36,7 +36,7 @@ function getConfig() {
   };
   return {
     enabled: get('enabled', true) !== false,
-    responseMode: get('responseMode', 'scenario'),
+    responseMode: 'natural', // 硬编码：彻底禁用 tavo scenario 编排，插件全权接管
     showPanel: get('showPanel', true) !== false,
   };
 }
