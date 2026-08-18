@@ -498,7 +498,7 @@ tavo.plugin.on('input:beforeSend', async (event) => {
 
       if (thinking) {
         const esc = thinking.replace(/<\/div>/gi, '&lt;/div&gt;');
-        const block = '<div style="cursor:pointer;color:#888;font-size:0.85em" onclick="var d=this.getElementsByTagName(\'div\')[0];d.style.display=d.style.display==\'none\'?\'block\':\'none\'">思考...<div style="display:none;padding:8px 0;color:#666">' + esc + '</div></div>';
+        const block = '<div style="cursor:pointer;color:#888;font-size:0.85em" onclick="var d=this.getElementsByTagName(\'div\')[0];d.style.display=d.style.display==\'none\'?\'block\':\'none\'">思考...（点击展开）<div style="display:none;padding:8px 0;color:#666">' + esc + '</div></div>';
         await tavo.message.append({ role: 'assistant', characterId: charId || undefined, characterName: speaker, content: block + content, hidden: false });
       } else {
         await tavo.message.append({ role: 'assistant', characterId: charId || undefined, characterName: speaker, content: content, hidden: false });
