@@ -123,33 +123,40 @@ def sync_story(client, story_dir, force=False, skip_sprite=False,
         # reuse_ids 优先（强制使用指定 ID，不再搜索/创建）
         if reuse_ids and name in reuse_ids:
             nid = reuse_ids[name]
-            echo(f"  char reuse id={nid}: {name}")
-            char_ids[name] = nid
-            continue
+            # 验证角色是否仍存在
+            if _verify_character_exists(client, nid):
+                echo(f"  char reuse id={nid}: {name}")
+                char_ids[name] = nid
+                continue
+            else:
+                echo(f"  char id={nid} 不存在，将重新创建: {name}")
+
+        # 角色不存在，搜索是否有同名
         found = client.character_search(name)
         items = _search_list(found)
-        existing = next((it.get("id") for it in items if it.get("name") == name), None)
+        existing = next((it.get('id') for it in items if it.get('name') == name), None)
         if existing and not force:
-            echo(f"  char 复用 id={existing}: {name}")
+            echo(f'  char 复用 id={existing}: {name}')
             char_ids[name] = existing
         else:
             av_ref = _upload_avatar(client, cid, name, av_local)
             card = {
-                "spec": "chara_card_v3",
-                "spec_version": "3.0",
-                "data": {
-                    "name": name,
-                    "description": c.get("description", ""),
-                    "firstMes": c.get("first_mes", ""),
-                    "personality": c.get("personality", "NPC"),
+                'spec': 'chara_card_v3',
+                'spec_version': '3.0',
+                'data': {
+                    'name': name,
+                    'description': c.get('description', ''),
+                    'firstMes': c.get('first_mes', ''),
+                    'personality': c.get('personality', 'NPC'),
                 },
             }
             if av_ref:
-                card["data"]["avatar"] = av_ref
+                card['data']['avatar'] = av_ref
             r = client.character_import_card(card)
-            cid_new = r.get("id") or r.get("characterId")
-            echo(f"  char {'OK' if cid_new else 'ERR'} id={cid_new}: {name} avatar={av_ref or 'none'}")
+            cid_new = r.get('id') or r.get('characterId')
+            echo(f'  char {"OK" if cid_new else "ERR"} id={cid_new}: {name} avatar={av_ref or "none"}')
             char_ids[name] = cid_new
+
 
     persona_id = char_ids.get(config.get("persona", {}).get("name", ""))
 
