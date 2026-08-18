@@ -22,4 +22,11 @@ https://api.minimaxi.com/v1
 Minimax-M3
 
 ## 更多- 模型设置
+![img.png](img.png)
 回复令牌限制：1500
+记忆长度：20
+温度：0.3
+Top-P：0.5
+Top-K：None
+流式传输:开
+同时建议安装 “toonflow_story_llm_optimization” 插件，在信息面板设置思考程度为：minimal

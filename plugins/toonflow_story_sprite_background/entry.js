@@ -30,14 +30,20 @@ function readVar(name) {
 
 function resolveUrl(path) {
   if (!path) return '';
+  if (/^https?:\/\//.test(path)) return path;
   if (path.startsWith('files/')) {
+    // tavo.file.url(name, scope) 需要两个参数
+    // 文件存在 chat scope，name 只需文件名（不含 files/chat/ 前缀）
+    const name = path.split('/').pop() || path;
     let url = '';
-    try { url = tavo.file.url(path) || path; } catch(e) { url = path; }
-    console.log('[sprite] resolveUrl(' + path + ') → ' + url);
+    try { url = tavo.file.url(name, 'chat') || tavo.file.url(path, 'chat') || path; } catch(e) { url = path; }
+    console.log('[sprite] resolveUrl(' + path + ') name=' + name + ' → ' + url);
     return url;
   }
-  if (/^https?:\/\//.test(path)) return path;
-  return path;
+  // 相对路径：直接用
+  let url = '';
+  try { url = tavo.file.url(path, 'chat') || path; } catch(e) { url = path; }
+  return url;
 }
 
 function getSpeaker() {

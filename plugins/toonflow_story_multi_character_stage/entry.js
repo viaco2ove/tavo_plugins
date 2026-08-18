@@ -305,6 +305,27 @@ async function buildOrchestrationPrompt(userInput) {
     ? chapter.content.split('\n').filter(l => l.trim()).slice(0, 3).map(l => l.trim())
     : [];
 
+  // 对齐 toonflow：读 tf_progress.phases[currentPhase].events[currentEvent]
+  const phases = (readChatVar('tf_progress') || {}).phases || [];
+  const phaseIdx = Math.max(0, (readChatVar('tf_progress') || {}).currentPhase || 0);
+  const eventIdx = Math.max(0, (readChatVar('tf_progress') || {}).currentEvent || 0);
+  const phase = phases[phaseIdx] || {};
+  const events = phase.events || [];
+  const curEv = events[eventIdx] || {};
+  const nextEv = events[eventIdx + 1] || null;
+  const isUserNode = /用户发言|用户/.test(curEv.name || '');
+  const evDigest = {
+    index: eventIdx + 1,
+    kind: isUserNode ? 'user' : 'scene',
+    state: curEv.state || 'active',
+    summary: (phase.title || '') + (curEv.name ? ' > ' + curEv.name : ''),
+    facts: [
+      phase.name || chapterTitle,
+      curEv.name || '',
+    ].filter(Boolean),
+  };
+  const nextEvInfo = nextEv ? { index: eventIdx + 2, name: nextEv.name } : null;
+
   // turn_state
   const lastMsg = recentDialogue[recentDialogue.length - 1];
   const lastSpeaker = lastMsg ? lastMsg.speaker : '（无）';
@@ -330,8 +351,12 @@ recent_dialogue（最近 ${recentDialogue.length} 条台词）:
 ${recentDialogue.map(r => `- ${r.speaker}：${r.content}`).join('\n') || '（无）'}
 
 current_event:
-- summary: "${eventSummary}"
-- facts: [${eventFacts.map(f => '"' + f + '"').join(', ')}]
+- summary: "${evDigest.summary || eventSummary}"
+- event_index: ${evDigest.index}
+- event_kind: ${evDigest.kind}
+- event_state: ${evDigest.state}
+- facts: [${(evDigest.facts.length ? evDigest.facts : eventFacts).map(f => '"' + f + '"').join(', ')}]
+${nextEvInfo ? '- next_event: "' + nextEvInfo.name + '"' : ''}
 ${freeMode ? '- flow: "free_runtime"' : ''}
 
 turn_state:
@@ -396,6 +421,12 @@ tavo.plugin.on('input:beforeSend', async (event) => {
       // 2. 阶段一：编排器 → {speaker, role_type, motive, event_summary}
       const orchPrompt = await buildOrchestrationPrompt(userText);
       console.log('🎭 [mcs] 阶段一 prompt len=' + orchPrompt.length);
+      // 打印当前章节/事件/进度（对齐 toonflow 编排调试信息）
+      try {
+        const p = readChatVar('tf_progress') || {};
+        const ph = (p.phases || [])[p.currentPhase || 0] || {};
+        console.log('🎭 [mcs] 当前进度: 第' + ((p.currentChapterIndex || 0) + 1) + '章 phase=' + (p.currentPhase || 0) + '/' + (p.phases || []).length + ' event=' + (p.currentEvent || 0) + '/' + (ph.events || []).length + (p.sessionFreeMode ? ' [自由模式]' : ''));
+      } catch (e) {}
 
       const orchRaw = await tavo.generate(orchPrompt, {
         context: false,
@@ -408,6 +439,17 @@ tavo.plugin.on('input:beforeSend', async (event) => {
         s.replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')
          .replace(/<think>[\s\S]*?<\/think>/gi, '')
          .trim();
+
+      // extractThinking: MINIMAX <thinking>...</think> tags → separate {thinking, body}
+      const extractThinking = (s) => {
+        const t = s || '';
+        const RE = /<thinking>([\s\S]*?)<\/thinking>|<thought>([\s\S]*?)<\/thought>|<reasoning>([\s\S]*?)<\/reasoning>|<noworking>([\s\S]*?)<\/noworking>|<ciano>([\s\S]*?)<\/ciano>|<talk>([\s\S]*?)<\/talk>|<think>([\s\S]*?)<\/think>/gi;
+        let think = '', m;
+        RE.lastIndex = 0;
+        while ((m = RE.exec(t)) !== null) { think += m[1]||m[2]||m[3]||m[4]||m[5]||m[6]||m[7]||''; }
+        const body = t.replace(RE,'').replace(/<[^>]+>/gi,'').trim();
+        return { thinking: think.trim(), body };
+      };
 
       const cleaned = stripTags(orchText);
       console.log('🎭 [mcs] 阶段一原始: ' + orchText.slice(0, 500));
@@ -439,12 +481,13 @@ tavo.plugin.on('input:beforeSend', async (event) => {
 
       const speakerRaw = await tavo.generate(speakerPrompt, {
         context: false,
-        settings: { temperature: 0.7, maxCompletionTokens: 400 },
+        settings: { maxCompletionTokens: 1500 },
       });
       const rawContent = (speakerRaw || '').trim();
-      const content = stripTags(rawContent).replace(/^["']|["']$/g, '').trim();
-      console.log('🎭 [mcs] 阶段二原始: ' + rawContent.slice(0, 200));
-      console.log('🎭 [mcs] 阶段二台词: ' + JSON.stringify(content.slice(0, 80)));
+      console.log('[mcs] 阶段二原始: ' + rawContent.slice(0, 300));
+      const { thinking, body } = extractThinking(rawContent);
+      const content = body.replace(/^["']|["']$/g, '').trim();
+      console.log('[mcs] 阶段二台词: ' + JSON.stringify(content.slice(0, 80)));
 
       // 4. 查角色 id 并 append
       const charId = await findCharacterId(speaker);
@@ -453,13 +496,13 @@ tavo.plugin.on('input:beforeSend', async (event) => {
       tavo.set('tf_last_speaker', { name: speaker, characterId: charId || '' }, 'chat');
       console.log('🎭 [mcs] tf_last_speaker → ' + speaker + ' (id=' + charId + ')');
 
-      await tavo.message.append({
-        role: 'assistant',
-        characterId: charId || undefined,
-        characterName: speaker,
-        content: content,
-        hidden: false,
-      });
+      if (thinking) {
+        const esc = thinking.replace(/<\/div>/gi, '&lt;/div&gt;');
+        const block = '<div style="cursor:pointer;color:#888;font-size:0.85em" onclick="var d=this.getElementsByTagName(\'div\')[0];d.style.display=d.style.display==\'none\'?\'block\':\'none\'">思考...<div style="display:none;padding:8px 0;color:#666">' + esc + '</div></div>';
+        await tavo.message.append({ role: 'assistant', characterId: charId || undefined, characterName: speaker, content: block + content, hidden: false });
+      } else {
+        await tavo.message.append({ role: 'assistant', characterId: charId || undefined, characterName: speaker, content: content, hidden: false });
+      }
       console.log('✅ [mcs] 角色消息已 append → speaker=' + speaker + ' charId=' + charId + ' content=' + content.slice(0, 50));
 
     } catch (e) {
