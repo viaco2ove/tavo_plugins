@@ -1,0 +1,92 @@
+<!-- toonflow_story_voice - 语音控制层（轻量，主 UI 在 event_manager 的角色配置弹窗） -->
+<style>
+#tf-voice-btn-wrap {
+  position: fixed;
+  right: 12px;
+  top: 40%;
+  z-index: 998;
+}
+#tf-voice-btn {
+  width: 38px; height: 38px;
+  border-radius: 50%;
+  background: rgba(20, 20, 28, 0.86);
+  border: 1px solid rgba(188, 204, 226, 0.2);
+  color: #fff;
+  font-size: 16px;
+  cursor: pointer;
+  box-shadow: 0 4px 12px rgba(0,0,0,.3);
+  backdrop-filter: blur(8px);
+}
+</style>
+
+<div id="tf-voice-btn-wrap" style="display:none">
+  <button id="tf-voice-btn" title="播放最后一条角色语音">🔊</button>
+</div>
+
+<script>
+(function () {
+  console.log('[voice-html] voice_panel.html loaded');
+
+  var btnWrap = document.getElementById('tf-voice-btn-wrap');
+  var btn = document.getElementById('tf-voice-btn');
+  var T = (typeof tavo !== 'undefined') ? tavo : (window.tavo || null);
+
+  function getPlatform() {
+    try { return T.plugin.config.get('voice_platform') || 'xiaomimimo'; } catch (e) { return 'xiaomimimo'; }
+  }
+
+  function updateVisibility() {
+    var platform = getPlatform();
+    if (btnWrap) btnWrap.style.display = (platform === 'tavo') ? 'none' : 'block';
+  }
+
+  // 平台为 tavo 时隐藏（tavo 官方语音自己有入口）
+  setTimeout(updateVisibility, 800);
+  try {
+    T.plugin.config.onChange(function () { setTimeout(updateVisibility, 100); });
+  } catch (e) {}
+
+  // 点击 -> 重播最后一条角色消息的语音
+  if (btn) {
+    btn.addEventListener('click', async function () {
+      try {
+        var voice = window.tf_voice;
+        if (!voice) { console.warn('[voice-html] tf_voice API 未加载'); return; }
+        // 找最后一条 assistant 消息
+        var cnt = T.message.count();
+        var msgs = T.message.find([Math.max(0, cnt - 10), cnt - 1]);
+        var last = null;
+        for (var i = msgs.length - 1; i >= 0; i--) {
+          if (msgs[i] && msgs[i].role === 'assistant' && msgs[i].characterId) { last = msgs[i]; break; }
+        }
+        if (!last) { console.log('[voice-html] 无角色消息'); return; }
+        var charId = String(last.characterId);
+        var text = (last.content || '').replace(/<[^>]+>/g, '').trim().slice(0, 120);
+        if (!text) return;
+
+        var platform = voice.getPlatform();
+        var apiKey = '';
+        try { apiKey = T.plugin.config.get('voice_platform_apikey') || ''; } catch (e) {}
+        if (!apiKey) { alert('未配置语音平台 API Key'); return; }
+
+        var voiceId = voice.getVoiceId(charId);
+        if (!voiceId) {
+          var vf = voice.getVoiceFile(charId);
+          if (!vf || !vf.file) { alert('该角色未上传音色文件'); return; }
+          var audioUrl = T.file.url(vf.file, 'chat');
+          voiceId = (platform === 'aliyun')
+            ? null  // aliyun 克隆走 entry.js 的 API
+            : null;
+          alert('voiceId 未缓存，发送新消息后将自动克隆');
+          return;
+        }
+
+        // 直接用 tavo TTS 播放（或平台 API，简化：调 entry.js 暴露的播放）
+        if (window.tf_voice && window.tf_voice.playLast) {
+          window.tf_voice.playLast();
+        }
+      } catch (e) { console.error('[voice-html] replay err', e); }
+    });
+  }
+})();
+</script>

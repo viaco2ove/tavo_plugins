@@ -103,17 +103,51 @@ def install(ctx, plugin_dir, enable):
 
 
 @main.command()
-@click.argument("story_dir", type=click.Path(exists=True))
+@click.argument("story_dir", required=False, type=click.Path(exists=True))
+@click.option("--story-json", type=click.Path(exists=True),
+              help="从 story.json 控制同步（支持 --all / --force / --duplicate-delete / --clean-cache）")
 @click.option("--force", "-f", is_flag=True, help="强制重新导入角色卡")
+@click.option("--all", "sync_all", is_flag=True, help="完整同步（含世界书）")
+@click.option("--duplicate-delete", is_flag=True, help="同名去重")
+@click.option("--clean-cache", is_flag=True, help="清空 sync_cache 后同步")
 @click.option("--skip-sprite", is_flag=True, help="跳过立绘同步")
 @click.option("--skip-chapters", is_flag=True, help="跳过章节同步")
 @click.option("--skip-plugins", is_flag=True, help="跳过插件安装")
 @click.option("--chat-id", type=int, help="指定已有群聊 ID")
 @click.option("--reuse-ids", type=click.Path(exists=True), help="角色ID映射 JSON 文件")
 @click.pass_context
-def sync(ctx, story_dir, force, skip_sprite, skip_chapters, skip_plugins, chat_id, reuse_ids):
-    """同步故事到 Tavo（角色+立绘+章节+插件）"""
+def sync(ctx, story_dir, story_json, force, sync_all, duplicate_delete, clean_cache,
+         skip_sprite, skip_chapters, skip_plugins, chat_id, reuse_ids):
+    """同步故事到 Tavo（角色+立绘+章节+插件+世界书）
+
+    两种模式：
+    - story_dir: 直接传故事目录路径（向后兼容）
+    - --story-json: 从 story.json 读取完整配置
+    """
     from tavo_plugins.commands.sync_story import sync_story
+    from tavo_plugins.commands.sync_story_json import sync_from_story_json
+
+    # 模式 1: --story-json
+    if story_json:
+        client = resolve_client(ctx.obj["env_path"])
+        click.echo(f"[SYNC] 从 story.json 同步: {story_json}")
+        sync_from_story_json(
+            client, story_json,
+            force=force or sync_all,
+            duplicate_delete=duplicate_delete,
+            clean_cache=clean_cache,
+            skip_sprite=skip_sprite,
+            skip_chapters=skip_chapters,
+            skip_plugins=skip_plugins,
+            chat_id=chat_id,
+            echo=click.echo,
+        )
+        return
+
+    # 模式 2: story_dir（向后兼容）
+    if not story_dir:
+        click.secho("[ERR] 必须传 STORY_DIR 或 --story-json", fg="red")
+        return
 
     reuse_map = None
     if reuse_ids:
@@ -125,9 +159,10 @@ def sync(ctx, story_dir, force, skip_sprite, skip_chapters, skip_plugins, chat_i
     click.echo(f"[SYNC] 开始同步: {story_dir}")
     if force:
         click.secho("  [WARN] force 模式: 重新导入所有角色", fg="yellow")
-    sync_story(client, story_dir, force=force, skip_sprite=skip_sprite,
-               skip_chapters=skip_chapters, skip_plugins=skip_plugins,
-               chat_id=chat_id, reuse_ids=reuse_map, echo=click.echo)
+    sync_story(client, story_dir, force=force or sync_all,
+               skip_sprite=skip_sprite, skip_chapters=skip_chapters,
+               skip_plugins=skip_plugins, chat_id=chat_id,
+               reuse_ids=reuse_map, echo=click.echo)
 
 
 @main.command()

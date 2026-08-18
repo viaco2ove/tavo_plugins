@@ -12,8 +12,12 @@ tavo sync ".cache/story/故事名"
 
 | 选项 | 说明 |
 |------|------|
-| `STORY_DIR` | 故事目录路径（必填） |
+| `STORY_DIR` | 故事目录路径（必填，与 `--story-json` 二选一） |
+| `--story-json FILE` | 从 story.json 控制同步（支持 `--all`/`--force`/`--duplicate-delete`/`--clean-cache`） |
 | `--force, -f` | 强制重新导入所有角色卡（跳过复用检查） |
+| `--all` | 完整同步（含世界书） |
+| `--duplicate-delete` | 同名去重（角色 + 世界书条目） |
+| `--clean-cache` | 开始同步前清空 `story_sync_cache` |
 | `--reuse-ids FILE` | 角色 ID 映射 JSON 文件（避免重复创建角色） |
 | `--skip-sprite` | 跳过立绘资源同步 |
 | `--skip-chapters` | 跳过章节同步 |
@@ -129,6 +133,42 @@ tavo sync ".cache/story/xxx" --skip-plugins
 ls .cache/story/故事名/story_sync_config.json
 ```
 
+
+## 两种模式
+
+### 模式 1：传故事目录（向后兼容）
+
+```bash
+python -m tavo_plugins sync ".cache/story/谁让这个山大王修仙的" \
+  --reuse-ids ".cache/story/谁让这个山大王修仙的/char_ids.json" \
+  --skip-plugins
+```
+
+### 模式 2：从 story.json 控制（推荐）
+
+`story.json` 是 Toonflow-game 的源格式，包含 `player_role` / `npc_roles` / `chapter_covers` / `intro` / `global_bg` / `card_scenario` 等字段。
+
+```bash
+python -m tavo_plugins sync --story-json "story.json"
+```
+
+`story.json` 模式自动生成 / 复用 `story_sync_config.json`：
+- 角色描述从 `npc_roles[].md_file`（md 文件）读取
+- 头像从 `npc_roles[].avatar_file` 查找
+- 章节从 `chapters/*.json` 读取
+- 世界书从 `worldbook/worldbook.json`（SillyTavern 格式，含 keys/probability/order）读取
+- `chapter_covers` 的背景图自动上传
+
+`--story-json` 模式支持的额外选项：
+- `--all`：完整同步（含世界书）
+- `--duplicate-delete`：删除同名重复（角色 + 世界书条目）
+- `--clean-cache`：开始前清空 `story_sync_cache`
+
+```bash
+# 完整清理 + 同步
+python -m tavo_plugins sync --story-json "story.json" \
+  --duplicate-delete --clean-cache --skip-plugins
+```
 
 # 实例
 ## 同步故事

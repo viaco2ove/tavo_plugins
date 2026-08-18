@@ -1,0 +1,36 @@
+{
+  "id": "com.toonflow.story-voice",
+  "name": "Toonflow-角色语音",
+  "version": "0.1.0",
+  "description": "克隆音色语音插件：管理角色音色文件上传/绑定，支持 xiaomimimo / aliyun 克隆音色平台，对齐 Toonflow-game voice 业务。",
+  "author": "toonflow",
+  "minAppVersion": "1.0.0",
+  "permissions": ["file", "variable", "message", "chat", "tts"],
+  "htmlFragments": [
+    {
+      "path": "ui/voice_panel.html",
+      "position": "/chat/body/end"
+    }
+  ],
+  "settings": [
+    {
+      "key": "voice_platform",
+      "type": "select",
+      "label": "语音平台",
+      "options": ["xiaomimimo", "aliyun", "tavo"],
+      "default": "xiaomimimo"
+    },
+    {
+      "key": "voice_platform_apikey",
+      "type": "string",
+      "label": "语音平台 API Key",
+      "default": ""
+    },
+    {
+      "key": "auto_play",
+      "type": "boolean",
+      "label": "自动播放角色语音",
+      "default": false
+    }
+  ]
+}

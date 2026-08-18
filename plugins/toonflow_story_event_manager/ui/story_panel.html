@@ -738,9 +738,12 @@
     // 开场白：openingRole + openingLine（对齐 Toonflow chapterOpeningDisplay）
     var openingRole = curCh.openingRole || '旁白';
     var openingLine = curCh.openingLine || '';
-    var opening = openingLine ? (openingRole + '：' + openingLine) : '';
-    var cond = curCh.successCondition || '';
-    var entryCond = curCh.entryCondition || '';
+    var opening = openingLine ? (openingRole + '：' + openingLine) : '无';
+    // 完成条件：conditionVisible=false 时用星号占位（对齐 chapterObjectivePreview）
+    var condVisible = curCh.conditionVisible !== false;
+    var cond = condVisible ? (curCh.successCondition || '无') : '*****';
+    // 全局背景（worldbook【全局背景】或故事背景）
+    var globalBg = (bgE && bgE.content && bgE.content.replace('【全局背景】', '').trim()) || (_story.intro || '暂无世界背景');
     // 章节状态（对齐 chapterStatusItems）
     var statusItems = [
       { label: '章节序号', value: String(curIdx + 1) },
@@ -749,11 +752,19 @@
     ];
 
     var h = '<div class="tf-card">';
+    h += '<div class="tf-card__text">故事背景：' + esc(globalBg.slice(0, 200)) + '</div>';
     h += '<div class="tf-card__text">章节：' + esc(curName) + '</div>';
-    h += '<div class="tf-card__text">开场白：' + esc(opening || '无') + '</div>';
-    h += '<div class="tf-card__text">章节编排：仅供编排师内部使用，游玩时不直接展示。</div>';
-    h += '<div class="tf-card__text">章节进入条件：' + esc(entryCond || '无') + '</div>';
-    h += '<div class="tf-card__text">章节完成条件：' + esc(cond || '无') + '</div>';
+    // 章节背景图
+    var chapBg = curCh.background || curCh.backgroundPath || '';
+    if (chapBg) {
+      var bgUrl = chapBg.startsWith('files/') ? chapBg : chapBg;
+      h += '<div class="tf-card__text">章节背景图：<a style="color:#a9ccff;" target="_blank" href="' + esc(bgUrl) + '">' + esc(bgUrl) + '</a></div>';
+    } else {
+      h += '<div class="tf-card__text" style="color:rgba(220,238,255,.5);">章节背景图：未设置（默认用全局背景）</div>';
+    }
+    h += '<div class="tf-card__text">开场白：' + esc(opening) + '</div>';
+    h += '<div class="tf-card__text" style="color:rgba(220,238,255,.5);font-style:italic;">章节编排：仅供编排师内部使用，游玩时不直接展示。</div>';
+    h += '<div class="tf-card__text">章节完成条件：' + esc(cond) + '</div>';
     // 章节状态 chips
     if (statusItems.length) {
       h += '<div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;">';
@@ -877,12 +888,14 @@
   }
 
   function eventsHtml() {
-    // 先取章节目标（当前章节 successCondition）
+    // 先取章节目标（当前章节 successCondition，conditionVisible=false 时显示星号）
     var _prog = getProgressState();
     var _chapters = (_edit && _edit.chapters) || [];
     var _curIdx = Math.max(0, Math.min(_prog.currentChapterIndex || 0, Math.max(_chapters.length - 1, 0)));
     var _curCh = _chapters[_curIdx] || {};
-    var objective = _curCh.successCondition || '未设置';
+    var objective = (_curCh.conditionVisible === false)
+      ? '*****'
+      : ((_curCh.successCondition || '未设置').slice(0, 20));
 
     var h = '<div class="tf-card"><div class="play-objective-chip">章节目标:<span class="play-objective-text">' + esc(objective) + '</span></div><div class="tf-card__title">当前事件进度</div>';
 
@@ -890,7 +903,7 @@
     var chapters = (_edit && _edit.chapters) || [];
     var curIdx = Math.max(0, Math.min(prog.currentChapterIndex || 0, Math.max(chapters.length - 1, 0)));
     var curCh = chapters[curIdx] || {};
-    var cond = curCh.successCondition || '';
+    var cond = (curCh.conditionVisible === false) ? '*****' : (curCh.successCondition || '');
 
     // 顶部：当前事件目标（当前事件的 stage 链，带状态标记）
     var phases = parseChapterPhases(curCh.content || '');

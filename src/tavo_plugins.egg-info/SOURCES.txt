@@ -1,5 +1,6 @@
 pyproject.toml
 src/tavo_plugins/__init__.py
+src/tavo_plugins/__main__.py
 src/tavo_plugins/cli.py
 src/tavo_plugins.egg-info/PKG-INFO
 src/tavo_plugins.egg-info/SOURCES.txt
@@ -9,5 +10,6 @@ src/tavo_plugins.egg-info/requires.txt
 src/tavo_plugins.egg-info/top_level.txt
 src/tavo_plugins/commands/__init__.py
 src/tavo_plugins/commands/sync_story.py
+src/tavo_plugins/commands/sync_story_json.py
 src/tavo_plugins/lib/__init__.py
 src/tavo_plugins/lib/mcp_client.py

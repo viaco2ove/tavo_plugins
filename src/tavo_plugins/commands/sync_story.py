@@ -165,6 +165,30 @@ def sync_story(client, story_dir, force=False, skip_sprite=False,
     wb = config.get("worldbook", {})
     wb_name = wb.get("name", config.get("story_name", "unnamed"))
     entries = wb.get("source_entries", [])
+
+    # 优先读 story_dir/worldbook/worldbook.json（SillyTavern 格式：含 keys/probability/order）
+    wb_json = os.path.join(story_dir, "worldbook", "worldbook.json")
+    if os.path.isfile(wb_json):
+        try:
+            with open(wb_json, encoding="utf-8") as f:
+                wb_data = json.load(f)
+            for e in wb_data.get("entries", []):
+                entries.append({
+                    "name": e.get("title") or e.get("name", ""),
+                    "keys": e.get("keys") or [],
+                    "content": e.get("content", ""),
+                    "probability": e.get("probability", 100),
+                    "constant": e.get("constant", False),
+                    "order": e.get("order", 100),
+                    "selectiveLogic": e.get("selectiveLogic"),
+                    "selectiveKeys": e.get("selectiveKeys"),
+                    "strategy": "constant" if e.get("constant") else "keyword",
+                    "enabled": not e.get("disabled", False),
+                })
+            echo(f"  从 worldbook.json 加载 {len(wb_data.get('entries', []))} 条 SillyTavern 格式条目")
+        except Exception as e:
+            echo(f"  [WARN] 读取 worldbook.json 失败: {e}")
+
     if not entries:
         for fp in sorted(_glob.glob(os.path.join(story_dir, wb.get("dir", "chapters"), "*.json"))):
             with open(fp, encoding="utf-8") as f:
@@ -180,8 +204,25 @@ def sync_story(client, story_dir, force=False, skip_sprite=False,
         items = _search_list(found)
         if items:
             lid = items[0].get("lorebookId") or items[0].get("id")
-            client.lorebook_update(lid, entries)
-            echo(f"  [OK] 更新世界书 id={lid}: {wb_name} ({len(entries)} 条)")
+            # 先读出当前条目，按 name 去重
+            existing = client.unwrap(client.call("tavo_lorebook_get", {"id": int(lid)}))
+            existing_entries = (existing or {}).get("entries", []) if isinstance(existing, dict) else []
+            existing_names = {e.get("name") for e in existing_entries if e.get("name")}
+            added = 0; skipped = 0
+            for e in entries:
+                ename = e.get("name")
+                if not ename:
+                    continue
+                if ename in existing_names:
+                    skipped += 1
+                    continue
+                client.call("tavo_lorebook_entry_upsert", {
+                    "lorebookId": int(lid),
+                    "entry": e,
+                })
+                existing_names.add(ename)
+                added += 1
+            echo(f"  [OK] 世界书 id={lid}: {wb_name} | 追加 {added} 条 / 已存在 {skipped} 条")
             lorebook_id = lid
         else:
             r = client.lorebook_create(wb_name, entries)
@@ -394,10 +435,12 @@ def _sync_chapters(client, chat_id, story_dir, config, echo):
         chapters.append({
             "title": ch.get("title", ""),
             "content": ch.get("content", ""),
-            "openingRole": ch.get("openingRole", ""),
-            "openingLine": ch.get("openingLine", ""),
+            "openingRole": ch.get("openingRole", "") or "旁白",
+            "openingLine": ch.get("openingLine", "") or ch.get("openingText", ""),
             "events": ch.get("events", []),
-            "successCondition": ch.get("successCondition", ""),
+            "successCondition": ch.get("successCondition", "") or ch.get("completionCondition", ""),
+            "background": ch.get("background", "") or ch.get("backgroundPath", ""),
+            "conditionVisible": ch.get("conditionVisible", ch.get("showCompletionCondition", True)),
             "enabled": True,
         })
         echo(f"  {chapters[-1]['title']} ({len(chapters[-1]['events'])} events)")
