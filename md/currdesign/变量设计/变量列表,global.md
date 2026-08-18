@@ -1,0 +1,212 @@
+# global 变量
+
+> 记录在 `tavo_variable` 表的 `scope=global`。在 `tavo_chat_reset`（重置聊天）后仍然保留，是持久化数据的主存储。
+> 大部分变量同时双写到 global 和 chat，以保证 reset 后的恢复能力。
+
+---
+
+## tf_story.*
+
+故事核心配置，所有插件共享。
+
+### tf_story.edit
+
+**用途**：故事完整配置（同步入口 + 编辑器数据源）
+**结构**：
+```json
+{
+  "intro": "故事简介（用户视角，第一人称）",
+  "globalBackground": "全局背景（世界设定）",
+  "orchestration": "编排模式，\"system\"=跟随系统 / \"plugin\"=角色编排插件",
+  "currentChapterIndex": 0,
+  "lineCount": 20,
+  "chapters": [
+    {
+      "title": "第 1 章：穿越成山大王",
+      "content": "## 苏醒\n### 穿越醒来\n@旁白：xxx...",
+      "openingRole": "旁白",
+      "openingLine": "xxx",
+      "background": "files/chat/chapter_bg_1.jpg",
+      "successCondition": "财气眼激活",
+      "conditionVisible": true,
+      "events": [],
+      "enabled": true
+    }
+  ]
+}
+```
+**维护者**：`toonflow_story_event_manager`（`writeVarDual` 同时写 global + chat）
+**读取者**：所有插件（MCS / speaker / sprite / voice）
+
+### tf_progress
+
+**用途**：章节进度追踪（当前章/阶段/事件索引）
+**结构**：
+```json
+{
+  "currentChapterIndex": 0,
+  "currentPhase": 0,
+  "currentEvent": 0,
+  "phases": [],
+  "sessionFreeMode": false
+}
+```
+**维护者**：`toonflow_story_event_manager`
+
+### tf_story.boot
+
+**用途**：启动状态标记（协调 boot 顺序）
+**结构**：
+```json
+{
+  "status": "ready",
+  "openingDone": true,
+  "chatId": 1
+}
+```
+**维护者**：`toonflow_story_event_manager`
+
+---
+
+## tf_sprites
+
+**用途**：角色立绘映射（name → sprite 路径）
+**结构**：
+```json
+{
+  "byName": {
+    "红缥缈": { "id": 51, "name": "红缥缈", "roleType": "npc", "fg": "files/chat/sprite_fg_51.png", "bg": "files/chat/sprite_bg_51.png" },
+    "白锦儿": { "id": 62, "name": "白锦儿", "roleType": "npc", "fg": "files/chat/sprite_fg_62.png", "bg": "files/chat/sprite_bg_62.png" },
+    "纯小白": { "id": 4,  "name": "纯小白",  "roleType": "npc", "fg": "files/chat/sprite_fg_1.png",   "bg": "" }
+  }
+}
+```
+**维护者**：`tavo_plugins sync_story.py`（`_sync_sprites`）
+**读取者**：`toonflow_story_sprite_background`
+
+---
+
+## tf_sprite_persona_name
+
+**用途**：记录当前 persona 名称（用于 sprite 恢复）
+**值**：字符串，如 `"纯小白"`
+**维护者**：`tavo_plugins sync_story.py`
+
+---
+
+## tf_chapter_backgrounds
+
+**用途**：章节背景图索引（key → files/chat/ 路径）
+**结构**：
+```json
+{
+  "chapter_1": "files/chat/chapter_bg_1.jpg",
+  "chapter_2": "files/chat/chapter_bg_2.png"
+}
+```
+**维护者**：`tavo_plugins sync_story.py`（`_sync_chapters` 上传章节 JSON 的 background 字段后写入）
+**读取者**：`toonflow_story_sprite_background`（按 currentChapterIndex 选 key）
+
+---
+
+## tf_sprite_fallback_bg
+
+**用途**：兜底背景图路径（无章节背景时使用）
+**值**：字符串，如 `"files/chat/fallback_bg.jpg"`
+**维护者**：`tavo_plugins sync_story.py`（`_sync_sprites`）
+
+---
+
+## tf_orch.active
+
+**用途**：编排进行中标记（编排期间阻止用户直接发言）
+**值**：`true` = 编排中 / `null` = 非编排
+**维护者**：`toonflow_story_multi_character_stage`
+**读取者**：`toonflow_story_speaker`（检测编排状态决定是否接管）
+
+---
+
+## tf_llm
+
+**用途**：LLM 参数配置
+**结构**：
+```json
+{
+  "reasoningEffort": "minimal",
+  "temperature": 0.3,
+  "topP": 0.5
+}
+```
+**维护者**：`toonflow_story_llm_optimization`
+**读取者**：MCS 编排阶段（`generation:prepare` 拦截注入参数）
+
+---
+
+## tmm_story_static
+
+**用途**：静态故事记忆（场景设定/角色性格，不频繁变化）
+**结构**：
+```json
+{
+  "summary": "xxx",
+  "facts": ["角色关系...", "世界设定..."],
+  "tags": ["修仙", "黑风寨"],
+  "charParams": { "角色名": { "性格": "...", "背景": "..." } },
+  "dynamic_world_global_background": "..."
+}
+```
+**维护者**：`toonflow_story_memory_manager`（`writeVarDual`）
+**读取者**：`toonflow_story_speaker`（注入角色动态状态到请求）
+
+---
+
+## tf_voice_ids
+
+**用途**：角色音色 ID 缓存（voice platform → voiceId 映射）
+**结构**：
+```json
+{
+  "byCharId": {
+    "51": { "platform": "xiaomimimo", "voiceId": "mimo-xxx" },
+    "62": { "platform": "aliyun", "voiceId": "cosyvoice-xxx" }
+  }
+}
+```
+**维护者**：`toonflow_story_voice`（`cacheVoiceId`）
+**读取者**：`toonflow_story_voice`（`getVoiceId`）
+
+---
+
+## tf_voice_files
+
+**用途**：角色音色文件路径绑定
+**结构**：
+```json
+{
+  "51": "files/chat/voice_51.wav",
+  "62": "files/chat/voice_62.wav"
+}
+```
+**维护者**：`toonflow_story_voice`（`bindVoiceFile` 上传 wav 文件后写入）
+
+---
+
+## mcs_stage
+
+**用途**：多角色舞台状态（当前发言角色 ID / 显示状态）
+**结构**：
+```json
+{
+  "currentSpeaker": 51,
+  "active": true
+}
+```
+**维护者**：`toonflow_story_multi_character_stage`
+
+---
+
+## mcs_free_mode_seen
+
+**用途**：标记用户是否已见过自由模式提示（只写一次）
+**值**：`true` / `null`
+**维护者**：`toonflow_story_multi_character_stage`
