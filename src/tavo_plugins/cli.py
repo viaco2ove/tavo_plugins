@@ -42,11 +42,11 @@ def main(ctx, env):
 @click.option("--install-all", is_flag=True, help="批量安装 plugins/ 下所有插件")
 @click.option("--install", "-i", help="安装指定的插件目录（逗号分隔）")
 @click.option("--plugins-dir", default="plugins", show_default=True, help="插件目录根")
-@click.option("--keep-tpg", is_flag=True, help="同时把生成的 tpg 文件保存到 plugins_tpg/")
-@click.option("--tpg-dir", default="plugins_tpg", show_default=True, help="tpg 文件输出目录")
+@click.option("--tpg-dir", default="plugins_tpg", show_default=True, help="tpg 文件输出目录（默认 plugins_tpg/）")
+@click.option("--no-tpg", is_flag=True, help="不生成 tpg 文件")
 @click.option("--enable/--no-enable", default=True, help="安装后启用")
 @click.pass_context
-def plugins(ctx, install_all, install, plugins_dir, keep_tpg, tpg_dir, enable):
+def plugins(ctx, install_all, install, plugins_dir, tpg_dir, no_tpg, enable):
     """列出 / 安装插件
 
     不带参数：列出已安装插件
@@ -91,11 +91,10 @@ def plugins(ctx, install_all, install, plugins_dir, keep_tpg, tpg_dir, enable):
                         z.write(fp, rel)
             zip_b64 = base64.b64encode(buf.getvalue()).decode("ascii")
 
-            # --keep-tpg：保存到 plugins_tpg/<name>-<ver>.tpg
-            if keep_tpg:
+            # 始终保存 tpg 到 plugins_tpg/<name>-<ver>.tpg（除非 --no-tpg）
+            if not no_tpg:
                 os.makedirs(tpg_dir, exist_ok=True)
                 version = "0.0.0"
-                mp = os.path.join(pdir, "manifest.json")
                 try:
                     with open(mp, encoding="utf-8") as mf:
                         version = _json.load(mf).get("version", "0.0.0")
