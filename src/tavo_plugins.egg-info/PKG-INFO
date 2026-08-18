@@ -1,0 +1,6 @@
+Metadata-Version: 2.4
+Name: tavo-plugins
+Version: 0.1.0
+Summary: Tavo 插件管理 + 故事同步 CLI
+Requires-Python: >=3.8
+Requires-Dist: click>=8.0
