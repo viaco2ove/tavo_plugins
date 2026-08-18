@@ -8,14 +8,11 @@
 # 音色文件mcp 绑定和上传
 story_sync_voice.py 同步音色文件的角色绑定
 
-# 语音api mcp 设置
-读取env文件中的配置,然后用mcp 设置 到gobal 变量
-`
-#voice_platform=xiaomimimo/aliyun/tavo
-voice_platform=xiaomimimo
-voice_platform_apikey=xxx
-`
 
+# toonflow_story_event_manager 在“故事配置”下增加 
+语音插件配置:
+    - 语音模式(voice_platform):xiaomimimo/aliyun/tavo
+    - 语音apikey(voice_platform_apikey):xxxx
 # 具体业务
 看齐 toonflow game 的业务就行，例如怎么缓存voiceid,切换平台后怎么处理。voiceid 过期怎么处理
 xiaomimimo: 的模型固定为：mimo-v2.5-tts-voiceclone 和mimo-v2.5-tts

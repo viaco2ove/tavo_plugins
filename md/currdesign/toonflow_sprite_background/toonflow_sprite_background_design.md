@@ -1,4 +1,4 @@
-# toonflow_story_event_manager 的 故事配置里增加立绘头像上传绑定到角色的能力
+# toonflow_story_event_manager 的 角色下的“查看角色详情” 旁边增加 “角色配置” 按钮 ，弹框显示窗口 ：立绘图，音色文件上传（15s到30s 的wav，小于20 MB ，24000 Hz，16bit），保存按钮
 # currdesign/toonflow_sprite_background
 根据当前章节显示背景图片。 然后上面叠加角色立绘头像的能力
 # toonflow_story_sprite_background 设计文档

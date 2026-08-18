@@ -128,3 +128,8 @@ tavo sync ".cache/story/xxx" --skip-plugins
 # 检查是否存在
 ls .cache/story/故事名/story_sync_config.json
 ```
+
+
+# 实例
+## 同步故事
+python -m tavo_plugins sync ".cache/story/谁让这个山大王修仙的" --reuse-ids ".cache/story/谁让这个山大王修仙的/char_ids.json" --skip-plugins

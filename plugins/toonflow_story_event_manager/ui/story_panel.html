@@ -245,6 +245,43 @@
   </div>
 </div>
 
+<style>
+.tf-overlay{position:fixed;inset:0;background:rgba(0,0,0,0.6);display:none;align-items:center;justify-content:center;z-index:99999}
+.tf-modal{background:#1a2535;border-radius:12px;padding:20px;min-width:320px;max-width:90vw;color:#e2e8f0}
+.tf-modal-field{margin:10px 0;display:flex;flex-direction:column;gap:6px}
+.tf-modal-field label{font-size:12px;color:#94a3b8}
+.tf-modal-row{display:flex;gap:8px;align-items:center}
+.tf-modal-row input[type=file]{font-size:12px;color:#e2e8f0;flex:1}
+.tf-modal-row button{background:#3b82f6;color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:13px;cursor:pointer}
+.tf-modal-save{background:#22c55e;color:#fff;border:none;border-radius:6px;width:100%;padding:10px;font-size:14px;cursor:pointer;margin-top:12px}
+.tf-modal-close{background:none;border:none;color:#94a3b8;font-size:16px;cursor:pointer;padding:0 4px}
+.tf-modal-title{display:flex;justify-content:space-between;align-items:center;padding-bottom:12px;border-bottom:1px solid rgba(255,255,255,.1)}
+.tf-modal-title span{font-size:14px;font-weight:700}
+.tf-modal-img{max-width:80px;max-height:80px;border-radius:8px;object-fit:contain}
+.tf-modal-info{font-size:12px;color:#94a3b8;margin:8px 0}
+</style>
+<div id="tf-role-config-overlay" class="tf-overlay">
+  <div class="tf-modal" id="tf-modal">
+    <div class="tf-modal-title"><span>角色配置</span><button class="tf-modal-close">关闭</button></div>
+    <div id="tf-config-char-info" class="tf-modal-info"></div>
+    <div class="tf-modal-row">
+      <div>
+        <div class="tf-modal-field"><label>立绘前景 (png/webp/jpg)</label>
+          <input type="file" id="tf-config-sprite-input" accept="image/png,image/webp,image/jpeg">
+          <img id="tf-config-sprite-preview" style="max-width:80px;max-height:80px;border-radius:6px;margin-top:4px">
+          <div id="tf-config-sprite-status" class="tf-modal-info"></div>
+        </div>
+        <div class="tf-modal-field"><label>音色文件 (wav/mp3, 15-30秒, &lt;20MB)</label>
+          <input type="file" id="tf-config-voice-input" accept="audio/wav,audio/mp3,.wav,.mp3">
+          <div id="tf-config-voice-preview" class="tf-modal-info"></div>
+          <div id="tf-config-voice-status" class="tf-modal-info"></div>
+        </div>
+      </div>
+    </div>
+    <button class="tf-modal-save" id="tf-config-save" onclick="window._tfSaveRoleConfig()">保存配置</button>
+  </div>
+</div>
+
 <script>
 (function () {
   var T = (typeof tavo !== 'undefined') ? tavo : (window.tavo || null);
@@ -613,6 +650,7 @@
     var openKey = '__roleDetail_' + (ch.id || ch.name || '0');
     var isOpen = !!_openSections[openKey];
     h += '<button class="tf-link-text" data-role-detail="' + openKey + '">' + (isOpen ? '收起角色详情' : '查看角色详情') + '</button>';
+    h += '<button class="tf-link-text" data-role-config="' + esc(ch.id||'') + '" data-char-name="' + esc(ch.name||'') + '">角色配置</button>';
     h += '<div class="tf-collapse' + collapseOpen(openKey) + '" id="tf-role-detail-body">';
     if (isOpen) {
       h += '<div class="tf-role-detail-grid">';
@@ -839,7 +877,7 @@
   }
 
   function eventsHtml() {
-    var h = '<div class="tf-card"><div class="tf-card__title">当前事件进度</div>';
+    var h = '<div class="tf-card"><div class="play-objective-chip">章节目标:<span class="play-objective-text">*****</span></div><div class="tf-card__title">当前事件进度</div>';
 
     var prog = getProgressState();
     var chapters = (_edit && _edit.chapters) || [];
@@ -1347,6 +1385,8 @@
         renderBody();
       });
     });
+    // 角色配置按钮（打开弹窗，由底部 role-config IIFE 的 document listener 处理）
+    // 此处不重复绑定，避免双重触发
     body.querySelectorAll('[data-role-raw]').forEach(function (el) {
       el.addEventListener('click', function () {
         var k = el.getAttribute('data-role-raw');
@@ -1409,5 +1449,161 @@
       }
     } catch (e) {}
   })();
+})();
+
+// 角色配置弹窗
+(function(){
+  var overlay = document.getElementById('tf-role-config-overlay');
+  var charId = null;
+  var charName = '';
+  var spriteB64 = null;   // 新选的立绘 base64（dataURL 去头）
+  var voiceB64 = null;    // 新选的音色 base64
+  var voiceFileName = ''; // 音色文件名
+
+  function readVar(name) {
+    try {
+      var v = tavo.get(name, 'chat');
+      var guard = 0;
+      while (v && typeof v === 'object' && v.found !== undefined && 'value' in v && guard < 5) { v = v.value; guard++; }
+      return v;
+    } catch(e) { return null; }
+  }
+
+  function openRoleConfig(id, name) {
+    charId = id; charName = name;
+    spriteB64 = null; voiceB64 = null; voiceFileName = '';
+    // 预填已有绑定
+    var info = document.getElementById('tf-config-char-info');
+    if (info) info.textContent = '角色: ' + name + ' (ID: ' + id + ')';
+    var voiceStatus = document.getElementById('tf-config-voice-status');
+    var spriteStatus = document.getElementById('tf-config-sprite-status');
+    try {
+      var vf = (readVar('tf_voice_files') || {byCharId:{}}).byCharId[id];
+      if (voiceStatus) voiceStatus.textContent = vf && vf.file ? ('已绑定: ' + vf.file) : '未绑定音色文件';
+      var sp = readVar('tf_sprites') || {byName:{}};
+      var spe = (sp.byName || {})[name];
+      if (spriteStatus) spriteStatus.textContent = spe && spe.fg ? ('已绑定: ' + spe.fg) : '未绑定立绘';
+      var preview = document.getElementById('tf-config-sprite-preview');
+      if (preview) {
+        if (spe && spe.fg) {
+          try {
+            var fname = spe.fg.split('/').pop();
+            preview.src = tavo.file.url(fname, 'chat') || '';
+          } catch(e) { preview.src = ''; }
+        } else { preview.src = ''; }
+      }
+    } catch(e) {}
+    if(overlay) overlay.style.display = 'flex';
+  }
+  function closeRoleConfig() {
+    if(overlay) overlay.style.display = 'none';
+  }
+
+  // 文件选择时预览
+  var voiceInput = document.getElementById('tf-config-voice-input');
+  var spriteInput = document.getElementById('tf-config-sprite-input');
+  var voicePreview = document.getElementById('tf-config-voice-preview');
+  var spritePreview = document.getElementById('tf-config-sprite-preview');
+  var voiceStatus = document.getElementById('tf-config-voice-status');
+  var spriteStatus = document.getElementById('tf-config-sprite-status');
+  var voicePath = '', spritePath = '';
+
+  if(voiceInput) {
+    voiceInput.onchange = function() {
+      if(voiceInput.files[0]) {
+        var file = voiceInput.files[0];
+        var dur = '';
+        // 校验格式
+        if(!/\.(wav|mp3)$/i.test(file.name)) { if(voicePreview) voicePreview.textContent = '仅支持 wav/mp3'; return; }
+        if(file.size > 20*1024*1024) { if(voicePreview) voicePreview.textContent = '文件需小于 20MB'; return; }
+        if(voicePreview) voicePreview.textContent = '已选: ' + file.name + ' (' + Math.round(file.size/1024) + 'KB)';
+        var fr = new FileReader();
+        fr.onload = function() {
+          voiceB64 = fr.result.split(',')[1];
+          voiceFileName = file.name;
+        };
+        fr.readAsDataURL(file);
+      }
+    };
+  }
+  if(spriteInput) {
+    spriteInput.onchange = function() {
+      if(spriteInput.files[0]) {
+        var fr = new FileReader();
+        fr.onload = function() {
+          spriteB64 = fr.result.split(',')[1];
+          if(spritePreview) spritePreview.src = fr.result;
+          if(spriteStatus) spriteStatus.textContent = '已选: ' + spriteInput.files[0].name;
+        };
+        fr.readAsDataURL(spriteInput.files[0]);
+      }
+    };
+  }
+
+  // 保存配置：上传文件 + 写变量
+  window._tfSaveRoleConfig = async function() {
+    if(!charId) return;
+    var saveBtn = document.getElementById('tf-config-save');
+    if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = '保存中...'; }
+    try {
+      // 1. 上传立绘（如有新选）
+      if (spriteB64 && spriteInput && spriteInput.files[0]) {
+        var ext = (spriteInput.files[0].name.match(/\.(\w+)$/) || [,'png'])[1];
+        var imgName = 'sprite_fg_' + charId + '.' + ext;
+        // dataUrl 自动识别，直接传完整 dataUrl
+        var imgPath = await tavo.file.save(imgName, 'data:' + (spriteInput.files[0].type || 'image/png') + ';base64,' + spriteB64, { scope: 'chat' });
+        console.log('[role-config] 立绘上传: ' + imgPath);
+        // 写 tf_sprites
+        var sp = readVar('tf_sprites') || {};
+        if(typeof sp !== 'object') sp = {};
+        if(!sp.byName) sp.byName = {};
+        if(!sp.byId) sp.byId = {};
+        sp.byName[charName] = sp.byName[charName] || {};
+        sp.byName[charName].fg = imgPath;
+        sp.byName[charName].name = charName;
+        sp.byName[charName].id = charId;
+        sp.byId[charId] = sp.byId[charId] || {name: charName};
+        sp.byId[charId].fg = imgPath;
+        tavo.set('tf_sprites', sp, 'chat');
+        try { tavo.set('tf_sprites', sp, 'global'); } catch(e) {}
+      }
+      // 2. 上传音色（如有新选）
+      if (voiceB64 && voiceFileName) {
+        var audioName = 'voice_' + charId + '.' + (voiceFileName.match(/\.(\w+)$/) || [,'wav'])[1];
+        var audioPath = await tavo.file.save(audioName, 'data:audio/wav;base64,' + voiceB64, { scope: 'chat' });
+        console.log('[role-config] 音色上传: ' + audioPath);
+        // 写 tf_voice_files
+        var vfAll = readVar('tf_voice_files') || {};
+        if(typeof vfAll !== 'object') vfAll = {};
+        if(!vfAll.byCharId) vfAll.byCharId = {};
+        vfAll.byCharId[charId] = { name: charName, file: audioPath, uploadedAt: Date.now() };
+        tavo.set('tf_voice_files', vfAll, 'chat');
+        try { tavo.set('tf_voice_files', vfAll, 'global'); } catch(e) {}
+        // voiceId 作废（新音色文件）
+        if (window.tf_voice && window.tf_voice.invalidateVoiceId) {
+          window.tf_voice.invalidateVoiceId(charId);
+        }
+      }
+      closeRoleConfig();
+    } catch(e) {
+      console.error('[role-config] save err', e);
+      alert('保存失败: ' + (e.message || e));
+    } finally {
+      if (saveBtn) { saveBtn.disabled = false; saveBtn.textContent = '保存配置'; }
+    }
+  };
+
+  document.addEventListener('click', function(e) {
+    var btn = e.target.closest('[data-role-config]');
+    if(btn) {
+      e.stopPropagation();
+      var id = btn.getAttribute('data-role-config') || '';
+      var nm = btn.getAttribute('data-char-name') || '';
+      openRoleConfig(id, nm);
+    }
+    if(e.target === overlay) closeRoleConfig();
+    var closeBtn = e.target.closest('.tf-modal-close');
+    if(closeBtn && overlay) { e.stopPropagation(); closeRoleConfig(); }
+  });
 })();
 </script>
