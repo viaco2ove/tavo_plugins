@@ -23,10 +23,10 @@ story_sync_cache 故事同步过程的缓存数据，如角色id 等。
 ## 已安装插件
 python -m tavo_plugins plugins
 # 只安装（无 tpg 文件），直接 base64 传给 tavo MCP 安装，不落盘。
-python -m tavo_plugins plugins --install-all
+python -m tavo_plugins plugins --install-all  --no-tpg
 
 # 安装 + 保存 tpg 文件
-python -m tavo_plugins plugins --install-all --keep-tpg
+python -m tavo_plugins plugins --install-all 
 
 ### 重新安装部分插件
 tavo plugins --install "toonflow_story_debug_eruda,toonflow_story_event_manager"

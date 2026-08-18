@@ -26,12 +26,24 @@ tavo plugins
 |------|------|
 | `-e, --env PATH` | 指定 .env 文件路径 |
 
-## 重新安装全部插件，直接 base64 传给 tavo MCP 安装，不落盘。
-tavo plugins --install-all  
+## 安装全部插件（自动生成 tpg 到 plugins_tpg/）
 
-## 安装并生成 tpg 文件到 plugins_tpg/
-tavo plugins --install-all --keep-tpg
+每次安装都会把 tpg 文件保存到 `plugins_tpg/<name>-<version>.tpg`（除非加 `--no-tpg`）。
 
+```bash
+python -m tavo_plugins plugins --install-all
+```
 
-## 重新安装部分插件
-tavo plugins --install "toonflow_story_debug_eruda,toonflow_story_event_manager"
+## 安装部分插件
+
+```bash
+python -m tavo_plugins plugins --install "toonflow_story_debug_eruda,toonflow_story_event_manager"
+```
+
+## 选项
+
+| 选项 | 说明 |
+|------|------|
+| `--no-tpg` | 不生成 tpg 文件（默认每次都生成） |
+| `--tpg-dir PATH` | tpg 输出目录（默认 plugins_tpg/） |
+| `--enable / --no-enable` | 安装后是否启用（默认启用） |
