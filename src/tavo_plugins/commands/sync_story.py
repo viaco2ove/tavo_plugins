@@ -446,7 +446,10 @@ def _sync_chapters(client, chat_id, story_dir, config, echo):
         echo(f"  {chapters[-1]['title']} ({len(chapters[-1]['events'])} events)")
 
     if chapters:
+        # 解包 {target,name,found,value} 包装
         existing = client.variable_get(chat_id, "tf_story.edit")
+        if isinstance(existing, dict) and 'value' in existing and 'found' in existing:
+            existing = existing['value']
         edit = dict(existing) if isinstance(existing, dict) else {}
         edit["chapters"] = chapters
         edit["currentChapterIndex"] = 0

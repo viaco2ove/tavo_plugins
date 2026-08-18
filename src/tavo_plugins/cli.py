@@ -39,9 +39,97 @@ def main(ctx, env):
 
 
 @main.command()
+@click.option("--install-all", is_flag=True, help="批量安装 plugins/ 下所有插件")
+@click.option("--install", "-i", help="安装指定的插件目录（逗号分隔）")
+@click.option("--plugins-dir", default="plugins", show_default=True, help="插件目录根")
+@click.option("--keep-tpg", is_flag=True, help="同时把生成的 tpg 文件保存到 plugins_tpg/")
+@click.option("--tpg-dir", default="plugins_tpg", show_default=True, help="tpg 文件输出目录")
+@click.option("--enable/--no-enable", default=True, help="安装后启用")
 @click.pass_context
-def plugins(ctx):
-    """列出已安装的插件"""
+def plugins(ctx, install_all, install, plugins_dir, keep_tpg, tpg_dir, enable):
+    """列出 / 安装插件
+
+    不带参数：列出已安装插件
+    --install-all：批量安装 plugins/ 下所有插件
+    --install "plugin1,plugin2"：安装指定的插件目录
+    """
+    if install_all or install:
+        import zipfile, io, base64
+
+        client = resolve_client(ctx.obj["env_path"])
+        if install_all:
+            targets = sorted(p for p in os.listdir(plugins_dir)
+                            if os.path.isdir(os.path.join(plugins_dir, p)))
+        else:
+            targets = [n.strip() for n in install.split(",") if n.strip()]
+        if not targets:
+            click.secho("没有找到插件", fg="yellow")
+            return
+
+        ok_count = 0; fail_count = 0
+        for tname in targets:
+            pdir = os.path.join(plugins_dir, tname)
+            mp = os.path.join(pdir, "manifest.json")
+            if not os.path.isfile(mp):
+                click.secho(f"[SKIP] {tname}: 无 manifest.json", fg="yellow")
+                continue
+            with open(mp, encoding="utf-8") as f:
+                plugin_id = _json.load(f).get("id")
+            if not plugin_id:
+                click.secho(f"[SKIP] {tname}: 无 id", fg="yellow")
+                continue
+            buf = io.BytesIO()
+            skip = {".git", "__pycache__", "node_modules"}
+            with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+                for base, dirs, files in os.walk(pdir):
+                    dirs[:] = [d for d in dirs if d not in skip]
+                    for fn in files:
+                        if fn.endswith(".pyc") or fn == ".DS_Store":
+                            continue
+                        fp = os.path.join(base, fn)
+                        rel = os.path.relpath(fp, pdir).replace(os.sep, "/")
+                        z.write(fp, rel)
+            zip_b64 = base64.b64encode(buf.getvalue()).decode("ascii")
+
+            # --keep-tpg：保存到 plugins_tpg/<name>-<ver>.tpg
+            if keep_tpg:
+                os.makedirs(tpg_dir, exist_ok=True)
+                version = "0.0.0"
+                mp = os.path.join(pdir, "manifest.json")
+                try:
+                    with open(mp, encoding="utf-8") as mf:
+                        version = _json.load(mf).get("version", "0.0.0")
+                except Exception:
+                    pass
+                tpg_path = os.path.join(tpg_dir, f"{tname}-{version}.tpg")
+                with open(tpg_path, "wb") as f:
+                    f.write(base64.b64decode(zip_b64))
+                click.echo(f"  [TPG] 已保存: {tpg_path}")
+            try:
+                r = client.plugin_install(plugin_id, zip_b64)
+                # unwrap MCP 返回（content[0].text）
+                rr = r.get("content", [{}])[0].get("text", "{}")
+                import json as __json
+                try:
+                    rd = __json.loads(rr)
+                except Exception:
+                    rd = {}
+                ok = rd.get("ok", False)
+                if ok in (True, "true"):
+                    if enable:
+                        client.plugin_set_enabled(plugin_id, True)
+                    click.secho(f"[OK] {tname} ({plugin_id}) v{rd.get('version','?')}", fg="green")
+                    ok_count += 1
+                else:
+                    click.secho(f"[ERR] {tname}: {rd or r}", fg="red")
+                    fail_count += 1
+            except Exception as e:
+                click.secho(f"[ERR] {tname}: {e}", fg="red")
+                fail_count += 1
+        click.echo(f"--- 完成：{ok_count} 成功 / {fail_count} 失败 ---")
+        return
+
+    # 默认：列出已安装
     client = resolve_client(ctx.obj["env_path"])
     click.secho("已安装插件:", bold=True)
     result = client.plugin_list()

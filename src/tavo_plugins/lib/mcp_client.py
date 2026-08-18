@@ -76,6 +76,9 @@ class McpClient:
             "pluginId": plugin_id, "zipBase64": zip_b64, "overwrite": overwrite,
         })
 
+    def plugin_uninstall(self, plugin_id):
+        return self.call("tavo_plugin_uninstall", {"pluginId": plugin_id})
+
     def plugin_set_enabled(self, plugin_id, enabled=True):
         return self.call("tavo_plugin_set_enabled", {
             "pluginId": plugin_id, "enabled": enabled,

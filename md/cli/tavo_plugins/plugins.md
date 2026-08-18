@@ -25,3 +25,13 @@ tavo plugins
 | 选项 | 说明 |
 |------|------|
 | `-e, --env PATH` | 指定 .env 文件路径 |
+
+## 重新安装全部插件，直接 base64 传给 tavo MCP 安装，不落盘。
+tavo plugins --install-all  
+
+## 安装并生成 tpg 文件到 plugins_tpg/
+tavo plugins --install-all --keep-tpg
+
+
+## 重新安装部分插件
+tavo plugins --install "toonflow_story_debug_eruda,toonflow_story_event_manager"

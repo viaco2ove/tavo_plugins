@@ -34,12 +34,37 @@ tavo install plugins/xxx --no-enable
 3. 调用 MCP `tavo_plugin_install` 上传安装
 4. 如 `--enable`，调用 `tavo_plugin_set_enabled`
 
-## 批量安装
+## 批量安装全部插件
 
-`sync` 命令内置了批量安装 `plugins/` 下所有插件的功能：
+### 方法 1：shell 循环（推荐）
 
 ```bash
-tavo sync ".cache/story/xxx" --skip-chapters --skip-sprite
+# Linux / macOS / Git Bash
+for d in plugins/*/; do
+  echo "==> $d"
+  python -m tavo_plugins install "$d"
+done
+
+# PowerShell
+Get-ChildItem plugins -Directory | ForEach-Object {
+  Write-Host "==> $_"
+  python -m tavo_plugins install $_.FullName
+}
 ```
 
-这会跳过立绘和章节同步，只安装所有插件。
+### 方法 2：通过 sync 命令
+
+`sync` 在同步过程中会顺便扫描 `plugins/` 目录批量安装：
+
+```bash
+python -m tavo_plugins sync ".cache/story/故事名" --skip-chapters --skip-sprite
+```
+
+跳过章节和立绘，只批量装插件。
+
+### 注意事项
+
+- 每个插件独立打包上传，几百 KB 也要 1-2 秒
+- 批量装 7 个插件大约 10-15 秒
+- `tavo` 已有同名插件会自动覆盖（`overwrite=True`）
+- 安装失败不会中断，继续装下一个

@@ -73,3 +73,4 @@ run.local.ps1
 /.hide/
 *.wav
 /.agents/
+/plugins_tpg/
