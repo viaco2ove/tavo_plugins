@@ -31,7 +31,10 @@ function readVar(name) {
 function resolveUrl(path) {
   if (!path) return '';
   if (path.startsWith('files/')) {
-    try { return tavo.file.url(path) || path; } catch(e) { return path; }
+    let url = '';
+    try { url = tavo.file.url(path) || path; } catch(e) { url = path; }
+    console.log('[sprite] resolveUrl(' + path + ') → ' + url);
+    return url;
   }
   if (/^https?:\/\//.test(path)) return path;
   return path;
@@ -50,18 +53,42 @@ function getSpeaker() {
   return null;
 }
 
-// ===== 背景图切换（走 tavo 原生 API） =====
+// ===== 背景图切换（走 tavo 原生 API，带重试） =====
+// chat:opened 触发时 tavo 内部可能未 ready，报 "internal error, try again"
+// 重试 3 次，每次间隔 500ms
+async function _retry(fn, label, maxTries) {
+  let lastErr = null;
+  for (let i = 1; i <= maxTries; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      lastErr = e;
+      const msg = (e && e.message) || String(e);
+      // 只有 "internal error" / "try again" / "Tavo could not complete" 才重试
+      const retriable = /internal error|try again|could not complete|not ready/i.test(msg);
+      if (!retriable || i === maxTries) throw e;
+      console.warn('[sprite] ' + label + ' retry ' + i + '/' + (maxTries-1) + ': ' + msg);
+      await new Promise(r => setTimeout(r, 500));
+    }
+  }
+  throw lastErr;
+}
+
 async function setBackground(bgPath) {
   try {
     console.log('[sprite] setBackground bgPath=' + bgPath);
     if (bgPath) {
-      const res = await tavo.chat.update({ background: { image: bgPath, opacity: 0.85 } });
+      const res = await _retry(
+        () => tavo.chat.update({ background: { image: bgPath, opacity: 0.85 } }),
+        'setBackground', 4);
       console.log('[sprite] setBackground result=' + JSON.stringify(res));
     } else {
       const fb = readVar(FB_NS) || '';
       console.log('[sprite] setBackground fallback=' + fb);
       if (fb) {
-        const res = await tavo.chat.update({ background: { image: fb, opacity: 0.85 } });
+        const res = await _retry(
+          () => tavo.chat.update({ background: { image: fb, opacity: 0.85 } }),
+          'setBackgroundFallback', 4);
         console.log('[sprite] setBackground fallback result=' + JSON.stringify(res));
       }
     }
@@ -91,19 +118,31 @@ function syncVarsFromGlobal() {
 // ===== 前景立绘切换（DOM 层） =====
 function setForeground(fgPath) {
   const fgImg = document.getElementById('tf-sprite-fg');
-  console.log('[sprite] setForeground fgPath=' + fgPath + ' fgImg=' + !!fgImg);
-  if (!fgImg) return;
+  const fgWrap = document.getElementById('tf-sprite-fg-wrap');
+  console.log('[sprite] setForeground fgPath=' + fgPath + ' | #tf-sprite-fg=' + !!fgImg + ' | #tf-sprite-fg-wrap=' + !!fgWrap);
+  if (!fgImg) {
+    // 尝试直接查找 img 标签
+    const imgs = document.querySelectorAll('img.tf-sprite-fg');
+    console.log('[sprite] fallback img.tf-sprite-fg count=' + imgs.length);
+    if (imgs.length > 0) {
+      console.log('[sprite] using fallback img, src before=' + imgs[0].src + ' class=' + imgs[0].className);
+    }
+    return;
+  }
   if (fgPath) {
     const url = resolveUrl(fgPath);
-    console.log('[sprite] setForeground resolved url=' + url);
+    const basename = fgPath.split('/').pop();
+    console.log('[sprite] setCharacterProfileDrawing: ' + basename + ' (resolved: ' + url + ')');
     if (fgImg.src !== url) {
       fgImg.src = url;
       console.log('[sprite] setForeground src set to ' + url);
     }
     fgImg.classList.remove('hidden');
-    console.log('[sprite] setForeground visible');
+    if (fgWrap) fgWrap.classList.remove('hidden');
+    console.log('[sprite] setForeground visible | wrap class=' + (fgWrap ? fgWrap.className : 'N/A') + ' img class=' + fgImg.className);
   } else {
     fgImg.classList.add('hidden');
+    if (fgWrap) fgWrap.classList.add('hidden');
     fgImg.src = '';
     console.log('[sprite] setForeground hidden');
   }
@@ -168,30 +207,43 @@ function updateSprite(speakerName) {
 let _charNameCache = null;
 let _charNameCacheAt = 0;
 
+// 优先从 tf_last_speaker 变量取发言者（MCS 插件在 input:beforeSend 时写入）
+// 其次才从 message:added event 解析（tavo 有延迟，可能缺 characterName）
+function resolveSpeaker(msg) {
+  // 1. 优先读 tf_last_speaker（由 MCS 插件写入）
+  const lastSpeaker = readVar('tf_last_speaker');
+  if (lastSpeaker && lastSpeaker.name) {
+    console.log('[sprite] resolved from tf_last_speaker: ' + lastSpeaker.name);
+    return { name: lastSpeaker.name, id: lastSpeaker.characterId || null };
+  }
+  // 2. event.message 有 characterName
+  if (msg && msg.characterName) {
+    return { name: msg.characterName, id: msg.characterId || null };
+  }
+  // 3. 有 characterId，从缓存角色列表反查 name
+  if (msg && msg.characterId) {
+    if (!_charNameCache || Date.now() - _charNameCacheAt > 30000) {
+      try {
+        const chat = tavo.chat.current();
+        _charNameCache = {};
+        ((chat && chat.characters) || []).forEach(c => { _charNameCache[c.id] = c.name; });
+        _charNameCacheAt = Date.now();
+      } catch (e) { _charNameCache = {}; }
+    }
+    const name = _charNameCache[msg.characterId];
+    console.log('[sprite] resolved characterId=' + msg.characterId + ' → name=' + name);
+    return { name: name || null, id: msg.characterId };
+  }
+  return { name: null, id: null };
+}
+
 tavo.plugin.on('message:added', async (event) => {
   const msg = event && event.message;
   console.log('[sprite] message:added raw event=' + JSON.stringify(event || {}).slice(0, 300));
   if (!msg) { console.log('[sprite] no msg in event'); return; }
   if (msg.role === 'user') { console.log('[sprite] user msg, skip'); return; }
 
-  // characterName 可能不在 event.message 里（tavo 没实时解析），尝试自己 resolve
-  let speakerName = msg.characterName || null;
-  let speakerId = msg.characterId || null;
-
-  if (!speakerName && speakerId) {
-    // 从缓存的群聊角色列表里找 name
-    if (!_charNameCache || Date.now() - _charNameCacheAt > 30000) {
-      try {
-        const chat = await tavo.chat.current();
-        _charNameCache = {};
-        (chat?.characters || []).forEach(c => { _charNameCache[c.id] = c.name; });
-        _charNameCacheAt = Date.now();
-      } catch (e) { _charNameCache = {}; }
-    }
-    speakerName = _charNameCache[speakerId] || null;
-    console.log('[sprite] resolved characterId=' + speakerId + ' → name=' + speakerName);
-  }
-
+  const { name: speakerName, id: speakerId } = resolveSpeaker(msg);
   if (!speakerName) { console.log('[sprite] no speakerName resolved, skip'); return; }
 
   const sprites = readVar(NS) || {};

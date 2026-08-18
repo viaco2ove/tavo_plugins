@@ -99,7 +99,7 @@
           "label": {
             "$t": "settings.fgBottom"
           },
-          "default": "80px"
+          "default": "0px"
         },
         {
           "key": "fgWidth",
@@ -107,7 +107,7 @@
           "label": {
             "$t": "settings.fgWidth"
           },
-          "default": "min(80vw, 600px)"
+          "default": "100vw"
         },
         {
           "key": "fgHeight",
@@ -115,7 +115,7 @@
           "label": {
             "$t": "settings.fgHeight"
           },
-          "default": "min(70vh, 700px)"
+          "default": "100vh"
         }
       ]
     }

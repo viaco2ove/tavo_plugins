@@ -30,38 +30,4 @@ AVD（Android Virtual Device）是 Google 官方提供的 Android 虚拟设备�
 UI 交互体验一般：与真机相比，操作手感略显生硬。
 
 
-## avd 使用方法
-### 安装 AVD:略
-### 使用
-怎么启动
-获得 Android SDK 进行设置
-```
-set ANDROID_HOME="%LOCALAPPDATA%\Android\Sdk\
-set PATH=%ANDROID_HOME%\emulator;%ANDROID_HOME%\platform-tools;%PATH%
-```
-
-```
-cd %LOCALAPPDATA%\Android\Sdk\emulator
-emulator -list-avds  
-```
-例如Pixel_8_Pro
-```
-emulator -avd Pixel_8_Pro                 # 普通启动
-emulator -avd Pixel_8_Pro -wipe-data     # 清空数据重开
-```
-adb devices 可以查看设备
-```
-adb devices 
-```
-输出
-```
-List of devices attached
-emulator-5554   device
-```
-
-### mcp
-![img_1.png](img_1.png)
-看着是 http://10.0.2.15:7347/mcp
-实际是要进行tcp 转发
-`adb -s emulator-5554 forward tcp:7347 tcp:7347`
-后用 http://127.0.0.1:7347/mcp
+[avd 命令.md](avd%20%E5%91%BD%E4%BB%A4.md)

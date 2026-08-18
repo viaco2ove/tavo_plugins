@@ -1,0 +1,207 @@
+<!-- toonflow_story_llm_optimization - LLM 配置面板 -->
+<style>
+.tf-llm-panel {
+  position: fixed;
+  bottom: 12px;
+  right: 12px;
+  z-index: 9999;
+  background: #1a1a2e;
+  border: 1px solid #3a3a5e;
+  border-radius: 12px;
+  padding: 14px 16px;
+  color: #e0e0f0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 13px;
+  min-width: 280px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+  display: none;
+}
+.tf-llm-panel.open { display: block; }
+.tf-llm-panel h3 {
+  margin: 0 0 12px;
+  font-size: 14px;
+  color: #a0a0ff;
+  border-bottom: 1px solid #3a3a5e;
+  padding-bottom: 8px;
+}
+.tf-llm-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 10px;
+  gap: 12px;
+}
+.tf-llm-row label {
+  color: #c0c0e0;
+  min-width: 80px;
+}
+.tf-llm-row select,
+.tf-llm-row input[type="range"] {
+  flex: 1;
+}
+.tf-llm-badge {
+  display: inline-block;
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: bold;
+  min-width: 40px;
+  text-align: center;
+}
+.tf-llm-badge.none  { background: #666; color: #fff; }
+.tf-llm-badge.minimal { background: #2e7d32; color: #fff; }
+.tf-llm-badge.low   { background: #1565c0; color: #fff; }
+.tf-llm-badge.medium{ background: #e65100; color: #fff; }
+.tf-llm-badge.high  { background: #b71c1c; color: #fff; }
+.tf-llm-val {
+  font-size: 11px;
+  color: #8080c0;
+  min-width: 32px;
+  text-align: right;
+}
+.tf-llm-btns {
+  display: flex;
+  gap: 8px;
+  margin-top: 12px;
+}
+.tf-llm-btn {
+  flex: 1;
+  padding: 6px 12px;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 12px;
+  transition: opacity 0.2s;
+}
+.tf-llm-btn:hover { opacity: 0.85; }
+.tf-llm-btn.save  { background: #4a4a8a; color: #fff; }
+.tf-llm-btn.close { background: #3a3a5e; color: #c0c0e0; }
+.tf-llm-info {
+  font-size: 11px;
+  color: #7070a0;
+  margin-top: 8px;
+  line-height: 1.4;
+}
+</style>
+
+<div class="tf-llm-panel" id="tf-llm-panel">
+  <h3>🤖 LLM 思考程度配置</h3>
+
+  <div class="tf-llm-row">
+    <label>思考程度</label>
+    <select id="tf-llm-reasoning">
+      <option value="none">none — 关闭思考</option>
+      <option value="minimal" selected>minimal — 最小思考</option>
+      <option value="low">low — 低思考</option>
+      <option value="medium">medium — 中思考</option>
+      <option value="high">high — 高思考</option>
+    </select>
+    <span id="tf-llm-reasoning-badge" class="tf-llm-badge minimal">MIN</span>
+  </div>
+
+  <div class="tf-llm-row">
+    <label>Temperature</label>
+    <input type="range" id="tf-llm-temp" min="0" max="2" step="0.1" value="0.3" />
+    <span id="tf-llm-temp-val" class="tf-llm-val">0.3</span>
+  </div>
+
+  <div class="tf-llm-row">
+    <label>TopP</label>
+    <input type="range" id="tf-llm-topp" min="0" max="1" step="0.05" value="0.5" />
+    <span id="tf-llm-topp-val" class="tf-llm-val">0.5</span>
+  </div>
+
+  <div class="tf-llm-btns">
+    <button class="tf-llm-btn save" id="tf-llm-save">💾 保存</button>
+    <button class="tf-llm-btn close" id="tf-llm-close">关闭</button>
+  </div>
+
+  <div class="tf-llm-info">
+    对齐 Toonflow reasoningEffort 机制。minimal 适合快速对话，high 适合复杂推理场景。
+  </div>
+</div>
+
+<script>
+(function() {
+  const BADGE_CLASS = {
+    none: 'none', minimal: 'minimal', low: 'low', medium: 'medium', high: 'high'
+  };
+  const BADGE_LABEL = {
+    none: '无', minimal: 'MIN', low: 'LOW', medium: 'MED', high: 'HIGH'
+  };
+
+  function updateBadge(v) {
+    var badge = document.getElementById('tf-llm-reasoning-badge');
+    var cls = BADGE_CLASS[v] || 'minimal';
+    badge.className = 'tf-llm-badge ' + cls;
+    badge.textContent = BADGE_LABEL[v] || v;
+  }
+
+  function loadConfig() {
+    try {
+      if (window.tf_llm && window.tf_llm.getConfig) {
+        var cfg = window.tf_llm.getConfig();
+        document.getElementById('tf-llm-reasoning').value = cfg.reasoningEffort || 'minimal';
+        document.getElementById('tf-llm-temp').value = cfg.temperature || 0.3;
+        document.getElementById('tf-llm-topp').value = cfg.topP || 0.5;
+        document.getElementById('tf-llm-temp-val').textContent = String(cfg.temperature || 0.3);
+        document.getElementById('tf-llm-topp-val').textContent = String(cfg.topP || 0.5);
+        updateBadge(cfg.reasoningEffort || 'minimal');
+      }
+    } catch(e) {
+      console.warn('[tf_llm_panel] loadConfig failed', e);
+    }
+  }
+
+  function saveConfig() {
+    try {
+      var cfg = {
+        reasoningEffort: document.getElementById('tf-llm-reasoning').value,
+        temperature: parseFloat(document.getElementById('tf-llm-temp').value),
+        topP: parseFloat(document.getElementById('tf-llm-topp').value),
+      };
+      if (window.tf_llm && window.tf_llm.saveConfig) {
+        window.tf_llm.saveConfig(cfg);
+        window.tavo.utils.toast('LLM 配置已保存');
+        console.log('[tf_llm_panel] saved', cfg);
+      }
+    } catch(e) {
+      console.warn('[tf_llm_panel] save failed', e);
+    }
+  }
+
+  document.getElementById('tf-llm-reasoning').addEventListener('change', function() {
+    updateBadge(this.value);
+  });
+
+  document.getElementById('tf-llm-temp').addEventListener('input', function() {
+    document.getElementById('tf-llm-temp-val').textContent = this.value;
+  });
+
+  document.getElementById('tf-llm-topp').addEventListener('input', function() {
+    document.getElementById('tf-llm-topp-val').textContent = this.value;
+  });
+
+  document.getElementById('tf-llm-save').addEventListener('click', saveConfig);
+
+  document.getElementById('tf-llm-close').addEventListener('click', function() {
+    document.getElementById('tf-llm-panel').classList.remove('open');
+  });
+
+  // 注册侧边栏快捷按钮
+  try {
+    if (window.tavo && window.tavo.plugin && window.tavo.plugin.onSidebarAction) {
+      window.tavo.plugin.onSidebarAction('tf-llm-toggle', function() {
+        var panel = document.getElementById('tf-llm-panel');
+        panel.classList.toggle('open');
+        if (panel.classList.contains('open')) loadConfig();
+      });
+    }
+  } catch(e) {
+    console.warn('[tf_llm_panel] sidebar register failed', e);
+  }
+
+  // 800ms 后加载当前配置
+  setTimeout(loadConfig, 800);
+})();
+</script>

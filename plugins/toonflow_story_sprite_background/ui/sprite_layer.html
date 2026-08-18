@@ -3,19 +3,23 @@
 #tf-sprite-fg-wrap {
   position: fixed;
   left: 50%;
-  bottom: 80px;
+  bottom: 0;
   transform: translateX(-50%);
-  z-index: 1;
+  z-index: -1;
   pointer-events: none;
-  width: min(80vw, 600px);
-  height: min(70vh, 700px);
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
 }
 .tf-sprite-fg {
   display: block;
-  width: 100%;
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%);
   height: 100%;
-  object-fit: contain;
-  object-position: center bottom;
+  width: auto;
+  max-width: none;
   filter: drop-shadow(0 10px 30px rgba(0,0,0,0.35));
   transition: opacity 0.4s ease;
 }
@@ -23,20 +27,27 @@
 </style>
 
 <div id="tf-sprite-fg-wrap">
-  <img id="tf-sprite-fg" class="tf-sprite-fg" src="" alt="sprite" />
+  <img id="tf-sprite-fg" class="tf-sprite-fg" src="cover.jpg" alt="sprite" />
 </div>
 
 <script>
 (function(){
+  console.log('[sprite-html] sprite_layer.html loaded');
   setTimeout(function(){
-    try {
-      var wrap = document.getElementById('tf-sprite-fg-wrap');
-      if (wrap) {
-        wrap.style.bottom = tavo.plugin.config.get('fgBottom') || '80px';
-        wrap.style.width = tavo.plugin.config.get('fgWidth') || 'min(80vw, 600px)';
-        wrap.style.height = tavo.plugin.config.get('fgHeight') || 'min(70vh, 700px)';
-      }
-    } catch(e) {}
+    var wrap = document.getElementById('tf-sprite-fg-wrap');
+    var img = document.getElementById('tf-sprite-fg');
+    console.log('[sprite-html] DOM check: wrap=' + !!wrap + ' img=' + !!img + ' wrap.style=' + (wrap ? wrap.style.cssText : 'N/A'));
+    if (wrap) {
+      try {
+        wrap.style.zIndex = -1;
+        wrap.style.width = tavo.plugin.config.get('fgWidth') || '100vw';
+        if (img) {
+          img.style.bottom = tavo.plugin.config.get('fgBottom') || '0px';
+          img.style.height = tavo.plugin.config.get('fgHeight') || '100vh';
+        }
+        console.log('[sprite-html] wrap styles applied, zIndex=' + wrap.style.zIndex + ' bottom=' + (img ? img.style.bottom : 'N/A'));
+      } catch(e) { console.warn('[sprite-html] config error', e); }
+    }
   }, 100);
 })();
 </script>

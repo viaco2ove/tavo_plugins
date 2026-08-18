@@ -8,7 +8,7 @@
   "settings.showForNarrator": "旁白也显示立绘",
   "settings.useAvatarAsSprite": "无立绘时用角色头像替代",
   "settings.backgroundMode": "背景模式",
-  "settings.fgBottom": "立绘距底部距离",
-  "settings.fgWidth": "立绘宽度",
-  "settings.fgHeight": "立绘高度"
+  "settings.fgBottom": "立绘距底部偏移（0px=贴底）",
+  "settings.fgWidth": "可见裁剪宽度（100vw=全屏，超出立绘部分被裁剪）",
+  "settings.fgHeight": "立绘高度（100vh=拉伸满屏，宽度按比例超出则裁剪）"
 }

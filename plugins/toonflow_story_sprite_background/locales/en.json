@@ -8,7 +8,7 @@
   "settings.showForNarrator": "Show sprite for narrator",
   "settings.useAvatarAsSprite": "Use avatar as fallback sprite",
   "settings.backgroundMode": "Background Mode",
-  "settings.fgBottom": "Sprite bottom offset",
-  "settings.fgWidth": "Sprite width",
-  "settings.fgHeight": "Sprite height"
+  "settings.fgBottom": "Sprite bottom offset (0px = flush to bottom)",
+  "settings.fgWidth": "Visible crop width (100vw = fullscreen)",
+  "settings.fgHeight": "Sprite height (100vh = full-height, width cropped if wider)"
 }

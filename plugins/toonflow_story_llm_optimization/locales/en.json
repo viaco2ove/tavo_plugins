@@ -1,0 +1,9 @@
+{
+  "plugin.name": "Toonflow LLM Optimizer",
+  "plugin.description": "Centralizes all LLM calls with reasoningEffort control and Toonflow-aligned JSON response parsing.",
+  "settings.info": "LLM call parameters (aligned with Toonflow reasoningEffort)",
+  "settings.enabled": "Enable LLM Optimization",
+  "settings.reasoningEffort": "Reasoning Effort",
+  "settings.temperature": "Temperature",
+  "settings.topP": "TopP"
+}

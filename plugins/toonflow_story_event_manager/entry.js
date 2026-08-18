@@ -718,6 +718,25 @@ async function playChapterOpening() {
   }
 }
 
+// chat:opened 触发时 tavo 内部可能未 ready，报 "internal error, try again"
+// 重试 3 次，每次间隔 500ms
+async function _retry(fn, label, maxTries) {
+  let lastErr = null;
+  for (let i = 1; i <= maxTries; i++) {
+    try {
+      return await fn();
+    } catch (e) {
+      lastErr = e;
+      const msg = (e && e.message) || String(e);
+      const retriable = /internal error|try again|could not complete|not ready/i.test(msg);
+      if (!retriable || i === maxTries) throw e;
+      console.warn('[tf_story] ' + label + ' retry ' + i + '/' + (maxTries-1) + ': ' + msg);
+      await new Promise(r => setTimeout(r, 500));
+    }
+  }
+  throw lastErr;
+}
+
 // 完整 Boot 序列（5 阶段：uninitialized/reset/resumption_start -> data_loaded -> ready）
 async function bootSequence() {
   const myGuard = ++_bootGuard;
@@ -726,14 +745,18 @@ async function bootSequence() {
   try { const c = await tavo.chat.current(); chatId = c && c.id; console.log('[tf_story][boot] chatId=' + chatId); } catch (e) { console.warn('[tf_story][boot] chat.current failed', e); }
 
   // 0) 立刻切到 natural 模式 + 清空 overrideScenario，阻断官方 scenario 默认开场
+  // chat:opened 触发时 tavo 内部可能未 ready，报 "internal error, try again"，重试
   try {
-    await tavo.chat.update({ responseMode: 'natural', overrideScenario: '' });
+    await _retry(() => tavo.chat.update({ responseMode: 'natural', overrideScenario: '' }), 'step0 chat.update', 4);
     console.log('[tf_story][boot] step0 natural mode set');
   } catch (e) { console.warn('[tf_story][boot] step0 chat.update failed', e); }
 
   const boot = readBoot();
   let count = 0;
-  try { count = await tavo.message.count(); console.log('[tf_story][boot] message count=' + count); } catch (e) { console.warn('[tf_story][boot] count failed', e); }
+  try {
+    count = await _retry(() => tavo.message.count(), 'message.count', 4);
+    console.log('[tf_story][boot] message count=' + count);
+  } catch (e) { console.warn('[tf_story][boot] count failed', e); }
 
   // 关键判定：chat_reset 清空 chat scope 变量但保留 global。
   // 「chat scope 的 boot 镜像是否还在」是判断「是否刚 reset」的可靠信号：
