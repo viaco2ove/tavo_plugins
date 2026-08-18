@@ -877,7 +877,14 @@
   }
 
   function eventsHtml() {
-    var h = '<div class="tf-card"><div class="play-objective-chip">章节目标:<span class="play-objective-text">*****</span></div><div class="tf-card__title">当前事件进度</div>';
+    // 先取章节目标（当前章节 successCondition）
+    var _prog = getProgressState();
+    var _chapters = (_edit && _edit.chapters) || [];
+    var _curIdx = Math.max(0, Math.min(_prog.currentChapterIndex || 0, Math.max(_chapters.length - 1, 0)));
+    var _curCh = _chapters[_curIdx] || {};
+    var objective = _curCh.successCondition || '未设置';
+
+    var h = '<div class="tf-card"><div class="play-objective-chip">章节目标:<span class="play-objective-text">' + esc(objective) + '</span></div><div class="tf-card__title">当前事件进度</div>';
 
     var prog = getProgressState();
     var chapters = (_edit && _edit.chapters) || [];
