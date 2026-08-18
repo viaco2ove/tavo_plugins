@@ -1,4 +1,14 @@
 'use strict';
+
+// 日志时间戳
+const ts = () => {
+  const d = new Date();
+  return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-')
+    + ' ' + [d.getHours(),d.getMinutes(),d.getSeconds()].map(n=>String(n).padStart(2,'0')).join(':')
+    + '.' + String(d.getMilliseconds()).padStart(3,'0');
+};
+const sl = (...a) => console.log('[' + ts() + '] ' + a.join(' '));
+const sw = (...a) => console.warn('[' + ts() + '] ' + a.join(' '));
 // toonflow_story_sprite_background - entry.js
 // 背景：tavo.chat.update({ background: { image: '...' } }) 原生 API
 // 前景：DOM 层 #tf-sprite-fg
@@ -20,13 +30,13 @@ function readVar(name) {
     if (!raw) {
       try { raw = tavo.get(name, 'global'); } catch(e) {}
     }
-    console.log('[sprite] readVar "' + name + '" raw=' + (raw ? JSON.stringify(raw).slice(0, 200) : 'null/undefined'));
+    sl('[sprite] readVar "' + name + '" raw=' + (raw ? JSON.stringify(raw).slice(0, 200) : 'null/undefined'));
     let v = raw;
     let guard = 0;
     while (v && typeof v === 'object' && v.found !== undefined && 'value' in v && guard < 5) { v = v.value; guard++; }
-    console.log('[sprite] readVar "' + name + '" unwrapped=' + (v ? JSON.stringify(v).slice(0, 200) : 'null/undefined'));
+    sl('[sprite] readVar "' + name + '" unwrapped=' + (v ? JSON.stringify(v).slice(0, 200) : 'null/undefined'));
     return v;
-  } catch(e) { console.warn('[sprite] readVar error', e.message); return null; }
+  } catch(e) { sw('[sprite] readVar error', e.message); return null; }
 }
 
 function resolveUrl(path) {
@@ -38,7 +48,7 @@ function resolveUrl(path) {
     const name = path.split('/').pop() || path;
     let url = '';
     try { url = tavo.file.url(name, 'chat') || tavo.file.url(path, 'chat') || path; } catch(e) { url = path; }
-    console.log('[sprite] resolveUrl(' + path + ') name=' + name + ' → ' + url);
+    sl('[sprite] resolveUrl(' + path + ') name=' + name + ' → ' + url);
     return url;
   }
   // 相对路径：直接用
@@ -74,7 +84,7 @@ async function _retry(fn, label, maxTries) {
       // 只有 "internal error" / "try again" / "Tavo could not complete" 才重试
       const retriable = /internal error|try again|could not complete|not ready/i.test(msg);
       if (!retriable || i === maxTries) throw e;
-      console.warn('[sprite] ' + label + ' retry ' + i + '/' + (maxTries-1) + ': ' + msg);
+      sw('[sprite] ' + label + ' retry ' + i + '/' + (maxTries-1) + ': ' + msg);
       await new Promise(r => setTimeout(r, 500));
     }
   }
@@ -83,24 +93,24 @@ async function _retry(fn, label, maxTries) {
 
 async function setBackground(bgPath) {
   try {
-    console.log('[sprite] setBackground bgPath=' + bgPath);
+    sl('[sprite] setBackground bgPath=' + bgPath);
     if (bgPath) {
       const res = await _retry(
         () => tavo.chat.update({ background: { image: bgPath, opacity: 0.85 } }),
         'setBackground', 4);
-      console.log('[sprite] setBackground result=' + JSON.stringify(res));
+      sl('[sprite] setBackground result=' + JSON.stringify(res));
     } else {
       const fb = readVar(FB_NS) || '';
-      console.log('[sprite] setBackground fallback=' + fb);
+      sl('[sprite] setBackground fallback=' + fb);
       if (fb) {
         const res = await _retry(
           () => tavo.chat.update({ background: { image: fb, opacity: 0.85 } }),
           'setBackgroundFallback', 4);
-        console.log('[sprite] setBackground fallback result=' + JSON.stringify(res));
+        sl('[sprite] setBackground fallback result=' + JSON.stringify(res));
       }
     }
   } catch(e) {
-    console.warn('[sprite] setBackground error', e);
+    sw('[sprite] setBackground error', e);
   }
 }
 
@@ -111,12 +121,12 @@ function syncVarsFromGlobal() {
     try {
       const chatVal = readVar(ns);
       if (chatVal && typeof chatVal === 'object' && Object.keys(chatVal).length) {
-        console.log('[sprite] ' + ns + ' chat 已就绪，跳过恢复');
+        sl('[sprite] ' + ns + ' chat 已就绪，跳过恢复');
         continue;
       }
       const gv = readVar(ns);
       if (gv && typeof gv === 'object' && Object.keys(gv).length) {
-        try { tavo.set(ns, gv, 'chat'); console.log('[sprite] ✓ ' + ns + ' 从 global 恢复到 chat，' + Object.keys(gv).length + ' 键'); } catch(e) {}
+        try { tavo.set(ns, gv, 'chat'); sl('[sprite] ✓ ' + ns + ' 从 global 恢复到 chat，' + Object.keys(gv).length + ' 键'); } catch(e) {}
       }
     } catch(e) {}
   }
@@ -126,72 +136,72 @@ function syncVarsFromGlobal() {
 function setForeground(fgPath) {
   const fgImg = document.getElementById('tf-sprite-fg');
   const fgWrap = document.getElementById('tf-sprite-fg-wrap');
-  console.log('[sprite] setForeground fgPath=' + fgPath + ' | #tf-sprite-fg=' + !!fgImg + ' | #tf-sprite-fg-wrap=' + !!fgWrap);
+  sl('[sprite] setForeground fgPath=' + fgPath + ' | #tf-sprite-fg=' + !!fgImg + ' | #tf-sprite-fg-wrap=' + !!fgWrap);
   if (!fgImg) {
     // 尝试直接查找 img 标签
     const imgs = document.querySelectorAll('img.tf-sprite-fg');
-    console.log('[sprite] fallback img.tf-sprite-fg count=' + imgs.length);
+    sl('[sprite] fallback img.tf-sprite-fg count=' + imgs.length);
     if (imgs.length > 0) {
-      console.log('[sprite] using fallback img, src before=' + imgs[0].src + ' class=' + imgs[0].className);
+      sl('[sprite] using fallback img, src before=' + imgs[0].src + ' class=' + imgs[0].className);
     }
     return;
   }
   if (fgPath) {
     const url = resolveUrl(fgPath);
     const basename = fgPath.split('/').pop();
-    console.log('[sprite] setCharacterProfileDrawing: ' + basename + ' (resolved: ' + url + ')');
+    sl('[sprite] setCharacterProfileDrawing: ' + basename + ' (resolved: ' + url + ')');
     if (fgImg.src !== url) {
       fgImg.src = url;
-      console.log('[sprite] setForeground src set to ' + url);
+      sl('[sprite] setForeground src set to ' + url);
     }
     fgImg.classList.remove('hidden');
     if (fgWrap) fgWrap.classList.remove('hidden');
-    console.log('[sprite] setForeground visible | wrap class=' + (fgWrap ? fgWrap.className : 'N/A') + ' img class=' + fgImg.className);
+    sl('[sprite] setForeground visible | wrap class=' + (fgWrap ? fgWrap.className : 'N/A') + ' img class=' + fgImg.className);
   } else {
     fgImg.classList.add('hidden');
     if (fgWrap) fgWrap.classList.add('hidden');
     fgImg.src = '';
-    console.log('[sprite] setForeground hidden');
+    sl('[sprite] setForeground hidden');
   }
 }
 
 // ===== 主渲染 =====
 function updateSprite(speakerName) {
-  console.log('=== [sprite] updateSprite speaker=' + speakerName + ' enabled=' + cfg('enabled', true) + ' ===');
+  sl('=== [sprite] updateSprite speaker=' + speakerName + ' enabled=' + cfg('enabled', true) + ' ===');
 
   if (!cfg('enabled', true)) {
     setForeground('');
-    console.log('[sprite] disabled, hiding foreground');
+    sl('[sprite] disabled, hiding foreground');
     return;
   }
 
   const sprites = readVar(NS) || {};
-  console.log('[sprite] tf_sprites=' + JSON.stringify(sprites).slice(0, 300));
+  sl('[sprite] tf_sprites=' + JSON.stringify(sprites).slice(0, 300));
 
   const byName = sprites.byName || {};
   const chapterBgs = readVar(BG_NS) || {};
-  console.log('[sprite] tf_chapter_backgrounds=' + JSON.stringify(chapterBgs));
+  sl('[sprite] tf_chapter_backgrounds=' + JSON.stringify(chapterBgs));
 
   const storyEdit = readVar('tf_story.edit') || {};
   const curChapterIdx = storyEdit.currentChapterIndex || 0;
-  console.log('[sprite] currentChapterIndex=' + curChapterIdx);
+  sl('[sprite] currentChapterIndex=' + curChapterIdx);
 
   const entry = byName[speakerName] || null;
-  console.log('[sprite] entry for "' + speakerName + '"=' + JSON.stringify(entry));
+  sl('[sprite] entry for "' + speakerName + '"=' + JSON.stringify(entry));
 
   const roleType = entry && entry.roleType;
   const showNarrator = cfg('showForNarrator', false);
-  console.log('[sprite] roleType=' + roleType + ' showNarrator=' + showNarrator);
+  sl('[sprite] roleType=' + roleType + ' showNarrator=' + showNarrator);
 
   // 旁白默认不显示前景，但背景保留
   if (roleType === 'narrator' && !showNarrator) {
     setForeground('');
-    console.log('[sprite] narrator, hiding foreground');
+    sl('[sprite] narrator, hiding foreground');
   } else {
     let fgPath = entry && entry.fg ? entry.fg : '';
     if (!fgPath && cfg('useAvatarAsSprite', false) && entry && entry.avatar) {
       fgPath = entry.avatar;
-      console.log('[sprite] fallback to avatar=' + fgPath);
+      sl('[sprite] fallback to avatar=' + fgPath);
     }
     setForeground(fgPath);
   }
@@ -205,7 +215,7 @@ function updateSprite(speakerName) {
     const chapterKeys = Object.keys(chapterBgs);
     const key = chapterKeys[curChapterIdx] || chapterKeys[0] || '';
     bgPath = chapterBgs[key] || '';
-    console.log('[sprite] bgPath from chapterBgs key=' + key + ' bgPath=' + bgPath);
+    sl('[sprite] bgPath from chapterBgs key=' + key + ' bgPath=' + bgPath);
   }
   setBackground(bgPath);
 }
@@ -220,7 +230,7 @@ function resolveSpeaker(msg) {
   // 1. 优先读 tf_last_speaker（由 MCS 插件写入）
   const lastSpeaker = readVar('tf_last_speaker');
   if (lastSpeaker && lastSpeaker.name) {
-    console.log('[sprite] resolved from tf_last_speaker: ' + lastSpeaker.name);
+    sl('[sprite] resolved from tf_last_speaker: ' + lastSpeaker.name);
     return { name: lastSpeaker.name, id: lastSpeaker.characterId || null };
   }
   // 2. event.message 有 characterName
@@ -238,7 +248,7 @@ function resolveSpeaker(msg) {
       } catch (e) { _charNameCache = {}; }
     }
     const name = _charNameCache[msg.characterId];
-    console.log('[sprite] resolved characterId=' + msg.characterId + ' → name=' + name);
+    sl('[sprite] resolved characterId=' + msg.characterId + ' → name=' + name);
     return { name: name || null, id: msg.characterId };
   }
   return { name: null, id: null };
@@ -246,38 +256,43 @@ function resolveSpeaker(msg) {
 
 tavo.plugin.on('message:added', async (event) => {
   const msg = event && event.message;
-  console.log('[sprite] message:added raw event=' + JSON.stringify(event || {}).slice(0, 300));
-  if (!msg) { console.log('[sprite] no msg in event'); return; }
+  sl('[sprite] message:added raw event=' + JSON.stringify(event || {}).slice(0, 300));
+  if (!msg) { sl('[sprite] no msg in event'); return; }
 
   // 用户消息 -> 立即切到用户立绘（persona），并清掉 tf_last_speaker 防止旧值污染
   if (msg.role === 'user') {
-    console.log('[sprite] user msg -> 切换用户立绘');
+    sl('[sprite] user msg -> 切换用户立绘');
     try { tavo.set('tf_last_speaker', null, 'chat'); } catch (e) {}
     const sprites0 = readVar(NS) || {};
     const personaName = readVar(PERSONA_KEY) || '纯小白'; // 默认 persona 名
     const personaEntry = (sprites0.byName || {})[personaName] || null;
     if (personaEntry) {
-      console.log('[sprite] persona "' + personaName + '" entry: ' + JSON.stringify(personaEntry).slice(0, 120));
+      sl('[sprite] persona "' + personaName + '" entry: ' + JSON.stringify(personaEntry).slice(0, 120));
       await updateSprite(personaName);
     } else {
-      console.log('[sprite] persona "' + personaName + '" 无立绘，隐藏前景');
+      sl('[sprite] persona "' + personaName + '" 无立绘，隐藏前景');
       await updateSprite(null);
     }
     return;
   }
 
+  // 编排中跳过（等 MCS 的 message:added 通知角色立绘）
+  const orchActive = readVar('tf_orch.active');
+  const isOrchOn = orchActive === true || orchActive === 'true' || orchActive === 1 || orchActive === '1';
+  if (isOrchOn) { sl('[sprite] 编排中，跳过 sprite 切换'); return; }
+
   const { name: speakerName, id: speakerId } = resolveSpeaker(msg);
-  if (!speakerName) { console.log('[sprite] no speakerName resolved, skip'); return; }
+  if (!speakerName) { sl('[sprite] no speakerName resolved, skip'); return; }
 
   const sprites = readVar(NS) || {};
   const byName = sprites.byName || {};
   const entry = byName[speakerName] || null;
-  console.log('[sprite] message:added → characterName=' + speakerName + ' characterId=' + speakerId + ' entry=' + JSON.stringify(entry));
-  console.log('[sprite] allSpriteNames: ' + Object.keys(byName).join(', '));
+  sl('[sprite] message:added → characterName=' + speakerName + ' characterId=' + speakerId + ' entry=' + JSON.stringify(entry));
+  sl('[sprite] allSpriteNames: ' + Object.keys(byName).join(', '));
 
   // DOM 检查
   const fgImg = document.getElementById('tf-sprite-fg');
-  console.log('[sprite] DOM check: #tf-sprite-fg exists=' + !!fgImg + ' src=' + (fgImg ? fgImg.src : 'N/A') + ' classList=' + (fgImg ? fgImg.className : 'N/A'));
+  sl('[sprite] DOM check: #tf-sprite-fg exists=' + !!fgImg + ' src=' + (fgImg ? fgImg.src : 'N/A') + ' classList=' + (fgImg ? fgImg.className : 'N/A'));
 
   updateSprite(speakerName);
 });
@@ -285,7 +300,7 @@ tavo.plugin.on('message:added', async (event) => {
 try {
   if (tavo.plugin && tavo.plugin.config) {
     tavo.plugin.config.onChange(() => {
-      console.log('[sprite] config changed');
+      sl('[sprite] config changed');
       updateSprite(getSpeaker());
     });
   }
@@ -293,7 +308,7 @@ try {
 
 // chat reset 后从 global 恢复立绘变量
 tavo.plugin.on('chat:opened', () => {
-  console.log('[sprite] chat:opened → syncVarsFromGlobal');
+  sl('[sprite] chat:opened → syncVarsFromGlobal');
   syncVarsFromGlobal();
 });
 
@@ -308,9 +323,9 @@ tavo.plugin.onSidebarAction('tf-sprite-toggle', () => {
 });
 
 // ===== 初始化 =====
-console.log('[sprite] init in 800ms...');
+sl('[sprite] init in 800ms...');
 setTimeout(() => {
   const speaker = getSpeaker();
-  console.log('[sprite] init speaker=' + speaker);
+  sl('[sprite] init speaker=' + speaker);
   updateSprite(speaker);
 }, 800);

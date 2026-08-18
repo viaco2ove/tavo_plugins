@@ -1,4 +1,12 @@
 'use strict';
+
+// 日志时间戳
+const ts = () => {
+  const d = new Date();
+  return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-')
+    + ' ' + [d.getHours(),d.getMinutes(),d.getSeconds()].map(n=>String(n).padStart(2,'0')).join(':')
+    + '.' + String(d.getMilliseconds()).padStart(3,'0');
+};
 // toonflow_story_llm_optimization - 统一 LLM 响应解析层
 //
 // 对齐 Toonflow reasoningEffort 机制（fixDB.ts / modelConfigType.ts）：
@@ -30,7 +38,7 @@ function saveLlmConfigToVars(cfg) {
     tavo.set(NS, { ...DEFAULTS, ...cfg }, 'chat');
     tavo.set(NS, { ...DEFAULTS, ...cfg }, 'global');
   } catch (e) {
-    console.warn('[tf_llm] saveLlmConfigToVars failed', e);
+    console.warn('[' + ts() + '] [tf_llm] saveLlmConfigToVars failed', e);
   }
 }
 
@@ -156,7 +164,7 @@ async function llmGenerate(prompt, options) {
   const maxTokens = opts.maxCompletionTokens || opts.maxTokens || 1500;
   const effort = normalizeReasoningEffort(cfg.reasoningEffort);
 
-  console.log('[tf_llm] generate | reasoningEffort=' + effort
+  console.log('[' + ts() + '] [tf_llm] generate | reasoningEffort=' + effort
     + ' maxTokens=' + maxTokens + ' promptLen=' + (prompt || '').length);
 
   let raw;
@@ -166,13 +174,13 @@ async function llmGenerate(prompt, options) {
       settings: { maxCompletionTokens: maxTokens },
     });
   } catch (e) {
-    console.error('[tf_llm] generate failed:', e);
+    console.error('[' + ts() + '] [tf_llm] generate failed:', e);
     throw e;
   }
 
   const rawText = (raw || '').trim();
   const stripped = stripThinkingTags(rawText);
-  console.log('[tf_llm] rawLen=' + rawText.length + ' strippedLen=' + stripped.length
+  console.log('[' + ts() + '] [tf_llm] rawLen=' + rawText.length + ' strippedLen=' + stripped.length
     + ' preview: ' + JSON.stringify(stripped.slice(0, 100)));
 
   return stripped;
@@ -201,10 +209,10 @@ try { tavo.tf_llm = window.tf_llm; } catch (e) {}
 tavo.plugin.on('chat:opened', async () => {
   const saved = readLlmConfigFromVars();
   if (saved) {
-    console.log('[tf_llm] chat:opened restored:', JSON.stringify(saved));
+    console.log('[' + ts() + '] [tf_llm] chat:opened restored:', JSON.stringify(saved));
   } else {
     saveLlmConfigToVars(DEFAULTS);
-    console.log('[tf_llm] chat:opened initialized defaults:', JSON.stringify(DEFAULTS));
+    console.log('[' + ts() + '] [tf_llm] chat:opened initialized defaults:', JSON.stringify(DEFAULTS));
   }
 });
 

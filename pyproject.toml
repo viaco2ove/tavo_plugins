@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=61.0", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "tavo-plugins"
+version = "0.1.0"
+description = "Tavo 插件管理 + 故事同步 CLI"
+requires-python = ">=3.8"
+dependencies = [
+    "click>=8.0",
+]
+
+[project.scripts]
+tavo = "tavo_plugins.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]

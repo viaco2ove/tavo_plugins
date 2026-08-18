@@ -72,3 +72,4 @@ run.local.ps1
 /.workbuddy/
 /.hide/
 *.wav
+/.agents/

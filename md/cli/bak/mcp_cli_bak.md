@@ -1,7 +1,7 @@
 # MCP CLI - tavo 工具链统一规范
 
 所有通过 tavo MCP Server 操作 tavo 的 CLI 脚本，遵循统一规范。
-POSIX/GNU 短选项约定见 [标准化cli.md](标准化cli.md)。
+POSIX/GNU 短选项约定见 [标准化cli.md](../标准化cli.md)。
 
 ---
 
@@ -9,7 +9,7 @@ POSIX/GNU 短选项约定见 [标准化cli.md](标准化cli.md)。
 
 | CLI 脚本 | 用途 | 文档 |
 |---------|------|------|
-| `story_sync_all.py` | 故事完整安装：角色卡 + 世界书 + 群聊 + 章节 + 立绘 + 插件 | [story_sync_all.md](story_sync_all.md) |
+| `story_sync_all.py` | 故事完整安装：角色卡 + 世界书 + 群聊 + 章节 + 立绘 + 插件 | [story_sync_all.md](../story_sync_all.md) |
 | `plugin_install.py` | 单个/批量插件安装 + 校验 | （待补） |
 | `story_sync.py` | 旧版通用故事同步（仅角色+世界书+群聊） | story_sync/README.md |
 | `chapter_sync.py` | 章节增删改查（chat 变量 `tf_story.edit.chapters`） | chapter_sync.py 头部 |

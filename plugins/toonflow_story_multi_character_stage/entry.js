@@ -12,6 +12,14 @@
 const NS = 'mcs_stage';
 const ORCH_FLAG = 'tf_orch.active'; // 编排进行中标记（htmlFragment 轮询）
 
+// 日志时间戳
+const ts = () => {
+  const d = new Date();
+  return [d.getFullYear(),String(d.getMonth()+1).padStart(2,'0'),String(d.getDate()).padStart(2,'0')].join('-')
+    + ' ' + [d.getHours(),d.getMinutes(),d.getSeconds()].map(n=>String(n).padStart(2,'0')).join(':')
+    + '.' + String(d.getMilliseconds()).padStart(3,'0');
+};
+
 // Tavo 的 chat 变量经 tavo.get 返回包装对象 {target,name,found,value}，真实数据在 .value。
 // 不解包的话 edit.chapters / edit.lineCount 等都是 undefined，会被误判为"空"。
 function readChatVar(name) {
@@ -153,7 +161,7 @@ async function _retry(fn, label, maxTries) {
       const msg = (e && e.message) || String(e);
       const retriable = /internal error|try again|could not complete|not ready/i.test(msg);
       if (!retriable || i === maxTries) throw e;
-      console.warn('[mcs] ' + label + ' retry ' + i + '/' + (maxTries-1) + ': ' + msg);
+      console.warn('[' + ts() + '] [mcs] ' + label + ' retry ' + i + '/' + (maxTries-1) + ': ' + msg);
       await new Promise(r => setTimeout(r, 500));
     }
   }
@@ -163,27 +171,27 @@ async function _retry(fn, label, maxTries) {
 tavo.plugin.on('chat:opened', async () => {
   const cfg = getConfig();
   if (!cfg.enabled) {
-    console.log('[mcs] skip: enabled=false');
+    console.log('[' + ts() + '] [mcs] skip: enabled=false');
     return;
   }
   if (getOrchestration() === 'system') {
-    console.log('[mcs] skip: orchestration=system');
+    console.log('[' + ts() + '] [mcs] skip: orchestration=system');
     return;
-  }  console.log('[mcs] chat:opened waiting for boot...');
+  }  console.log('[' + ts() + '] [mcs] chat:opened waiting for boot...');
   // 等 story_event_manager 的 boot 序列完成（最多 30 秒）
   const booted = await waitForBoot(30000);
-  console.log('[mcs] boot waited result=' + booted + ' responseMode=' + cfg.responseMode);
+  console.log('[' + ts() + '] [mcs] boot waited result=' + booted + ' responseMode=' + cfg.responseMode);
   try {
     const scen = await getEffectiveScenarioPrompt();
-    console.log('[mcs] applying scenario, len=' + scen.length);
+    console.log('[' + ts() + '] [mcs] applying scenario, len=' + scen.length);
     const res = await _retry(() => tavo.chat.update({
       responseMode: cfg.responseMode,
       overrideScenario: scen,
       allowSelfResponses: false,  // 禁止角色发言后继续触发其他角色回复（防「全员轮着发言」）
     }), 'chat.update', 4);
-    console.log('[mcs] chat.update result=' + JSON.stringify(res));
+    console.log('[' + ts() + '] [mcs] chat.update result=' + JSON.stringify(res));
   } catch (e) {
-    console.warn('[mcs] chat.update failed', e);
+    console.warn('[' + ts() + '] [mcs] chat.update failed', e);
   }
 });
 
@@ -402,12 +410,12 @@ tavo.plugin.on('input:beforeSend', async (event) => {
   if (getOrchestration() === 'system') return; // 跟随系统：不接管
 
   const userText = event.text || '';
-  console.log('🎭 [mcs] input:beforeSend → 拦截用户: ' + userText.slice(0, 80));
+  console.log('[' + ts() + '] 🎭 [mcs] input:beforeSend → 拦截用户: ' + userText.slice(0, 80));
 
   // 【关键】立即 cancel，不等任何 async 操作
   // tavo 在 handler 返回前不会继续原生流程
   event.cancel('角色编排插件接管');
-  console.log('🎭 [mcs] 已 cancel tavo 原生流程');
+  console.log('[' + ts() + '] 🎭 [mcs] 已 cancel tavo 原生流程');
 
   // 后台异步执行编排 + 发言（不阻塞 handler）
   (async () => {
@@ -416,16 +424,16 @@ tavo.plugin.on('input:beforeSend', async (event) => {
 
       // 1. append 用户消息
       await tavo.message.append({ role: 'user', content: userText, hidden: false });
-      console.log('🎭 [mcs] 用户消息已 append');
+      console.log('[' + ts() + '] 🎭 [mcs] 用户消息已 append');
 
       // 2. 阶段一：编排器 → {speaker, role_type, motive, event_summary}
       const orchPrompt = await buildOrchestrationPrompt(userText);
-      console.log('🎭 [mcs] 阶段一 prompt len=' + orchPrompt.length);
+      console.log('[' + ts() + '] 🎭 [mcs] 阶段一 prompt len=' + orchPrompt.length);
       // 打印当前章节/事件/进度（对齐 toonflow 编排调试信息）
       try {
         const p = readChatVar('tf_progress') || {};
         const ph = (p.phases || [])[p.currentPhase || 0] || {};
-        console.log('🎭 [mcs] 当前进度: 第' + ((p.currentChapterIndex || 0) + 1) + '章 phase=' + (p.currentPhase || 0) + '/' + (p.phases || []).length + ' event=' + (p.currentEvent || 0) + '/' + (ph.events || []).length + (p.sessionFreeMode ? ' [自由模式]' : ''));
+        console.log('[' + ts() + '] 🎭 [mcs] 当前进度: 第' + ((p.currentChapterIndex || 0) + 1) + '章 phase=' + (p.currentPhase || 0) + '/' + (p.phases || []).length + ' event=' + (p.currentEvent || 0) + '/' + (ph.events || []).length + (p.sessionFreeMode ? ' [自由模式]' : ''));
       } catch (e) {}
 
       const orchRaw = await tavo.generate(orchPrompt, {
@@ -452,8 +460,8 @@ tavo.plugin.on('input:beforeSend', async (event) => {
       };
 
       const cleaned = stripTags(orchText);
-      console.log('🎭 [mcs] 阶段一原始: ' + orchText.slice(0, 500));
-      console.log('🎭 [mcs] 阶段一清理后: ' + cleaned.slice(0, 500));
+      console.log('[' + ts() + '] 🎭 [mcs] 阶段一原始: ' + orchText.slice(0, 500));
+      console.log('[' + ts() + '] 🎭 [mcs] 阶段一清理后: ' + cleaned.slice(0, 500));
 
       // 解析编排 JSON（严格对齐 toonflow 输出字段）
       let speaker = '旁白', roleType = 'narrator', motive = '', eventSummary = '';
@@ -465,48 +473,56 @@ tavo.plugin.on('input:beforeSend', async (event) => {
         roleType = obj.role_type || 'narrator';
         motive = obj.motive || '';
         eventSummary = obj.event_summary || '';
-        console.log('🎭 [mcs] 阶段一解析 → speaker=' + speaker + ' role_type=' + roleType + ' motive=' + motive + ' event_summary=' + eventSummary);
+        console.log('[' + ts() + '] 🎭 [mcs] 阶段一解析 → speaker=' + speaker + ' role_type=' + roleType + ' motive=' + motive + ' event_summary=' + eventSummary);
       } catch (e) {
         // fallback：正则抽第一个 "speaker":"xxx"（从 cleaned 文本中找）
         const m = cleaned.match(/"speaker"\s*:\s*"([^"]+)"/);
         if (m) speaker = m[1];
         const mt = orchText.match(/"motive"\s*:\s*"([^"]+)"/);
         if (mt) motive = mt[1];
-        console.warn('🎭 [mcs] 阶段一解析失败 fallback: speaker=' + speaker, e.message);
+        console.warn('[' + ts() + '] 🎭 [mcs] 阶段一解析失败 fallback: speaker=' + speaker, e.message);
       }
 
       // 3. 阶段二：发言器 → 台词正文
       const speakerPrompt = await buildSpeakerPrompt(speaker, roleType, motive, eventSummary);
-      console.log('🎭 [mcs] 阶段二 prompt len=' + speakerPrompt.length);
+      console.log('[' + ts() + '] 🎭 [mcs] 阶段二 prompt len=' + speakerPrompt.length);
 
       const speakerRaw = await tavo.generate(speakerPrompt, {
         context: false,
         settings: { maxCompletionTokens: 1500 },
       });
       const rawContent = (speakerRaw || '').trim();
-      console.log('[mcs] 阶段二原始: ' + rawContent.slice(0, 300));
+      console.log('[' + ts() + '] [mcs] 阶段二原始: ' + rawContent.slice(0, 300));
       const { thinking, body } = extractThinking(rawContent);
       const content = body.replace(/^["']|["']$/g, '').trim();
-      console.log('[mcs] 阶段二台词: ' + JSON.stringify(content.slice(0, 80)));
+      console.log('[' + ts() + '] [mcs] 阶段二台词: ' + JSON.stringify(content.slice(0, 80)));
 
       // 4. 查角色 id 并 append
       const charId = await findCharacterId(speaker);
-      console.log('🎭 [mcs] findCharacterId("' + speaker + '") = ' + charId);
+      console.log('[' + ts() + '] 🎭 [mcs] findCharacterId("' + speaker + '") = ' + charId);
 
       tavo.set('tf_last_speaker', { name: speaker, characterId: charId || '' }, 'chat');
-      console.log('🎭 [mcs] tf_last_speaker → ' + speaker + ' (id=' + charId + ')');
+      console.log('[' + ts() + '] 🎭 [mcs] tf_last_speaker → ' + speaker + ' (id=' + charId + ')');
+
+      // 打印编排阶段（阶段一）的 thinking（如果模型有输出）
+      try {
+        const orchThink = extractThinking(orchText);
+        if (orchThink.thinking) {
+          console.log('[' + ts() + '] 🎭 [mcs] 阶段一思考:\n' + orchThink.thinking.slice(0, 400));
+        }
+      } catch(e) {}
 
       if (thinking) {
         const esc = thinking.replace(/<\/div>/gi, '&lt;/div&gt;');
-        const block = '<div style="cursor:pointer;color:#888;font-size:0.85em" onclick="var d=this.getElementsByTagName(\'div\')[0];d.style.display=d.style.display==\'none\'?\'block\':\'none\'">思考...（点击展开）<div style="display:none;padding:8px 0;color:#666">' + esc + '</div></div>';
+        const block = '<div style="cursor:pointer;color:#888;font-size:0.85em" onclick="var d=this.getElementsByTagName(\'div\')[0];d.style.display=d.style.display==\'none\'?\'block\':\'none\'">💭 思考（点击展开）<div style="display:none;padding:8px 0;color:#666">' + esc + '</div></div>';
         await tavo.message.append({ role: 'assistant', characterId: charId || undefined, characterName: speaker, content: block + content, hidden: false });
       } else {
         await tavo.message.append({ role: 'assistant', characterId: charId || undefined, characterName: speaker, content: content, hidden: false });
       }
-      console.log('✅ [mcs] 角色消息已 append → speaker=' + speaker + ' charId=' + charId + ' content=' + content.slice(0, 50));
+      console.log('[' + ts() + '] ✅ [mcs] 角色消息已 append → speaker=' + speaker + ' charId=' + charId + ' content=' + content.slice(0, 50));
 
     } catch (e) {
-      console.error('❌ [mcs] 后台编排异常:', e);
+      console.error('[' + ts() + '] ❌ [mcs] 后台编排异常:', e);
     } finally {
       try { tavo.set(ORCH_FLAG, false, 'chat'); } catch (e) {}
     }
@@ -515,18 +531,18 @@ tavo.plugin.on('input:beforeSend', async (event) => {
 
 // generation 生命周期：只做日志和标记清理（因为现在不是主要触发路径）
 tavo.plugin.on('generation:prepare', async (event) => {
-  console.log('🎭 [mcs] generation:prepare (原生, 非接管路径) event=' + JSON.stringify(event || {}).slice(0, 200));
+  console.log('[' + ts() + '] 🎭 [mcs] generation:prepare (原生, 非接管路径) event=' + JSON.stringify(event || {}).slice(0, 200));
 });
 tavo.plugin.on('generation:success', async (event) => {
-  console.log('🎯 [mcs] generation:success (原生路径) event=' + JSON.stringify(event || {}).slice(0, 200));
+  console.log('[' + ts() + '] 🎯 [mcs] generation:success (原生路径) event=' + JSON.stringify(event || {}).slice(0, 200));
   try { tavo.set(ORCH_FLAG, false, 'chat'); } catch (e) {}
 });
 tavo.plugin.on('generation:error', async (event) => {
-  console.error('❌ [mcs] generation:error event=' + JSON.stringify(event || {}).slice(0, 200));
+  console.error('[' + ts() + '] ❌ [mcs] generation:error event=' + JSON.stringify(event || {}).slice(0, 200));
   try { tavo.set(ORCH_FLAG, false, 'chat'); } catch (e) {}
 });
 tavo.plugin.on('generation:cancelled', async () => {
-  console.log('⚠️ [mcs] generation:cancelled');
+  console.log('[' + ts() + '] ⚠️ [mcs] generation:cancelled');
   try { tavo.set(ORCH_FLAG, false, 'chat'); } catch (e) {}
 });
 
@@ -566,6 +582,6 @@ tavo.plugin.onSidebarAction('mcs-area', async () => {
       characterId: chat?.characters?.[0]?.id,
     });
   } catch (e) {
-    console.warn('[mcs] area failed', e);
+    console.warn('[' + ts() + '] [mcs] area failed', e);
   }
 });

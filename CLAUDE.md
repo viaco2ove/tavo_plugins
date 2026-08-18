@@ -74,8 +74,13 @@ Detailed design specs are in `md/currdesign/toonflow_story_memory_manager/`:
 4. **No auto writeback**: Role card patches are stored in `tmm.cards` but not auto-synced back to tavo character cards (avoids confirmation dialogs)
 5. **JSON parsing resilience**: Triple-layer unwrap + safe parse + sanitize for unreliable model output
 
+## 不允许随意放置测试和临时文档
+测试脚本和文档和临时文档
+只允许放置在.cache 文件夹下。
+
 ## git 提交限制
 不允许自己commit 和push 到 git
+
 
 ## 特别注意
 [for_ai.md](md/toonflow-game-md/for_ai.md)
@@ -84,3 +89,10 @@ Detailed design specs are in `md/currdesign/toonflow_story_memory_manager/`:
   开发plugins/toonflow_story_llm_optimization  增加思考程度配置（信息面板的故事配置里）默认为minimal（gobal） 。接口调用和解析也有完全接管。其他插件的对llm 返回的处理也完全看齐    
   toonflow game
 [toonflow_ai_game_agent.md](.hide/toonflow_ai_game_agent.md)[@.hide/toonflow_ai_game_agent.md:4-9] 
+
+## 特别注意 - cli
+不能直接调用 python文件来操作 tava mcp 要 通过
+调用 “tavo” 命令 来维护 故事同步等功能
+[py_cli.md](md/cli/py_cli.md)
+
+例如：tavo characters              # 列出全部角色
