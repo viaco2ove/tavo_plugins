@@ -6,6 +6,7 @@
 const NS = 'tf_sprites';
 const BG_NS = 'tf_chapter_backgrounds';
 const FB_NS = 'tf_sprite_fallback_bg';
+const PERSONA_KEY = 'tf_sprite_persona_name'; // 变量名：存 persona 角色名
 
 function cfg(key, fb) {
   try { const v = tavo.plugin.config.get(key); return v === undefined || v === null ? fb : v; } catch(e) { return fb; }
@@ -247,7 +248,23 @@ tavo.plugin.on('message:added', async (event) => {
   const msg = event && event.message;
   console.log('[sprite] message:added raw event=' + JSON.stringify(event || {}).slice(0, 300));
   if (!msg) { console.log('[sprite] no msg in event'); return; }
-  if (msg.role === 'user') { console.log('[sprite] user msg, skip'); return; }
+
+  // 用户消息 -> 立即切到用户立绘（persona），并清掉 tf_last_speaker 防止旧值污染
+  if (msg.role === 'user') {
+    console.log('[sprite] user msg -> 切换用户立绘');
+    try { tavo.set('tf_last_speaker', null, 'chat'); } catch (e) {}
+    const sprites0 = readVar(NS) || {};
+    const personaName = readVar(PERSONA_KEY) || '纯小白'; // 默认 persona 名
+    const personaEntry = (sprites0.byName || {})[personaName] || null;
+    if (personaEntry) {
+      console.log('[sprite] persona "' + personaName + '" entry: ' + JSON.stringify(personaEntry).slice(0, 120));
+      await updateSprite(personaName);
+    } else {
+      console.log('[sprite] persona "' + personaName + '" 无立绘，隐藏前景');
+      await updateSprite(null);
+    }
+    return;
+  }
 
   const { name: speakerName, id: speakerId } = resolveSpeaker(msg);
   if (!speakerName) { console.log('[sprite] no speakerName resolved, skip'); return; }
