@@ -1155,7 +1155,7 @@
 
     // 群聊编排（跟随系统 / 角色编排插件）
     var orch = _edit.orchestration || 'plugin';
-    h += '<div class="tf-card__title">llm插件配置</div>'
+    h += '<div class="tf-link-row" data-open-panel="llm" style="cursor:pointer;">llm插件配置（apiKey/apiUrl/思考程度）</div>'
     h += '<div class="tf-card"><div class="tf-card__title">群聊编排</div>'
       + '<div class="tf-card__text">选择由谁负责群聊的剧情编排与发言。</div>'
       + '<div class="tf-edit-field"><select data-orch style="padding:8px;border-radius:8px;border:1px solid rgba(188,204,226,.2);background:rgba(12,21,35,.55);color:#e8f2ff;width:100%;box-sizing:border-box;">'
@@ -1418,6 +1418,16 @@
     });
     // 角色配置按钮（打开弹窗，由底部 role-config IIFE 的 document listener 处理）
     // 此处不重复绑定，避免双重触发
+    // llm 插件面板（data-open-panel="llm" 打开 tf-llm-panel）
+    body.querySelectorAll('[data-open-panel]').forEach(function (el) {
+      el.addEventListener('click', function () {
+        var p = el.getAttribute('data-open-panel');
+        if (p === 'llm') {
+          var panel = document.querySelector('#tf-llm-panel');
+          if (panel) panel.classList.add('open');
+        }
+      });
+    });
     body.querySelectorAll('[data-role-raw]').forEach(function (el) {
       el.addEventListener('click', function () {
         var k = el.getAttribute('data-role-raw');
