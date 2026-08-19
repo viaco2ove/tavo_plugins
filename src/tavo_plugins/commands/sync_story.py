@@ -454,6 +454,23 @@ def _sync_chapters(client, chat_id, story_dir, config, echo):
     chapters = []
     chapter_bgs = {}  # 章节背景图索引：chapter_1 -> files/chat/chapter_bg_1.png
 
+    # ---- 同步简介 / 全局背景（兼容 intro/globalBackground 与 global_bg） ----
+    story_json_path = os.path.join(story_dir, "story.json")
+    intro = config.get("intro", "") or ""
+    global_bg = (
+        config.get("globalBackground", "")
+        or config.get("global_bg", "")
+        or config.get("globalBackground", "")
+    )
+    if os.path.isfile(story_json_path):
+        try:
+            with open(story_json_path, encoding="utf-8") as f:
+                sjson = json.load(f)
+            intro = intro or sjson.get("intro", "") or ""
+            global_bg = global_bg or sjson.get("globalBackground", "") or sjson.get("global_bg", "") or ""
+        except Exception as e:
+            echo(f"  [WARN] 读 story.json 失败: {e}")
+
     for i, fp in enumerate(sorted(_glob.glob(os.path.join(ch_dir, "*.json")))):
         with open(fp, encoding="utf-8") as f:
             ch = json.load(f)
@@ -498,6 +515,13 @@ def _sync_chapters(client, chat_id, story_dir, config, echo):
         edit = dict(existing) if isinstance(existing, dict) else {}
         edit["chapters"] = chapters
         edit["currentChapterIndex"] = 0
+        # 简介 + 全局背景（不覆盖已有非空值）
+        if intro and not edit.get("intro"):
+            edit["intro"] = intro
+        if global_bg and not edit.get("globalBackground"):
+            edit["globalBackground"] = global_bg
+        if not edit.get("lineCount"):
+            edit["lineCount"] = 20
         for scope in ["chat", "global"]:
             client.variable_set(chat_id, "tf_story.edit", edit, scope=scope)
         echo(f"  [OK] tf_story.edit -> {len(chapters)} chapters")

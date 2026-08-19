@@ -192,10 +192,16 @@
   try {
     if (window.tavo && window.tavo.plugin && window.tavo.plugin.onSidebarAction) {
       window.tavo.plugin.onSidebarAction('tf-llm-toggle', function() {
+        console.log('[tf_llm_panel] sidebar action tf-llm-toggle fired');
         var panel = document.getElementById('tf-llm-panel');
+        if (!panel) { console.warn('[tf_llm_panel] #tf-llm-panel not found!'); return; }
         panel.classList.toggle('open');
+        console.log('[tf_llm_panel] panel.open=' + panel.classList.contains('open'));
         if (panel.classList.contains('open')) loadConfig();
       });
+      console.log('[tf_llm_panel] sidebar action registered');
+    } else {
+      console.warn('[tf_llm_panel] onSidebarAction unavailable');
     }
   } catch(e) {
     console.warn('[tf_llm_panel] sidebar register failed', e);

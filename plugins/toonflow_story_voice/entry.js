@@ -25,8 +25,18 @@ const vl = (...a) => console.log('[' + ts() + '] [voice] ' + a.join(' '));
 const vw = (...a) => console.warn('[' + ts() + '] [voice] ' + a.join(' '));
 
 // ---------- 工具 ----------
+// 配置读取：优先 tf_voice_config 变量（跨插件面板可写），兜底插件 settings
+const VOICE_CFG_NS = 'tf_voice_config';
+function readVoiceCfgVar() {
+  const v = readVar(VOICE_CFG_NS);
+  return (v && typeof v === 'object') ? v : null;
+}
 function cfg(key, fb) {
   try {
+    const fromVar = readVoiceCfgVar();
+    if (fromVar && fromVar[key] !== undefined && fromVar[key] !== null && fromVar[key] !== '') {
+      return fromVar[key];
+    }
     const v = tavo.plugin.config.get(key);
     return v === undefined || v === null ? fb : v;
   } catch (e) { return fb; }
@@ -131,6 +141,25 @@ window.tf_voice = {
   },
 
   getPlatform: () => cfg('voice_platform', 'xiaomimimo'),
+
+  // 面板/其他插件写配置（跨 iframe 通过变量中转）
+  setConfig: (partial) => {
+    const old = readVoiceCfgVar() || {};
+    const merged = { ...old, ...partial };
+    writeVar(VOICE_CFG_NS, merged, 'chat');
+    try { writeVar(VOICE_CFG_NS, merged, 'global'); } catch (e) {}
+    // 平台切换 -> 清空全部 voiceId
+    if (partial.voice_platform && partial.voice_platform !== old.voice_platform) {
+      window.tf_voice.clearAllVoiceIds();
+    }
+    vl('setConfig: ' + JSON.stringify(partial));
+    return merged;
+  },
+  getConfig: () => ({
+    voice_platform: cfg('voice_platform', 'xiaomimimo'),
+    voice_platform_apikey: cfg('voice_platform_apikey', ''),
+    auto_play: cfg('auto_play', false),
+  }),
 };
 
 // ---------- 平台 API 调用 ----------
