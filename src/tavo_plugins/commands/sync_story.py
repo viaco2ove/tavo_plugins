@@ -100,11 +100,15 @@ def sync_story(client, story_dir, force=False, skip_sprite=False,
                 echo(f"  persona 复用 id={existing}: {name}")
             else:
                 av_ref = _upload_avatar(client, cid, name, av_local)
-                r = client.persona_create({
+                # avatar 字段通过 {persona:{}} 包装生效
+                persona_obj = {
                     "name": name,
                     "description": p.get("description", ""),
                     "active": True,
-                })
+                }
+                if av_ref:
+                    persona_obj["avatar"] = av_ref
+                r = client.persona_create(persona_obj)
                 pid = r.get("id") or r.get("personaId")
                 if pid:
                     try:
@@ -401,7 +405,8 @@ def _sync_sprites(client, chat_id, char_ids, story_dir, config, echo, sprite_ids
     echo(f"  [OK] tf_sprite_persona_name -> {persona_name}")
 
     # 章节背景：已移至 _sync_chapters（按章节 JSON 的 background 字段上传，保证 key 与章节一一对应）
-    # 兜底背景
+    # 兜底背景（fallback_bg.jpg）
+    img_dir = os.path.join(story_dir, "image")
     fb = ""
     for cand in ["cover.jpg", "bg.jpg"]:
         if os.path.isdir(img_dir):
