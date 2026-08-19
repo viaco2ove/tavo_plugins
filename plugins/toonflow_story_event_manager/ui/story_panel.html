@@ -250,6 +250,7 @@
 .tf-modal{background:#1a2535;border-radius:12px;padding:20px;min-width:320px;max-width:90vw;color:#e2e8f0}
 .tf-modal-field{margin:10px 0;display:flex;flex-direction:column;gap:6px}
 .tf-modal-field label{font-size:12px;color:#94a3b8}
+.tf-modal-field input,.tf-modal-field select{width:100%;padding:8px 10px;border-radius:8px;border:1px solid rgba(148,163,184,.3);background:rgba(12,21,35,.6);color:#e2e8f0;font-size:13px;box-sizing:border-box}
 .tf-modal-row{display:flex;gap:8px;align-items:center}
 .tf-modal-row input[type=file]{font-size:12px;color:#e2e8f0;flex:1}
 .tf-modal-row button{background:#3b82f6;color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:13px;cursor:pointer}
@@ -262,7 +263,7 @@
 </style>
 <div id="tf-role-config-overlay" class="tf-overlay">
   <div class="tf-modal" id="tf-modal">
-    <div class="tf-modal-title"><span>角色配置</span><button class="tf-modal-close">关闭</button></div>
+    <div class="tf-modal-title"><span>角色配置</span><button class="tf-modal-close" data-close-role>关闭</button></div>
     <div id="tf-config-char-info" class="tf-modal-info"></div>
     <div class="tf-modal-row">
       <div>
@@ -281,6 +282,50 @@
       </div>
     </div>
     <button class="tf-modal-save" id="tf-config-save" onclick="window._tfSaveRoleConfig()">保存配置</button>
+  </div>
+</div>
+
+<div id="tf-llm-config-overlay" class="tf-overlay">
+  <div class="tf-modal">
+    <div class="tf-modal-title"><span>🤖 LLM 插件配置</span><button class="tf-modal-close" data-close-llm>关闭</button></div>
+    <div class="tf-modal-info">命中适配器 URL（minimaxi / siliconflow / dashscope / openai 等）时插件直接调用接口；否则走 tavo.generate()。</div>
+    <div class="tf-modal-row">
+      <div>
+        <div class="tf-modal-field"><label>API Key</label>
+          <input type="password" id="tf-llm-cfg-apikey" placeholder="sk-...">
+        </div>
+        <div class="tf-modal-field"><label>API URL</label>
+          <input type="text" id="tf-llm-cfg-apiurl" placeholder="https://api.minimaxi.com">
+        </div>
+        <div class="tf-modal-field"><label>模型名</label>
+          <input type="text" id="tf-llm-cfg-model" placeholder="MiniMax-Text-01">
+        </div>
+        <div class="tf-modal-field"><label>思考程度</label>
+          <select id="tf-llm-cfg-effort">
+            <option value="none">none - 关闭思考</option>
+            <option value="minimal" selected>minimal - 最小思考（推荐）</option>
+            <option value="low">low - 低思考</option>
+            <option value="medium">medium - 中思考</option>
+            <option value="high">high - 高思考</option>
+          </select>
+        </div>
+        <div>
+        <div>语音插件配置</div>
+        <div class="tf-modal-field"><label>语音模式(voice_platform)</label>
+           <select id="voice_platform">
+            <option value="xiaomimimo" selected>xiaomimimo</option>
+            <option value="aliyun" selected>aliyun</option>
+            <option value="tavo">tavo 官方</option>
+          </select>
+        </div>
+        <div class="tf-modal-field"><label>语音apikey(voice_platform_apikey)</label>
+          <input type="password" id="tf-voice_platform_apikey" placeholder="sk-...">
+        </div>
+      </div>
+      </div>
+
+    </div>
+    <button class="tf-modal-save" id="tf-llm-cfg-save">保存配置</button>
   </div>
 </div>
 
@@ -1155,7 +1200,8 @@
 
     // 群聊编排（跟随系统 / 角色编排插件）
     var orch = _edit.orchestration || 'plugin';
-    h += '<div class="tf-btn-row" style="margin:6px 0;"><button class="tf-btn tf-btn--primary" data-open-panel="llm" style="background:#4a4a8a;">🤖 LLM 插件配置（apiKey / 思考程度 / 适配器）</button></div>'
+    // LLM 插件配置：按钮 -> 弹窗（modal 由底部 llm-config IIFE 处理）
+    h += '<div class="tf-btn-row" style="margin:6px 0;"><button class="tf-btn" data-llm-open="1" style="background:#4a4a8a;">🤖 LLM&语音 插件配置</button></div>';
     h += '<div class="tf-card"><div class="tf-card__title">群聊编排</div>'
       + '<div class="tf-card__text">选择由谁负责群聊的剧情编排与发言。</div>'
       + '<div class="tf-edit-field"><select data-orch style="padding:8px;border-radius:8px;border:1px solid rgba(188,204,226,.2);background:rgba(12,21,35,.55);color:#e8f2ff;width:100%;box-sizing:border-box;">'
@@ -1418,15 +1464,14 @@
     });
     // 角色配置按钮（打开弹窗，由底部 role-config IIFE 的 document listener 处理）
     // 此处不重复绑定，避免双重触发
-    // llm 插件面板（data-open-panel="llm" → tavo.plugin.emit sidebar action）
-    body.querySelectorAll('[data-open-panel]').forEach(function (el) {
-      el.addEventListener('click', function () {
-        var p = el.getAttribute('data-open-panel');
-        if (p === 'llm' && T && T.plugin && T.plugin.emit) {
-          T.plugin.emit('sidebar:action', 'tf-llm-toggle');
-        }
+    // LLM 配置按钮 -> 打开弹窗（modal 由底部 llm-config IIFE 处理）
+    var llmOpenBtn = body.querySelector('[data-llm-open]');
+    if (llmOpenBtn) {
+      llmOpenBtn.addEventListener('click', function () {
+        if (window._tfOpenLlmConfig) window._tfOpenLlmConfig();
+        else console.warn('[story_panel] _tfOpenLlmConfig not defined');
       });
-    });
+    }
     body.querySelectorAll('[data-role-raw]').forEach(function (el) {
       el.addEventListener('click', function () {
         var k = el.getAttribute('data-role-raw');
@@ -1642,8 +1687,64 @@
       openRoleConfig(btn.getAttribute('data-role-config') || '', btn.getAttribute('data-char-name') || '');
     }
     if(e.target === overlay) closeRoleConfig();
-    var closeBtn = e.target.closest('.tf-modal-close');
+    var closeBtn = e.target.closest('[data-close-role]');
     if(closeBtn && overlay) { e.stopPropagation(); closeRoleConfig(); }
+  });
+})();
+
+// LLM 配置弹窗
+(function(){
+  var overlay = document.getElementById('tf-llm-config-overlay');
+
+  function readVar(name) {
+    try {
+      var v = tavo.get(name, 'global');
+      var guard = 0;
+      while (v && typeof v === 'object' && v.found !== undefined && 'value' in v && guard < 5) { v = v.value; guard++; }
+      return v;
+    } catch(e) { return null; }
+  }
+
+  window._tfOpenLlmConfig = function() {
+    console.log('[llm-config] open');
+    var cfg = readVar('tf_llm') || {};
+    document.getElementById('tf-llm-cfg-apikey').value = cfg.apiKey || '';
+    document.getElementById('tf-llm-cfg-apiurl').value = cfg.apiUrl || '';
+    document.getElementById('tf-llm-cfg-model').value = cfg.model || '';
+    document.getElementById('tf-llm-cfg-effort').value = cfg.reasoningEffort || 'minimal';
+    if(overlay) overlay.style.display = 'flex';
+  };
+  function close() { if(overlay) overlay.style.display = 'none'; }
+
+  var saveBtn = document.getElementById('tf-llm-cfg-save');
+  if (saveBtn) {
+    saveBtn.addEventListener('click', function() {
+      var old = readVar('tf_llm') || {};
+      var merged = Object.assign({}, old, {
+        apiKey: document.getElementById('tf-llm-cfg-apikey').value.trim(),
+        apiUrl: document.getElementById('tf-llm-cfg-apiurl').value.trim(),
+        model: document.getElementById('tf-llm-cfg-model').value.trim(),
+        reasoningEffort: document.getElementById('tf-llm-cfg-effort').value,
+      });
+      try {
+        tavo.set('tf_llm', merged);
+        try { tavo.set('tf_llm', merged, 'global'); } catch(e) {}
+        console.log('[llm-config] saved:', JSON.stringify(merged));
+        try { tavo.utils.toast('LLM 配置已保存'); } catch(e) {}
+        close();
+      } catch(e) {
+        console.warn('[llm-config] save failed', e);
+        alert('保存失败: ' + (e.message || e));
+      }
+    });
+  }
+
+  document.addEventListener('click', function(e) {
+    if (e.target === overlay) close();
+    var closeBtn = e.target.closest('[data-close-llm]');
+    if (closeBtn) { e.stopPropagation(); close(); }
+    // overlay 内的 .tf-modal-close 按钮也要能关
+    if (overlay && overlay.contains(e.target) && e.target.classList.contains('tf-modal-close')) close();
   });
 })();
 </script>
