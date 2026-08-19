@@ -400,26 +400,7 @@ def _sync_sprites(client, chat_id, char_ids, story_dir, config, echo, sprite_ids
         client.variable_set(chat_id, "tf_sprite_persona_name", persona_name, scope=scope)
     echo(f"  [OK] tf_sprite_persona_name -> {persona_name}")
 
-    # 章节背景
-    img_dir = os.path.join(story_dir, "image")
-    chapter_bgs = {}
-    if os.path.isdir(img_dir):
-        for fname in sorted(os.listdir(img_dir)):
-            if not fname.startswith("chapter_"):
-                continue
-            if not any(fname.endswith(e) for e in ["_background.png", "_cover.png"]):
-                continue
-            key = fname.replace(".png", "").replace("_background", "").replace("_cover", "")
-            dest = f"chapter_bg_{key}.png"
-            with open(os.path.join(img_dir, fname), "rb") as f:
-                b64 = base64.b64encode(f.read()).decode()
-            r = client.file_save(chat_id, dest, b64, scope="chat")
-            chapter_bgs[key] = r.get("path", "")
-            echo(f"  章节背景 {key} -> {chapter_bgs[key]}")
-    for scope in ["chat", "global"]:
-        client.variable_set(chat_id, "tf_chapter_backgrounds", chapter_bgs, scope=scope)
-    echo(f"  [OK] tf_chapter_backgrounds -> {len(chapter_bgs)}")
-
+    # 章节背景：已移至 _sync_chapters（按章节 JSON 的 background 字段上传，保证 key 与章节一一对应）
     # 兜底背景
     fb = ""
     for cand in ["cover.jpg", "bg.jpg"]:
