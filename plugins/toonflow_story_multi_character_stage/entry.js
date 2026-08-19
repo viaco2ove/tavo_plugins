@@ -414,13 +414,56 @@ tavo.plugin.on('input:beforeSend', async (event) => {
   if (!cfg.enabled) return;
   if (getOrchestration() === 'system') return; // 跟随系统：不接管
 
-  // 指令类前缀（@记忆管理 / @角色信息 / @事件未开始 / @下一事件 / @下一章 / @上一章）
-  // 由 memory-manager 等指令插件独占处理；mcs 不应抢先 cancel，
-  // 否则 Tavo 在 cancel 后跳过剩余 listener，指令插件没机会处理
-  const DIRECTIVE_PREFIXES = ['@记忆管理', '@角色信息', '@事件未开始', '@下一事件', '@下一章', '@上一章'];
+  // 指令类前缀由 memory-manager / event-manager 等指令插件独占处理；mcs 不应抢先 cancel
+  // 三种 intent 模式（读 tf_story.edit.intentMode，由 tmmIntent.getMode() 暴露）：
+  //   - 'keyword'   : 仅 keyword 同步判断；命中指令前缀 → return 让出
+  //   - 'auto'      : keyword 优先；keyword 不命中再调 LLM 判别（独立最小配置）；
+  //                   LLM 判别 intent=memory_update → return 让出
+  //   - 'model_api' : 直接调 LLM 判别；intent=memory_update → return 让出
+  // 若 memory-manager 未加载（tmmIntent 不存在），fallback 到 event-manager 已知前缀
   const userText = event.text || '';
   const userTextTrim = userText.trim();
-  if (DIRECTIVE_PREFIXES.some(p => userTextTrim.startsWith(p))) return;
+  let isDirective = false;
+  let intentResult = null;
+  try {
+    if (typeof window !== 'undefined' && window.tmmIntent) {
+      const mode = (typeof window.tmmIntent.getMode === 'function') ? window.tmmIntent.getMode() : 'auto';
+      if (mode === 'keyword') {
+        const r = window.tmmIntent.classifyKeyword(userText);
+        isDirective = !!(r && r.isDirective);
+        intentResult = r;
+      } else if (mode === 'auto') {
+        // 先 keyword 快路径
+        const r = window.tmmIntent.classifyKeyword(userText);
+        if (r && r.isDirective) {
+          isDirective = true;
+          intentResult = r;
+        } else if (typeof window.tmmIntent.classifyLLM === 'function') {
+          // keyword 未命中，再调 LLM（独立最小配置）
+          intentResult = await window.tmmIntent.classifyLLM(userText);
+          isDirective = intentResult && intentResult.intent === 'memory_update';
+        }
+      } else if (mode === 'model_api') {
+        if (typeof window.tmmIntent.classifyLLM === 'function') {
+          intentResult = await window.tmmIntent.classifyLLM(userText);
+          isDirective = intentResult && intentResult.intent === 'memory_update';
+        }
+      }
+    } else {
+      // memory-manager 未加载：fallback 到 event-manager 已知前缀
+      const FALLBACK_PREFIXES = ['@角色信息', '@事件未开始', '@下一章', '@上一章', '@事件进度检测', '@下个事件', '@下一个事件', '@下个章节', '@下一个章节'];
+      isDirective = FALLBACK_PREFIXES.some(p => userTextTrim.startsWith(p));
+    }
+  } catch (e) {
+    console.warn('[' + ts() + '] 🎭 [mcs] intent classify failed, fallback to non-directive', e && e.message);
+    isDirective = false;
+  }
+  if (isDirective) {
+    console.log('[' + ts() + '] 🎭 [mcs] 让出：' + userTextTrim.slice(0, 40)
+      + ' | intent=' + (intentResult && intentResult.intent ? intentResult.intent : 'keyword')
+      + ' conf=' + (intentResult && intentResult.confidence ? intentResult.confidence : 'n/a'));
+    return;
+  }
 
   console.log('[' + ts() + '] 🎭 [mcs] input:beforeSend → 拦截用户: ' + userText.slice(0, 80));
 
