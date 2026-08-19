@@ -76,7 +76,7 @@ emulator -avd Pixel_8_Pro
 ```
 
 ### mcp
-![img_1.png](img_1.png)
+![img_1.png](../img_1.png)
 看着是 http://10.0.2.15:7347/mcp
 实际是要进行tcp 转发
 `adb -s emulator-5554 forward tcp:7347 tcp:7347`
@@ -84,6 +84,6 @@ emulator -avd Pixel_8_Pro
 
 ## 机器语言设置
 虚拟机里面的设置不是右边栏的设置
-![img_2.png](img_2.png)
+![img_2.png](../img_2.png)
 Settings → System → Languages & input → Languages
 → "Add a language" → 选 简体中文(中国)

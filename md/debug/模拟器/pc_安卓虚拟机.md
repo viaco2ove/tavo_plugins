@@ -10,7 +10,7 @@ WSA（Windows Subsystem for Android）—— 微软已停止支持（2024年3月
 本地宿主页面 + 真实插件加载——把抽出的 index.html + bundle.min.js + sandbox.js 搭一个本地 WebView 容器，在 Chrome 里跑真 Tavo 宿主，挂真实插件，F12 全功能。这个我之前没考虑，但这是最有价值的——用 Tavo 真实宿主代码 + 真实插件，跑在 Chrome 里，调试就是真 DevTools。
 
 
-[ChromeDev.md](ChromeDev.md)
+[ChromeDev.md](../ChromeDev.md)
 
 # avd
 AVD（Android Virtual Device）是 Google 官方提供的 Android 虚拟设备工具，集成在 Android Studio 中，主要用于 Android 应用开发和测试。下面从多个维度将它与其他主流虚拟机/模拟器进行对比。

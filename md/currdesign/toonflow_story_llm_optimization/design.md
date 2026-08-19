@@ -32,6 +32,7 @@ tf_llm（镜像 tavo「更多-模型设置」——官方变量读不到，故�
   "stream": true
 }
 ```
+memoryLength 这个参数暂时没用,是通过lineCount 来控制台词的。
 
 # toonflow_story_event_manager 增加思考程度配置
 llm思考程度: none/minimal/low/medium/high
