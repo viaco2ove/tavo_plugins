@@ -309,19 +309,18 @@
             <option value="high">high - 高思考</option>
           </select>
         </div>
-        <div>
-        <div>语音插件配置</div>
-        <div class="tf-modal-field"><label>语音模式(voice_platform)</label>
-           <select id="voice_platform">
-            <option value="xiaomimimo" selected>xiaomimimo</option>
-            <option value="aliyun" selected>aliyun</option>
+        <div style="margin-top:14px;padding-top:10px;border-top:1px solid rgba(255,255,255,.1);">
+        <div class="tf-modal-title" style="border:none;padding:0 0 6px;"><span style="font-size:13px;">🔊 语音插件配置</span></div>
+        <div class="tf-modal-field"><label>语音平台 (voice_platform)</label>
+           <select id="tf-voice-cfg-platform">
+            <option value="xiaomimimo">xiaomimimo</option>
+            <option value="aliyun">aliyun</option>
             <option value="tavo">tavo 官方</option>
           </select>
         </div>
-        <div class="tf-modal-field"><label>语音apikey(voice_platform_apikey)</label>
-          <input type="password" id="tf-voice_platform_apikey" placeholder="sk-...">
+        <div class="tf-modal-field"><label>语音 API Key (voice_platform_apikey)</label>
+          <input type="password" id="tf-voice-cfg-apikey" placeholder="sk-...">
         </div>
-      </div>
       </div>
 
     </div>
@@ -1712,6 +1711,12 @@
     document.getElementById('tf-llm-cfg-apiurl').value = cfg.apiUrl || '';
     document.getElementById('tf-llm-cfg-model').value = cfg.model || '';
     document.getElementById('tf-llm-cfg-effort').value = cfg.reasoningEffort || 'minimal';
+    // voice 配置（来自 voice 插件的 tf_voice_config 变量）
+    var voiceCfg = readVar('tf_voice_config') || {};
+    var vpEl = document.getElementById('tf-voice-cfg-platform');
+    var vkEl = document.getElementById('tf-voice-cfg-apikey');
+    if (vpEl) vpEl.value = voiceCfg.voice_platform || 'xiaomimimo';
+    if (vkEl) vkEl.value = voiceCfg.voice_platform_apikey || '';
     if(overlay) overlay.style.display = 'flex';
   };
   function close() { if(overlay) overlay.style.display = 'none'; }
@@ -1719,23 +1724,37 @@
   var saveBtn = document.getElementById('tf-llm-cfg-save');
   if (saveBtn) {
     saveBtn.addEventListener('click', function() {
+      // LLM 配置 → tf_llm 变量
       var old = readVar('tf_llm') || {};
-      var merged = Object.assign({}, old, {
+      var llmMerged = Object.assign({}, old, {
         apiKey: document.getElementById('tf-llm-cfg-apikey').value.trim(),
         apiUrl: document.getElementById('tf-llm-cfg-apiurl').value.trim(),
         model: document.getElementById('tf-llm-cfg-model').value.trim(),
         reasoningEffort: document.getElementById('tf-llm-cfg-effort').value,
       });
       try {
-        tavo.set('tf_llm', merged);
-        try { tavo.set('tf_llm', merged, 'global'); } catch(e) {}
-        console.log('[llm-config] saved:', JSON.stringify(merged));
-        try { tavo.utils.toast('LLM 配置已保存'); } catch(e) {}
-        close();
-      } catch(e) {
-        console.warn('[llm-config] save failed', e);
-        alert('保存失败: ' + (e.message || e));
-      }
+        tavo.set('tf_llm', llmMerged);
+        try { tavo.set('tf_llm', llmMerged, 'global'); } catch(e) {}
+        console.log('[llm-config] tf_llm saved:', JSON.stringify(llmMerged));
+      } catch(e) { console.warn('[llm-config] tf_llm save failed', e); }
+
+      // 语音配置 → tf_voice_config 变量（voice 插件通过此变量中转）
+      var voiceOld = readVar('tf_voice_config') || {};
+      var voiceMerged = Object.assign({}, voiceOld, {
+        voice_platform: (document.getElementById('tf-voice-cfg-platform') || {}).value || 'xiaomimimo',
+        voice_platform_apikey: (document.getElementById('tf-voice-cfg-apikey') || {}).value || '',
+      });
+      try {
+        tavo.set('tf_voice_config', voiceMerged);
+        try { tavo.set('tf_voice_config', voiceMerged, 'global'); } catch(e) {}
+        console.log('[llm-config] tf_voice_config saved:', JSON.stringify(voiceMerged));
+      } catch(e) { console.warn('[llm-config] tf_voice_config save failed', e); }
+
+      // 通知 voice 插件重新加载
+      try { if (window.tf_voice && window.tf_voice.invalidateVoiceId) window.tf_voice.clearAllVoiceIds && window.tf_voice.clearAllVoiceIds(); } catch(e) {}
+
+      try { tavo.utils.toast('配置已保存（LLM + 语音）'); } catch(e) {}
+      close();
     });
   }
 
