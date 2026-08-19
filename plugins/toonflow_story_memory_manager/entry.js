@@ -332,12 +332,15 @@ async function runSafetyCheck(currentState, parsed, directive) {
     + '{\n  "decision": "approve" | "reject",\n  "reason": "简要说明理由（中文），若 reject 必填",\n  "modifiedPatch": { /* 可选，approve 时返回的修正版 patch */ }\n}';
   let raw;
   try {
-    raw = await llm.callDirect(prompt, {
-      maxCompletionTokens: cfg.maxTokens,
-      temperature: cfg.temperature,
-      topP: cfg.topP,
-      reasoningEffort: cfg.reasoningEffort,
-    });
+    raw = await Promise.race([
+      llm.callDirect(prompt, {
+        maxCompletionTokens: cfg.maxTokens,
+        temperature: cfg.temperature,
+        topP: cfg.topP,
+        reasoningEffort: cfg.reasoningEffort,
+      }),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('runSafetyCheck timeout 15s')), 15000)),
+    ]);
   } catch (e) {
     console.warn('[tmm] safety call failed', e && e.message);
     return { decision: 'approve', reason: 'safety call failed, fall through: ' + (e && e.message) };
@@ -728,11 +731,16 @@ function buildCharacterCardList() {
 
 // 记忆管理器 LLM 主入口：directive 非空时表示 @记忆管理 直接指令
 async function runMemoryAgent(directive) {
-  if (refreshing) return;
+  console.log('[tmm] runMemoryAgent start, directive=' + JSON.stringify((directive || '').slice(0, 60)) + ', refreshing=' + refreshing);
+  if (refreshing) {
+    console.log('[tmm] runMemoryAgent skipped: previous still refreshing');
+    tavo.utils.toast('@记忆管理：上一轮还在跑，跳过本次（避免堆积）');
+    return;
+  }
   refreshing = true;
   try {
     const cfg = getConfig();
-    if (!cfg.enabled) return;
+    if (!cfg.enabled) { console.log('[tmm] runMemoryAgent skip: enabled=false'); return; }
 
     // 防御：展示层 tmm_story 缺失（如重置后）则立刻重建，保证模型能看到角色参数卡以生成 patch
     if (!readChatVar(STORY_NS)) {
@@ -740,7 +748,10 @@ async function runMemoryAgent(directive) {
     }
 
     const count = Math.max(cfg.dialogueWindow || 12, 10);
-    const messages = await tavo.message.find([-count, -1]);
+    const messages = await Promise.race([
+      tavo.message.find([-count, -1]),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('tavo.message.find timeout 5s')), 5000))
+    ]);
     const recentDialogue = messages.map(m => ({
       role: m.characterName || (m.role === 'user' ? '用户' : (m.role === 'assistant' ? 'NPC' : m.role)),
       content: (m.content || '').slice(0, 400),
@@ -769,10 +780,38 @@ async function runMemoryAgent(directive) {
     }
     prompt += '\n请基于以上上下文，输出唯一的 JSON 记忆更新结果。';
 
-    const raw = await tavo.generate(MEMORY_RULES + '\n\n' + prompt, {
-      context: false,
-      settings: { temperature: 0.3 },
-    });
+    console.log('[tmm] runMemoryAgent: calling tf_llm.callDirect (prompt len=' + prompt.length + ')');
+    // 改用 tf_llm.callDirect（跟 mcs / llm-opt / classifyLLM 同一通道，已验证能通）
+    // 不再用 tavo.generate — 那条 tavo 自带 LLM 通道会卡死
+    const LLM_TIMEOUT_MS = 30000;
+    const llm = (typeof window !== 'undefined') ? window.tf_llm : null;
+    let raw;
+    let timeoutHandle;
+    if (llm && typeof llm.callDirect === 'function') {
+      try {
+        raw = await Promise.race([
+          llm.callDirect(MEMORY_RULES + '\n\n' + prompt, { maxCompletionTokens: 1500 }),
+          new Promise((_, reject) => {
+            timeoutHandle = setTimeout(() => reject(new Error('tf_llm.callDirect timeout 30s')), LLM_TIMEOUT_MS);
+          }),
+        ]);
+      } finally {
+        clearTimeout(timeoutHandle);
+      }
+    } else {
+      // fallback: tavo.generate（带 timeout；已知会卡，但 fallback 兜底）
+      try {
+        raw = await Promise.race([
+          tavo.generate(MEMORY_RULES + '\n\n' + prompt, { context: false, settings: { temperature: 0.3 } }),
+          new Promise((_, reject) => {
+            timeoutHandle = setTimeout(() => reject(new Error('tavo.generate timeout 30s (fallback)')), LLM_TIMEOUT_MS);
+          }),
+        ]);
+      } finally {
+        clearTimeout(timeoutHandle);
+      }
+    }
+    console.log('[tmm] runMemoryAgent: LLM returned, len=' + (raw ? raw.length : 0));
 
     let parsed = null;
     try {
@@ -896,12 +935,16 @@ if (typeof window !== 'undefined') {
         + '\n\n## 你的输出（仅 JSON，不要其他文字）';
       let raw;
       try {
-        raw = await llm.callDirect(prompt, {
-          maxCompletionTokens: cfg.maxTokens,
-          temperature: cfg.temperature,
-          topP: cfg.topP,
-          reasoningEffort: cfg.reasoningEffort,
-        });
+        // timeout 15s（独立 LLM 调用不应太久）
+        raw = await Promise.race([
+          llm.callDirect(prompt, {
+            maxCompletionTokens: cfg.maxTokens,
+            temperature: cfg.temperature,
+            topP: cfg.topP,
+            reasoningEffort: cfg.reasoningEffort,
+          }),
+          new Promise((_, reject) => setTimeout(() => reject(new Error('classifyLLM timeout 15s')), 15000)),
+        ]);
       } catch (e) {
         console.warn('[tmm] classifyLLM call failed', e && e.message);
         return { intent: 'normal_dialog', confidence: 0, reasoning: 'llm call failed: ' + (e && e.message) };
@@ -956,14 +999,33 @@ _safeOn('input:beforeSend', async (event) => {
   const m = text.match(/^@(记忆管理|记忆管理器)\s*([\s\S]*)$/);
   if (!m) return;
   // 1) cancel tavo 原生流程
+  console.log('[tmm] input:beforeSend entered, text=' + JSON.stringify(text.slice(0, 60)) + ', m=' + (m ? 'matched' : 'no'));
   try { if (event && typeof event.cancel === 'function') event.cancel(); } catch (e) {}
-  // 2) append 用户消息（hidden=true：指令不出现在用户可见聊天，但 tavo UI 会清空输入框 + 消息系统可读）
+  // 2) append 用户消息（hidden 默认 false：触发 tavo UI 清空输入框 + 消息正常显示）
+  //    跟 toonflow 行为一致：@记忆管理 指令也作为 user message 进聊天历史
   try {
-    await tavo.message.append({ role: 'user', content: text, hidden: true });
+    await tavo.message.append({ role: 'user', content: text });
+    console.log('[tmm] user message appended');
   } catch (e) {
     console.warn('[tmm] append user directive failed', e && e.message);
   }
+  // 2.5) 兜底：tavo 的 event.cancel 后 UI 不会清输入框；用 DOM 操作清空兜底
+  setTimeout(() => {
+    try {
+      const candidates = document.querySelectorAll('textarea, [contenteditable="true"], input[type="text"]');
+      candidates.forEach(el => {
+        if (el.offsetParent !== null && !el.readOnly) {
+          if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') el.value = '';
+          else { el.innerText = ''; el.textContent = ''; }
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      });
+      console.log('[tmm] input cleared (DOM fallback)');
+    } catch (e) { /* ignore */ }
+  }, 50);
   const rawText = '@记忆管理 ' + (m[2] || '').trim();
+  console.log('[tmm] rawText=' + JSON.stringify(rawText));
 
   const mode = getIntentMode();
   const state = readChatVar(NS) || defaultState();
