@@ -436,10 +436,9 @@ tavo.plugin.on('input:beforeSend', async (event) => {
         console.log('[' + ts() + '] 🎭 [mcs] 当前进度: 第' + ((p.currentChapterIndex || 0) + 1) + '章 phase=' + (p.currentPhase || 0) + '/' + (p.phases || []).length + ' event=' + (p.currentEvent || 0) + '/' + (ph.events || []).length + (p.sessionFreeMode ? ' [自由模式]' : ''));
       } catch (e) {}
 
-      const orchRaw = await tavo.generate(orchPrompt, {
-        context: false,
-        settings: { temperature: 0.3, maxCompletionTokens: 600 },
-      });
+      const orchRaw = await (window.tf_llm && window.tf_llm.callDirect
+        ? window.tf_llm.callDirect(orchPrompt, { maxCompletionTokens: 600 })
+        : tavo.generate(orchPrompt, { context: false, settings: { temperature: 0.3, maxCompletionTokens: 600 } }));
       const orchText = (orchRaw || '').trim();
 
       // 剥离推理标签，只保留正文
@@ -487,10 +486,9 @@ tavo.plugin.on('input:beforeSend', async (event) => {
       const speakerPrompt = await buildSpeakerPrompt(speaker, roleType, motive, eventSummary);
       console.log('[' + ts() + '] 🎭 [mcs] 阶段二 prompt len=' + speakerPrompt.length);
 
-      const speakerRaw = await tavo.generate(speakerPrompt, {
-        context: false,
-        settings: { maxCompletionTokens: 1500 },
-      });
+      const speakerRaw = await (window.tf_llm && window.tf_llm.callDirect
+        ? window.tf_llm.callDirect(speakerPrompt, { maxCompletionTokens: 1500 })
+        : tavo.generate(speakerPrompt, { context: false, settings: { maxCompletionTokens: 1500 } }));
       const rawContent = (speakerRaw || '').trim();
       console.log('[' + ts() + '] [mcs] 阶段二原始: ' + rawContent.slice(0, 300));
       const { thinking, body } = extractThinking(rawContent);
