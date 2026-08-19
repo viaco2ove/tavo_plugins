@@ -74,7 +74,7 @@ def sync_story(client, story_dir, force=False, skip_sprite=False,
     p = config.get("persona", {})
     if p.get("name"):
         name = p["name"]
-        av_local = _avatar_abs(story_dir, p.get("avatar_file", ""))
+        av_local = _avatar_for_card(story_dir, name)
         # reuse_ids 优先
         pid = None
         if reuse_ids and name in reuse_ids:
@@ -119,7 +119,7 @@ def sync_story(client, story_dir, force=False, skip_sprite=False,
         name = c.get("name")
         if not name:
             continue
-        av_local = _avatar_abs(story_dir, c.get("avatar_file", ""))
+        av_local = _avatar_for_card(story_dir, name)
         # reuse_ids 优先（强制使用指定 ID，不再搜索/创建）
         if reuse_ids and name in reuse_ids:
             nid = reuse_ids[name]
@@ -287,6 +287,19 @@ def _avatar_abs(story_dir, rel_path):
     return os.path.join(story_dir, rel_path) if os.path.isfile(os.path.join(story_dir, rel_path)) else ""
 
 
+def _avatar_for_card(story_dir, name):
+    """角色卡头像路径：优先 ex/avatars/name/avatar.webp（AI 高清），其次 original.png"""
+    ex_dir = os.path.join(story_dir, "ex", "avatars", name)
+    if os.path.isdir(ex_dir):
+        for fn in ["avatar.webp", "original.png", "avatar.png"]:
+            p = os.path.join(ex_dir, fn)
+            if os.path.isfile(p):
+                return p
+    # 兜底 avatars/name.png
+    p = os.path.join(story_dir, "avatars", name + ".png")
+    return p if os.path.isfile(p) else ""
+
+
 def _upload_avatar(client, chat_id, name, local_path):
     if not local_path or not os.path.isfile(local_path):
         return ""
@@ -321,7 +334,8 @@ def _sync_sprites(client, chat_id, char_ids, story_dir, config, echo, sprite_ids
 
         fg_path = None; fg_ext = ".png"
         if os.path.isdir(ex_dir):
-            for fn, ext in [("original.png", ".png"), ("avatar.webp", ".webp")]:
+            # 优先 avatar.webp（AI 高清增强版），其次 original.png，最后 avatars/name.png
+            for fn, ext in [("avatar.webp", ".webp"), ("original.png", ".png")]:
                 p = os.path.join(ex_dir, fn)
                 if os.path.isfile(p):
                     fg_path = p; fg_ext = ext; break
@@ -422,16 +436,61 @@ def _sync_sprites(client, chat_id, char_ids, story_dir, config, echo, sprite_ids
             client.variable_set(chat_id, "tf_sprite_fallback_bg", fb_path, scope=scope)
         echo(f"  [OK] tf_sprite_fallback_bg -> {fb_path}")
 
+    # ---- voice 文件同步：ex/avatars/name/voice.wav → files/chat/voice_{id}.wav → tf_voice_files ----
+    voice_files = {}
+    ex_avatars_dir = os.path.join(story_dir, "ex", "avatars")
+    if os.path.isdir(ex_avatars_dir):
+        for name, cid in use_ids.items():
+            if not cid or not str(cid).isdigit():
+                continue
+            cid_int = int(cid)
+            ex_dir = os.path.join(ex_avatars_dir, name)
+            voice_path = os.path.join(ex_dir, "voice.wav") if os.path.isdir(ex_dir) else None
+            if voice_path and os.path.isfile(voice_path):
+                dest = f"voice_{cid_int}.wav"
+                with open(voice_path, "rb") as f:
+                    b64 = base64.b64encode(f.read()).decode()
+                r = client.file_save(chat_id, dest, b64, scope="chat")
+                voice_path_tavo = r.get("path", "")
+                if voice_path_tavo:
+                    voice_files[str(cid_int)] = voice_path_tavo
+                    echo(f"  voice {name} -> {voice_path_tavo}")
+    if voice_files:
+        for scope in ["chat", "global"]:
+            client.variable_set(chat_id, "tf_voice_files", voice_files, scope=scope)
+        echo(f"  [OK] tf_voice_files -> {len(voice_files)}")
+
 
 def _sync_chapters(client, chat_id, story_dir, config, echo):
     """同步章节到 tf_story.edit"""
     ch_cfg = config.get("chapters", {})
     ch_dir = os.path.join(story_dir, ch_cfg.get("dir", "chapters"), "")
     chapters = []
+    chapter_bgs = {}  # 章节背景图索引：chapter_1 -> files/chat/chapter_bg_1.png
 
-    for fp in sorted(_glob.glob(os.path.join(ch_dir, "*.json"))):
+    for i, fp in enumerate(sorted(_glob.glob(os.path.join(ch_dir, "*.json")))):
         with open(fp, encoding="utf-8") as f:
             ch = json.load(f)
+
+        # ---- ② 章节 background 字段上传：同步到 files/chat/ 并映射 ----
+        raw_bg = ch.get("background", "") or ch.get("backgroundPath", "")
+        uploaded_bg = raw_bg
+        if raw_bg and not raw_bg.startswith(("files/", "http")):
+            # 查找本地文件（复用 _avatar_abs 路径查找逻辑）
+            local_bg = _avatar_abs(story_dir, raw_bg)
+            if local_bg and os.path.isfile(local_bg):
+                ext = os.path.splitext(local_bg)[1] or ".png"
+                dest = f"chapter_bg_{i + 1}{ext}"
+                with open(local_bg, "rb") as f:
+                    b64 = base64.b64encode(f.read()).decode()
+                r = client.file_save(chat_id, dest, b64, scope="chat")
+                uploaded_bg = r.get("path", "")
+                echo(f"  章节 {i+1} 背景 {raw_bg} -> {uploaded_bg}")
+                # 写 tf_chapter_backgrounds 索引（以章节 JSON 的 background 为准）
+                chapter_bgs[f"chapter_{i + 1}"] = uploaded_bg
+            else:
+                echo(f"  [WARN] 章节 {i+1} 背景文件不存在: {raw_bg}")
+
         chapters.append({
             "title": ch.get("title", ""),
             "content": ch.get("content", ""),
@@ -439,7 +498,7 @@ def _sync_chapters(client, chat_id, story_dir, config, echo):
             "openingLine": ch.get("openingLine", "") or ch.get("openingText", ""),
             "events": ch.get("events", []),
             "successCondition": ch.get("successCondition", "") or ch.get("completionCondition", ""),
-            "background": ch.get("background", "") or ch.get("backgroundPath", ""),
+            "background": uploaded_bg,  # 写已上传的 files/chat/ 路径
             "conditionVisible": ch.get("conditionVisible", ch.get("showCompletionCondition", True)),
             "enabled": True,
         })
@@ -456,6 +515,12 @@ def _sync_chapters(client, chat_id, story_dir, config, echo):
         for scope in ["chat", "global"]:
             client.variable_set(chat_id, "tf_story.edit", edit, scope=scope)
         echo(f"  [OK] tf_story.edit -> {len(chapters)} chapters")
+
+        # 写 tf_chapter_backgrounds（以章节 JSON 的 background 为准，key: chapter_1, chapter_2...）
+        if chapter_bgs:
+            for scope in ["chat", "global"]:
+                client.variable_set(chat_id, "tf_chapter_backgrounds", chapter_bgs, scope=scope)
+            echo(f"  [OK] tf_chapter_backgrounds -> {len(chapter_bgs)}")
 
         progress = {
             "currentChapterIndex": 0,

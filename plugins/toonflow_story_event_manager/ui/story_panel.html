@@ -273,7 +273,7 @@
         </div>
         <div class="tf-modal-field"><label>音色文件 (wav/mp3, 15-30秒, &lt;20MB)</label>
           <input type="file" id="tf-config-voice-input" accept="audio/wav,audio/mp3,.wav,.mp3">
-          <div id="tf-config-voice-preview" class="tf-modal-info"></div>
+          <audio id="tf-config-voice-player" style="display:block;margin-top:6px;width:100%;max-height:40px;"></audio>
           <div id="tf-config-voice-status" class="tf-modal-info"></div>
         </div>
       </div>
@@ -1500,27 +1500,42 @@
   function openRoleConfig(id, name) {
     charId = id; charName = name;
     spriteB64 = null; voiceB64 = null; voiceFileName = '';
-    // 预填已有绑定
+    // 预填已有绑定（tf_voice_files 结构: { "63": "files/chat/voice_63.wav" }）
     var info = document.getElementById('tf-config-char-info');
     if (info) info.textContent = '角色: ' + name + ' (ID: ' + id + ')';
     var voiceStatus = document.getElementById('tf-config-voice-status');
+    var voicePreview = document.getElementById('tf-config-voice-preview');
     var spriteStatus = document.getElementById('tf-config-sprite-status');
+    var preview = document.getElementById('tf-config-sprite-preview');
+    var voicePlayer = document.getElementById('tf-config-voice-player');
     try {
-      var vf = (readVar('tf_voice_files') || {byCharId:{}}).byCharId[id];
-      if (voiceStatus) voiceStatus.textContent = vf && vf.file ? ('已绑定: ' + vf.file) : '未绑定音色文件';
-      var sp = readVar('tf_sprites') || {byName:{}};
-      var spe = (sp.byName || {})[name];
-      if (spriteStatus) spriteStatus.textContent = spe && spe.fg ? ('已绑定: ' + spe.fg) : '未绑定立绘';
-      var preview = document.getElementById('tf-config-sprite-preview');
-      if (preview) {
-        if (spe && spe.fg) {
-          try {
-            var fname = spe.fg.split('/').pop();
-            preview.src = tavo.file.url(fname, 'chat') || '';
-          } catch(e) { preview.src = ''; }
-        } else { preview.src = ''; }
+      // 音色：结构 { "63": "files/chat/voice_63.wav" }
+      var vfAll = readVar('tf_voice_files') || {};
+      var voicePath = (typeof vfAll === 'object' && !Array.isArray(vfAll)) ? (vfAll[id] || vfAll[String(id)] || '') : '';
+      if (voicePath) {
+        if (voiceStatus) voiceStatus.textContent = '已绑定: ' + voicePath;
+        // 播放按钮
+        if (voicePlayer) {
+          voicePlayer.controls = true;
+          try { voicePlayer.src = tavo.file.url(voicePath.split('/').pop(), 'chat') || ''; } catch(e) { voicePlayer.src = ''; }
+        }
+      } else {
+        if (voiceStatus) voiceStatus.textContent = '未绑定音色文件';
+        if (voicePlayer) { voicePlayer.src = ''; }
       }
-    } catch(e) {}
+      // 立绘：结构 { byName: { "红缥缈": { id, name, roleType, fg, bg } } }
+      var sp = readVar('tf_sprites') || {};
+      var spe = (sp.byName || {})[name];
+      if (spe && spe.fg) {
+        if (spriteStatus) spriteStatus.textContent = '已绑定: ' + spe.fg;
+        if (preview) {
+          try { preview.src = tavo.file.url(spe.fg.split('/').pop(), 'chat') || ''; } catch(e) { preview.src = ''; }
+        }
+      } else {
+        if (spriteStatus) spriteStatus.textContent = '未绑定立绘';
+        if (preview) preview.src = '';
+      }
+    } catch(e) { console.warn('[role-config] open err', e); }
     if(overlay) overlay.style.display = 'flex';
   }
   function closeRoleConfig() {
@@ -1574,40 +1589,34 @@
     var saveBtn = document.getElementById('tf-config-save');
     if (saveBtn) { saveBtn.disabled = true; saveBtn.textContent = '保存中...'; }
     try {
-      // 1. 上传立绘（如有新选）
+      // 1. 上传立绘（如有新选）：写 tf_sprites.byName[charName]
       if (spriteB64 && spriteInput && spriteInput.files[0]) {
         var ext = (spriteInput.files[0].name.match(/\.(\w+)$/) || [,'png'])[1];
         var imgName = 'sprite_fg_' + charId + '.' + ext;
-        // dataUrl 自动识别，直接传完整 dataUrl
         var imgPath = await tavo.file.save(imgName, 'data:' + (spriteInput.files[0].type || 'image/png') + ';base64,' + spriteB64, { scope: 'chat' });
         console.log('[role-config] 立绘上传: ' + imgPath);
-        // 写 tf_sprites
+        // 写 tf_sprites（结构: { byName: { "角色名": { id, name, roleType, fg, bg } } }）
         var sp = readVar('tf_sprites') || {};
         if(typeof sp !== 'object') sp = {};
         if(!sp.byName) sp.byName = {};
-        if(!sp.byId) sp.byId = {};
-        sp.byName[charName] = sp.byName[charName] || {};
+        sp.byName[charName] = sp.byName[charName] || { id: charId, name: charName, roleType: 'npc' };
         sp.byName[charName].fg = imgPath;
-        sp.byName[charName].name = charName;
         sp.byName[charName].id = charId;
-        sp.byId[charId] = sp.byId[charId] || {name: charName};
-        sp.byId[charId].fg = imgPath;
         tavo.set('tf_sprites', sp, 'chat');
         try { tavo.set('tf_sprites', sp, 'global'); } catch(e) {}
       }
-      // 2. 上传音色（如有新选）
+      // 2. 上传音色（如有新选）：写 tf_voice_files["id"]
       if (voiceB64 && voiceFileName) {
         var audioName = 'voice_' + charId + '.' + (voiceFileName.match(/\.(\w+)$/) || [,'wav'])[1];
         var audioPath = await tavo.file.save(audioName, 'data:audio/wav;base64,' + voiceB64, { scope: 'chat' });
         console.log('[role-config] 音色上传: ' + audioPath);
-        // 写 tf_voice_files
+        // 写 tf_voice_files（结构: { "63": "files/chat/voice_63.wav" }）
         var vfAll = readVar('tf_voice_files') || {};
         if(typeof vfAll !== 'object') vfAll = {};
-        if(!vfAll.byCharId) vfAll.byCharId = {};
-        vfAll.byCharId[charId] = { name: charName, file: audioPath, uploadedAt: Date.now() };
+        vfAll[String(charId)] = audioPath;
         tavo.set('tf_voice_files', vfAll, 'chat');
         try { tavo.set('tf_voice_files', vfAll, 'global'); } catch(e) {}
-        // voiceId 作废（新音色文件）
+        // voiceId 作废
         if (window.tf_voice && window.tf_voice.invalidateVoiceId) {
           window.tf_voice.invalidateVoiceId(charId);
         }
