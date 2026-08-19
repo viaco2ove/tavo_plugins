@@ -3,7 +3,7 @@
 // 其他插件通过 tf_llm.generate() 调用（不再直接调 tavo.generate()）
 
 const NS = 'tf_llm';
-const DEFAULTS = { enabled: true, apiUrl: '', apiKey: '', apiMode: '', model: '', reasoningEffort: 'minimal', temperature: 0.3, topP: 0.5, topK: null, maxTokens: 1500, memoryLength: 20, stream: true };
+const DEFAULTS = { enabled: true, apiUrl: '', apiKey: '', apiMode: '', model: "", reasoningEffort: 'minimal', temperature: 0.3, topP: 0.5, topK: null, maxTokens: 1500, memoryLength: 20, stream: true };
 
 // 支持直接 fetch 的适配器 URL 前缀（命中则完全接管）
 const ADAPTER_URLS = [
@@ -16,13 +16,14 @@ const ADAPTER_URLS = [
   'https://ai.t8star.cn',
 ];
 
-// MiniMax 模型名映射（reasoningEffort → 模型名）
+// MiniMax 模型名映射（保留，仅用于模型切换参考）
+// MiniMax-M3 是默认推荐模型；M2-her 无思考能力
 const MINIMAX_MODELS = {
-  none: 'MiniMax-Text-01',
-  minimal: 'MiniMax-Text-01',
-  low: 'MiniMax-Text-01',
-  medium: 'MiniMax-Text-01',
-  high: 'MiniMax-Text-01',
+  'MiniMax-M3': 'MiniMax-M3',
+  'MiniMax-M2.7': 'MiniMax-M2.7',
+  'MiniMax-M2.7-highspeed': 'MiniMax-M2.7-highspeed',
+  'M2-her': 'M2-her',
+  'MiniMax-Text-01': 'MiniMax-Text-01',
 };
 
 // ============================================================
@@ -203,36 +204,70 @@ function isAdapterUrl(url) {
 // 直接 fetch 调用（MiniMax / SiliconFlow 等）
 // ============================================================
 
-// MiniMax chat.completions 格式
+// MiniMax /v1/responses 格式（完全对齐 toonflow-game-app modelList.ts minimax 适配器）
+// 核心转换：
+//   URL: /v1/chat/completions → /v1/responses
+//   Body: messages → instructions(system) + input(user)
+//   reasoning: { effort: "none"|"minimal"|"low"|"medium"|"high" } 只在 /v1/responses 有效
+//   响应: responses格式 → chat/completions格式（统一出口）
 async function callMiniMax(messages, cfg) {
-  const model = cfg.model || 'MiniMax-Text-01';
-  const body = {
-    model,
-    messages,
-    max_tokens: cfg.maxTokens || 1500,
-    temperature: cfg.temperature ?? 0.3,
-    top_p: cfg.topP ?? 0.5,
-    stream: false,
-  };
-  if (cfg.reasoningEffort && cfg.reasoningEffort !== 'none') {
-    body.reasoning_effort = cfg.reasoningEffort;
+  const model = cfg.model || 'MiniMax-M3';
+  const reasoningEffort = cfg.reasoningEffort || 'minimal';
+
+  // 解析 messages：提取 system → instructions，user → input
+  const systemMsg = (messages || []).find((m) => m.role === 'system');
+  const userMsgs = (messages || []).filter((m) => m.role !== 'system') || [];
+  const instructions = systemMsg?.content || '';
+  const userContent = userMsgs.map((m) => m.content || '').join('\n');
+
+  // 构建 /v1/responses 请求体
+  const body = { model };
+  if (instructions) body.instructions = instructions;
+  if (userContent) body.input = userContent;
+  // reasoning.effort 只在 /v1/responses 有效
+  body.reasoning = { effort: reasoningEffort };
+  if (cfg.temperature != null) body.temperature = cfg.temperature;
+  else body.temperature = 0.3;
+  if (cfg.topP != null) body.top_p = cfg.topP;
+  else body.top_p = 0.5;
+
+  // URL：apiUrl 已含 /v1，拼 /responses（不重复 /v1/）
+  const baseUrl = cfg.apiUrl.replace(/\/$/, '');
+  const url = baseUrl + '/responses';
+  log('MiniMax request:', JSON.stringify({ url, model, reasoning: body.reasoning, temperature: body.temperature, top_p: body.top_p }));
+
+  let resp;
+  try {
+    resp = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + cfg.apiKey,
+      },
+      body: JSON.stringify(body),
+    });
+  } catch (e) {
+    warn('MiniMax fetch failed:', e.message, '| type:', e.name, '| stack:', (e.stack || '').slice(0, 300));
+    throw new Error('fetch failed: ' + e.message);
   }
-  log('MiniMax request:', JSON.stringify({ model, max_tokens: body.max_tokens, reasoning_effort: body.reasoning_effort }));
-  const resp = await fetch(cfg.apiUrl + '/v1/chat/completions', {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': 'Bearer ' + cfg.apiKey,
-    },
-    body: JSON.stringify(body),
-  });
+
   if (!resp.ok) {
     const errText = await resp.text().catch(() => '');
+    warn('MiniMax HTTP ' + resp.status + ': ' + errText.slice(0, 500));
     throw new Error('MiniMax API error ' + resp.status + ': ' + errText);
   }
+
+  // 解析 /v1/responses 响应，转换回 chat/completions 统一格式
   const data = await resp.json();
-  const choice = (data.choices || [])[0] || {};
-  return choice.message?.content || choice.text || '';
+  const outputText = data.output_text || '';
+  const usage = data.usage || {};
+
+  // 统一日志输出：显示 chat/completions 格式（与 SiliconFlow/DashScope 一致）
+  log('MiniMax response text len=' + outputText.length + ' | model=' + (data.model || model)
+    + ' | reasoning_tokens=' + (usage.output_tokens_details?.reasoning_tokens || 0));
+
+  // 返回纯文本（与 chat/completions 格式的 choice.message.content 等价）
+  return outputText;
 }
 
 // SiliconFlow 格式（与 OpenAI 兼容）
@@ -246,8 +281,9 @@ async function callSiliconFlow(messages, cfg) {
     top_p: cfg.topP ?? 0.5,
     stream: false,
   };
-  log('SiliconFlow request:', JSON.stringify({ model, max_tokens: body.max_tokens }));
-  const resp = await fetch(cfg.apiUrl + '/v1/chat/completions', {
+  const url = cfg.apiUrl.replace(/\/$/, '') + '/v1/chat/completions';
+  log('SiliconFlow request:', JSON.stringify({ url, model, max_tokens: body.max_tokens }));
+  const resp = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -275,8 +311,9 @@ async function callDashScope(messages, cfg) {
     top_p: cfg.topP ?? 0.5,
     stream: false,
   };
-  log('DashScope request:', JSON.stringify({ model, max_tokens: body.max_tokens }));
-  const resp = await fetch(cfg.apiUrl + '/v1/chat/completions', {
+  const url = cfg.apiUrl.replace(/\/$/, '') + '/v1/chat/completions';
+  log('DashScope request:', JSON.stringify({ url, model, max_tokens: body.max_tokens }));
+  const resp = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -304,8 +341,9 @@ async function callOpenAICompatible(messages, cfg) {
     top_p: cfg.topP ?? 0.5,
     stream: false,
   };
-  log('OpenAI-compatible request:', JSON.stringify({ model, max_tokens: body.max_tokens }));
-  const resp = await fetch(cfg.apiUrl + '/v1/chat/completions', {
+  const url = cfg.apiUrl.replace(/\/$/, '') + '/v1/chat/completions';
+  log('OpenAI-compatible request:', JSON.stringify({ url, model, max_tokens: body.max_tokens }));
+  const resp = await fetch(url, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -355,39 +393,40 @@ async function llmCallDirect(prompt, options) {
   const temperature = opts.temperature ?? cfg.temperature ?? 0.3;
   const topP = opts.topP ?? cfg.topP ?? 0.5;
 
-  // 没配置 apiKey/apiUrl 或不匹配适配器，走 tavo.generate()
-  if (!cfg.apiKey || !cfg.apiUrl || !isAdapterUrl(cfg.apiUrl)) {
-    log('fallback tavo.generate()');
-    let raw;
+  // 有配置 apiKey + apiUrl + 有效适配器域名 → 走直接 fetch
+  if (cfg.apiKey && cfg.apiUrl && isAdapterUrl(cfg.apiUrl)) {
+    const messages = [{ role: 'user', content: prompt }];
+    log('llmCallDirect: 走适配器 apiUrl=' + cfg.apiUrl + ' model=' + cfg.model + ' maxTokens=' + maxTokens);
+    let rawText;
     try {
-      raw = await tavo.generate(prompt, {
-        context: false,
-        settings: { maxCompletionTokens: maxTokens },
-      });
+      rawText = await callAdapterDirect(messages, { ...cfg, maxTokens, temperature, topP });
     } catch (e) {
-      warn('tavo.generate failed:', e.message);
-      throw e;
+      warn('Adapter failed, fallback tavo.generate():', e.message);
+      let raw;
+      try {
+        raw = await tavo.generate(prompt, { context: false, settings: { maxCompletionTokens: maxTokens } });
+      } catch (e2) { warn('tavo.generate also failed:', e2.message); throw e2; }
+      rawText = (raw || '').trim();
     }
-    const stripped = stripThinkingTags((raw || '').trim());
-    log('tavo.generate result len=' + stripped.length);
+    const stripped = stripThinkingTags(rawText);
+    log('adapter result len=' + stripped.length + ' preview: ' + JSON.stringify(stripped.slice(0, 80)));
     return stripped;
   }
 
-  // 直接调用适配器
-  const messages = [{ role: 'user', content: prompt }];
-  let rawText;
+  // 无适配器配置 → 走 tavo.generate()
+  log('llmCallDirect: 走 tavo.generate() model=' + cfg.model + ' maxTokens=' + maxTokens);
+  let raw;
   try {
-    rawText = await callAdapterDirect(messages, { ...cfg, maxTokens, temperature, topP });
+    raw = await tavo.generate(prompt, {
+      context: false,
+      settings: { maxCompletionTokens: maxTokens },
+    });
   } catch (e) {
-    warn('Adapter failed, fallback tavo.generate():', e.message);
-    let raw;
-    try {
-      raw = await tavo.generate(prompt, { context: false, settings: { maxCompletionTokens: maxTokens } });
-    } catch (e2) { warn('tavo.generate also failed:', e2.message); throw e2; }
-    rawText = (raw || '').trim();
+    warn('tavo.generate failed:', e.message);
+    throw e;
   }
-  const stripped = stripThinkingTags(rawText);
-  log('adapter result len=' + stripped.length + ' preview: ' + JSON.stringify(stripped.slice(0, 100)));
+  const stripped = stripThinkingTags((raw || '').trim());
+  log('tavo.generate result len=' + stripped.length + ' preview: ' + JSON.stringify(stripped.slice(0, 80)));
   return stripped;
 }
 
@@ -416,6 +455,7 @@ if (typeof window !== 'undefined') {
   };
 }
 try { tavo.tf_llm = window.tf_llm; } catch (e) {}
+console.warn('[llm-opt] ✅ 插件加载成功 | tf_llm.callDirect=' + (typeof window.tf_llm?.callDirect) + ' | getConfig=' + JSON.stringify(window.tf_llm?.getConfig ? window.tf_llm.getConfig() : null).slice(0,300));
 
 // ============================================================
 // 初始化

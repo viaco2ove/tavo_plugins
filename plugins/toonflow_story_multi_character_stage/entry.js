@@ -181,6 +181,11 @@ tavo.plugin.on('chat:opened', async () => {
   // 等 story_event_manager 的 boot 序列完成（最多 30 秒）
   const booted = await waitForBoot(30000);
   console.log('[' + ts() + '] [mcs] boot waited result=' + booted + ' responseMode=' + cfg.responseMode);
+  // 诊断：llm-optimization 是否已加载
+  const hasLLM = !!(window.tf_llm);
+  const hasCallDirect = !!(window.tf_llm && window.tf_llm.callDirect);
+  const llmCfg = window.tf_llm && window.tf_llm.getConfig ? window.tf_llm.getConfig() : null;
+  console.warn('[' + ts() + '] 🔍 [mcs] LLM接管层状态: loaded=' + hasLLM + ' callDirect=' + hasCallDirect + ' cfg=' + JSON.stringify(llmCfg || {}).slice(0, 300));
   try {
     const scen = await getEffectiveScenarioPrompt();
     console.log('[' + ts() + '] [mcs] applying scenario, len=' + scen.length);
@@ -409,7 +414,14 @@ tavo.plugin.on('input:beforeSend', async (event) => {
   if (!cfg.enabled) return;
   if (getOrchestration() === 'system') return; // 跟随系统：不接管
 
+  // 指令类前缀（@记忆管理 / @角色信息 / @事件未开始 / @下一事件 / @下一章 / @上一章）
+  // 由 memory-manager 等指令插件独占处理；mcs 不应抢先 cancel，
+  // 否则 Tavo 在 cancel 后跳过剩余 listener，指令插件没机会处理
+  const DIRECTIVE_PREFIXES = ['@记忆管理', '@角色信息', '@事件未开始', '@下一事件', '@下一章', '@上一章'];
   const userText = event.text || '';
+  const userTextTrim = userText.trim();
+  if (DIRECTIVE_PREFIXES.some(p => userTextTrim.startsWith(p))) return;
+
   console.log('[' + ts() + '] 🎭 [mcs] input:beforeSend → 拦截用户: ' + userText.slice(0, 80));
 
   // 【关键】立即 cancel，不等任何 async 操作
@@ -436,9 +448,21 @@ tavo.plugin.on('input:beforeSend', async (event) => {
         console.log('[' + ts() + '] 🎭 [mcs] 当前进度: 第' + ((p.currentChapterIndex || 0) + 1) + '章 phase=' + (p.currentPhase || 0) + '/' + (p.phases || []).length + ' event=' + (p.currentEvent || 0) + '/' + (ph.events || []).length + (p.sessionFreeMode ? ' [自由模式]' : ''));
       } catch (e) {}
 
-      const orchRaw = await (window.tf_llm && window.tf_llm.callDirect
-        ? window.tf_llm.callDirect(orchPrompt, { maxCompletionTokens: 600 })
-        : tavo.generate(orchPrompt, { context: false, settings: { temperature: 0.3, maxCompletionTokens: 600 } }));
+      // 调试：判断走哪条 LLM 路径
+      const llmMode = (window.tf_llm && window.tf_llm.callDirect) ? '接管' : 'tavo原生';
+      console.warn('[' + ts() + '] 🎭 [mcs] 阶段一 LLM 路径: ' + llmMode
+        + ' | tf_llm=' + (typeof window.tf_llm) + ' | callDirect=' + (typeof (window.tf_llm && window.tf_llm.callDirect))
+        + (window.tf_llm ? ' | cfg=' + JSON.stringify(window.tf_llm.getConfig ? window.tf_llm.getConfig() : {}).slice(0, 200) : ''));
+      let orchRaw;
+      try {
+        orchRaw = llmMode === '接管'
+          ? await window.tf_llm.callDirect(orchPrompt, { maxCompletionTokens: 600 })
+          : await tavo.generate(orchPrompt, { context: false, settings: { temperature: 0.3, maxCompletionTokens: 600 } });
+        console.log('[' + ts() + '] 🎭 [mcs] 阶段一结果 len=' + (orchRaw||'').length + ' 首200: ' + JSON.stringify((orchRaw||'').slice(0,200)));
+      } catch(e) {
+        console.error('[' + ts() + '] ❌ [mcs] 阶段一 LLM 异常: ' + e.message + ' | name=' + e.name + ' | stack=' + (e.stack||'').slice(0,500));
+        throw e;
+      }
       const orchText = (orchRaw || '').trim();
 
       // 剥离推理标签，只保留正文
@@ -486,9 +510,19 @@ tavo.plugin.on('input:beforeSend', async (event) => {
       const speakerPrompt = await buildSpeakerPrompt(speaker, roleType, motive, eventSummary);
       console.log('[' + ts() + '] 🎭 [mcs] 阶段二 prompt len=' + speakerPrompt.length);
 
-      const speakerRaw = await (window.tf_llm && window.tf_llm.callDirect
-        ? window.tf_llm.callDirect(speakerPrompt, { maxCompletionTokens: 1500 })
-        : tavo.generate(speakerPrompt, { context: false, settings: { maxCompletionTokens: 1500 } }));
+      const speakerLLMMode = (window.tf_llm && window.tf_llm.callDirect) ? '接管' : 'tavo原生';
+      console.warn('[' + ts() + '] 🎭 [mcs] 阶段二 LLM 路径: ' + speakerLLMMode
+        + ' | tf_llm=' + (typeof window.tf_llm) + ' | callDirect=' + (typeof (window.tf_llm && window.tf_llm.callDirect)));
+      let speakerRaw;
+      try {
+        speakerRaw = speakerLLMMode === '接管'
+          ? await window.tf_llm.callDirect(speakerPrompt, { maxCompletionTokens: 1500 })
+          : await tavo.generate(speakerPrompt, { context: false, settings: { maxCompletionTokens: 1500 } });
+        console.log('[' + ts() + '] 🎭 [mcs] 阶段二结果 len=' + (speakerRaw||'').length + ' 首200: ' + JSON.stringify((speakerRaw||'').slice(0,200)));
+      } catch(e) {
+        console.error('[' + ts() + '] ❌ [mcs] 阶段二 LLM 异常: ' + e.message + ' | name=' + e.name + ' | stack=' + (e.stack||'').slice(0,500));
+        throw e;
+      }
       const rawContent = (speakerRaw || '').trim();
       console.log('[' + ts() + '] [mcs] 阶段二原始: ' + rawContent.slice(0, 300));
       const { thinking, body } = extractThinking(rawContent);

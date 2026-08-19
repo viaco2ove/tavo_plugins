@@ -4,6 +4,42 @@
 
 'use strict';
 
+// 诊断：确认 entry.js 真的被 Tavo 加载并执行
+try {
+  console.log('[tmm] ENTRY START v1.0.8 ' + new Date().toISOString()
+    + ' tavo=' + (typeof tavo)
+    + ' tavo.plugin=' + ((typeof tavo !== 'undefined' && tavo.plugin) ? typeof tavo.plugin : 'undefined')
+    + ' tavo.plugin.on=' + ((typeof tavo !== 'undefined' && tavo.plugin) ? typeof tavo.plugin.on : 'undefined'));
+} catch (e) {
+  console.error('[tmm] entry log failed', e);
+}
+
+// hook 注册用 try/catch 包裹：抓 Tavo API 抛错（之前没有错误日志 = 静默死）
+const _safeOn = (name, fn) => {
+  try {
+    if (typeof tavo === 'undefined' || !tavo.plugin || typeof tavo.plugin.on !== 'function') {
+      console.error('[tmm] hook 注册失败: tavo.plugin.on 不可用, hook=' + name);
+      return;
+    }
+    tavo.plugin.on(name, fn);
+    console.log('[tmm] hook registered: ' + name);
+  } catch (e) {
+    console.error('[tmm] hook 注册失败: hook=' + name, e && (e.message || e));
+  }
+};
+const _safeOnSide = (name, fn) => {
+  try {
+    if (typeof tavo === 'undefined' || !tavo.plugin || typeof tavo.plugin.onSidebarAction !== 'function') {
+      console.error('[tmm] sidebar 注册失败: tavo.plugin.onSidebarAction 不可用, name=' + name);
+      return;
+    }
+    tavo.plugin.onSidebarAction(name, fn);
+    console.log('[tmm] sidebar registered: ' + name);
+  } catch (e) {
+    console.error('[tmm] sidebar 注册失败: name=' + name, e && (e.message || e));
+  }
+};
+
 const NS = 'tmm';
 let refreshing = false;
 
@@ -601,7 +637,7 @@ async function runMemoryAgent(directive) {
   }
 }
 
-tavo.plugin.on('chat:opened', async () => {
+_safeOn('chat:opened', async () => {
   if (!readChatVar(NS)) {
     tavo.set(NS, defaultState(), 'chat');
   }
@@ -609,7 +645,7 @@ tavo.plugin.on('chat:opened', async () => {
   await initStory();
 });
 
-tavo.plugin.on('chat:updated', async () => {
+_safeOn('chat:updated', async () => {
   // 聊天角色/绑定变化时：仅补建新增角色（已有角色静态卡受保护），再重新生成展示层
   await buildStaticStory(true);
   await initStory();
@@ -621,7 +657,7 @@ const DIRECTIVE_PREFIXES = ['@记忆管理', '@记忆管理器', '@事件进度�
 
 // 拦截 @记忆管理 / @记忆管理器 直接指令：先取消原发送（不受 5 秒限制），再运行记忆代理。
 // 这是「角色关键信息 / 当前行为 / @记忆管理 指令」能真正生效的关键钩子。
-tavo.plugin.on('input:beforeSend', async (event) => {
+_safeOn('input:beforeSend', async (event) => {
   const cfg = getConfig();
   if (!cfg.enabled) return;
   const text = String((event && event.text) || '').trim();
@@ -662,7 +698,8 @@ tavo.plugin.on('input:beforeSend', async (event) => {
     .catch(err => { console.warn('[tmm] directive failed', err); tavo.utils.toast('@记忆管理 执行异常'); });
 });
 
-tavo.plugin.on('message:added', async (event) => {
+_safeOn('message:added', async (event) => {
+  console.log('[tmm][msg:added] role=' + ((event&&event.message&&event.message.role)||'?'));
   const cfg = getConfig();
   if (!cfg.enabled) return;
   const msg = event && event.message;
@@ -785,12 +822,12 @@ function getIntentMode() {
   } catch (e) { return 'keyword'; }
 }
 
-tavo.plugin.onSidebarAction('tmm-refresh', async () => {
+_safeOnSide('tmm-refresh', async () => {
   await runMemoryAgent();
   tavo.utils.toast('记忆已刷新');
 });
 
-tavo.plugin.onSidebarAction('tmm-inspect', async () => {
+_safeOnSide('tmm-inspect', async () => {
   const state = readChatVar(NS);
   await tavo.message.append({
     content: '```\n' + JSON.stringify(state, null, 2) + '\n```',
@@ -798,7 +835,7 @@ tavo.plugin.onSidebarAction('tmm-inspect', async () => {
   });
 });
 
-tavo.plugin.onSidebarAction('tmm-export', async () => {
+_safeOnSide('tmm-export', async () => {
   const state = readChatVar(NS);
   await tavo.file.export('memory.json', JSON.stringify(state, null, 2));
 });

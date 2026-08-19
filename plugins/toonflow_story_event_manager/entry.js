@@ -345,9 +345,10 @@ function syncChapterIndex(idx) {
 
 // 评估每条用户消息对当前章节的影响
 async function judgeAndAdvance(messageContext) {
-  if (cfgGet('enabled', true) === false) return;
+  if (cfgGet('enabled', true) === false) { console.log('[tf_story][judge] ✗ enabled=false'); return; }
   const progress = getProgress();
-  if (progress.storyCompleted || progress.sessionFreeMode) return;
+  console.log('[tf_story][judge] progress.chapter=' + progress.currentChapterIndex + ' completed=' + JSON.stringify(progress.completedChapters) + ' storyCompleted=' + progress.storyCompleted + ' freeMode=' + progress.sessionFreeMode);
+  if (progress.storyCompleted || progress.sessionFreeMode) { console.log('[tf_story][judge] ✗ stopped: storyCompleted or freeMode'); return; }
 
   const edit = getEdit();
   const chapters = edit.chapters || [];
@@ -355,6 +356,7 @@ async function judgeAndAdvance(messageContext) {
 
   const idx = progress.currentChapterIndex || 0;
   const chapter = chapters[idx];
+  console.log('[tf_story][judge] idx=' + idx + ' chapters.len=' + chapters.length + ' chapter.title=' + (chapter ? chapter.title : 'NULL'));
   if (!chapter) {
     // 越界：所有章节完成
     progress.storyCompleted = true;
@@ -367,14 +369,18 @@ async function judgeAndAdvance(messageContext) {
     return;
   }
 
+    console.log('[tf_story][judge] 解析章节 content → phases...');
   // 解析事件进度（首次进入新章节时）
   if (!progress.phases || progress.phaptersKey !== chapters.length + ':' + idx) {
     progress.phases = parseProgress(chapter.content || '');
     progress.currentPhase = 0;
     progress.currentEvent = 0;
     progress.chaptersKey = chapters.length + ':' + idx;
+    console.log('[tf_story][judge] phases=' + progress.phases.length + ' ' + JSON.stringify(progress.phases.map(p=>({n:p.name,e:p.events.length}))));
+
   }
   advanceEventProgress(progress);
+  console.log("[tf_story][judge] after advance: phase=" + progress.currentPhase + " ev=" + progress.currentEvent);
   // 事件推进结果必须落盘（即使章节未完成，面板也要显示最新 stage 状态）
   setProgress(progress);
 
@@ -387,6 +393,7 @@ async function judgeAndAdvance(messageContext) {
     messageCount: messageContext.messageCount || 0,
     memoryItems: await getMemoryItems(),
   };
+  console.log("[tf_story][judge] cond=" + JSON.stringify(chapter.successCondition) + " msgCount=" + ctx.messageCount);
 
   const outcome = evaluateChapterOutcome(chapter, ctx);
 
@@ -826,10 +833,13 @@ tavo.plugin.on('generation:prepare', async (event) => {
     try { event.text = ''; } catch (e) {}
     return;
   }
-  // memory_manager 的 tmm 未就绪时也阻断（防止其他插件读未初始化 tmm 报错）
+  // tmm 就绪检查：只打日志，不再阻断（插件加载顺序不确定，阻断会导致编排永远无法启动）
   const tmm = readChatVar('tmm');
   if (!tmm || typeof tmm !== 'object' || !('summary' in tmm)) {
-    try { event.text = ''; } catch (e) {}
+    console.warn('[tf_story][gen:prepare] tmm not ready yet (memory_manager still initializing)');
+    // 不再阻断生成！让编排继续
+  } else {
+    console.log('[tf_story][gen:prepare] tmm ready, generation allowed');
   }
 });
 
@@ -888,14 +898,21 @@ tavo.plugin.on('chat:opened', async () => {
 // 判定器入口：每轮对话后评估章节结局（仅 boot ready 后生效）
 tavo.plugin.on('message:added', async (event) => {
   if (!event || !event.message) return;
-  if (event.message.role !== 'user') return; // 只在用户发言后判定
+  const msg = event.message;
+  console.log('[tf_story][msg:added] role=' + msg.role + ' content=' + JSON.stringify((msg.content||'').slice(0,60)));
+  if (msg.role !== 'user') return; // 只在用户发言后判定
   // boot 未完成时不判定（避免官方劫持阶段误判）
   const boot = readBoot();
-  if (!boot || boot.status !== 'ready' || !boot.openingDone) return;
+  console.log('[tf_story][msg:added] ★ 用户发言 boot.status=' + (boot&&boot.status) + ' openingDone=' + (boot&&boot.openingDone));
+  if (!boot || boot.status !== 'ready' || !boot.openingDone) {
+    console.warn('[tf_story][msg:added] ✗ judge blocked: boot not ready');
+    return;
+  }
   try {
     let count = 0;
     try { count = await tavo.message.count(); } catch (e) {}
-    await judgeAndAdvance({ content: event.message.content || '', messageCount: count });
+    console.log('[tf_story][msg:added] ★ 触发 judgeAndAdvance count=' + count);
+    await judgeAndAdvance({ content: msg.content || '', messageCount: count });
   } catch (e) {
     console.warn('[tf_story] judge failed', e);
   }
@@ -984,12 +1001,9 @@ tavo.plugin.on('input:beforeSend', async (event) => {
     return;
   }
 
-  // 内存管理器初始化门：tmm 变量未就绪时（memory_manager 的 chat:opened 还未执行完）也禁止发言
+  // tmm 就绪检查：只打日志，不阻断（插件加载顺序不确定，阻断会导致用户无法发言）
   if (!tmmOk) {
-    console.log('[tf_story][input:beforeSend] ✗ blocked: tmm not ready');
-    try { if (event && typeof event.cancel === 'function') event.cancel('记忆加载中…'); } catch (e) {}
-    tavo.utils.toast('⏳ 记忆加载中，请稍候…');
-    return;
+    console.warn('[tf_story][input:beforeSend] tmm not ready yet, proceeding anyway');
   }
 
   if (!/^@(事件进度检测\s*下个?事件|下个?事件|下个?章节)/.test(text)) return;
