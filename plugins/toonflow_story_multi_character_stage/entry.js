@@ -59,7 +59,7 @@ async function getWorldbookInject() {
     const entries = (lb?.entries || []).filter(e => e.enabled !== false && e.strategy === 'constant');
     if (!entries.length) return '';
     const lines = entries.map(e => '## ' + (e.name || '知识') + '\n' + (e.content || ''));
-    return '\n\n【世界知识（常驻）】\n' + lines.join('\n\n');
+    return '\n\n【世界知识】\n' + lines.join('\n\n');
   } catch (e) { return ''; }
 }
 
@@ -824,10 +824,15 @@ function game_orchestration(userText,intentResult){
           // 异步触发，不阻塞编排（编排结果可以作为触发条件）
           window.tmmIntent.refresh().catch(e => console.warn('[' + ts() + '] [mcs] tmmIntent.refresh failed', e));
           console.log('[' + ts() + '] 🎭 [mcs] 🔄 记忆刷新已触发（异步）');
+          //触发 记忆管理agent
         }
       } catch (e) {
         console.warn('[' + ts() + '] 🎭 [mcs] 记忆刷新调用失败', e);
       }
+
+      //触发 章节判定agent
+      //触发 事件进度agent
+      //触发 刷新面板信息界面
 
       // 2. 阶段一：编排器 → {speaker, role_type, motive, event_summary, evDigest, nextEvInfo, storyStatus, memCtx}
       const { prompt: orchPrompt, evDigest, nextEvInfo, storyStatus, memCtx, chapterIdx, chapterTitle } = await buildOrchestrationPrompt(userText);
