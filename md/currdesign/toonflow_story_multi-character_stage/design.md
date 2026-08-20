@@ -398,6 +398,17 @@ toonflow_story_memory_manager/
 
 ---
 
+## 事件通信
+### 把章节判定 和事件进度 做到 编排插件
+方案	做法	优点	缺点
+A. 移到编排插件内	把 evaluateEventProgressByAi + evaluateChapterOutcomeByAi 复制/引用到 multi_character_stage，在编排前先判定章节 + 推进事件	所有编排逻辑集中一个插件	跟 event_manager 重复/冲突
+B. 通过事件通信	编排前发一个 tf_story:check_chapter 事件，event_manager 监听并返回判定结果	解耦，不重复代码	需要改造 event_manager 支持回调
+
+如果这样的话，意图识别和记忆管理也是编排的一部分了
+【1】sentmsg->编排插件  事件通信【意图识别-是否需要记忆管理-章节判定-事件进度】-编排agent
+->事件通信：发言插件-》反言agent ->语音合成播放  事件通信：编排插件
+【2】开场白后->编排插件
+
 ## 11. 限制与诚实说明
 
 1. **"故事"能力是插件给的**：严格说 tavo 不支持故事，是世界书+插件拼出来的体验

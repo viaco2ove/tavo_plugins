@@ -33,6 +33,12 @@
 1. 世界知识=上下文注入非脚本章节：entry 只把 `content` 发模型；constant 全收，非 constant 按 `keywords` 匹配。绝不要把 keyword entry 当章节脚本自动推进（event_manager 污染聊天根因）。
 2. 多 Agent 编排（fixDB.prompts.ts）：orchestrator(NPC优先)/speaker/memory 核心，chapter/event_progress 状态机，mini_game/intent/task 流水线。NPC优先：旁白只做场景描述/时间流转/技能说明；`@角色名`=指名发言；hp/mp/exp/level 必须纯数字。
 3. `tavo.plugin.search` 查不到≠未安装：`stageState()` 返回 enabled|disabled|unknown，**只有明确查到且 enabled===false 才算 disabled**，否则默认插件接管(`plugin`)。
+4. **编排插件中心枢纽（2026-08-20）**：意图识别、章节判定、事件进度、记忆状态全部收敛到 mcs（`input:beforeSend`）。通过 `window.tfStoryJudge`/`window.tmmIntent` 与 event_manager/memory_manager 通信；mcs 自己不做意图/章节逻辑，只调用 API 获取状态注入编排 prompt。
+   - `classifyIntent()` → keyword/LLM 识别，指令类（@记忆管理/@事件进度）让出
+   - `buildMemoryContext()` → 读 `tmm`/`tmm_story`，返回角色参数卡注入编排 prompt
+   - `window.tmmIntent.refresh()` → 编排前异步触发记忆刷新
+   - `window.tfStoryJudge.checkAndAdvance()` → 获取章节+Phase/Event 状态
+   - `trigger_memory_agent=true` → 编排 Agent 触发额外记忆刷新
 
 ## 章节背景图 / 立绘（已落地）
 - `chapters_import.py`：`--bg auto|local|generate|skip` + `--bg-scope`；`backgroundPrompt` 是 AI 生图提示词**不是路径**；失败回退本地上传绝不崩。`tavo_image_generate` 在 AVD 曾报 500（服务端没配图像后端）。

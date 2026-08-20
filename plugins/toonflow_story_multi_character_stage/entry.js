@@ -223,6 +223,73 @@ tavo.plugin.on('message:added', async () => {
 // 4. append 带 characterId 的角色消息
 // ============================================================
 
+// ---------------------------------------------------------------------------
+// 意图识别路由（对齐 toonflow-game 的 sendmsg 入口）
+// - @记忆管理/@记忆管理器 → 交给 memory_manager 处理（自己不过问）
+// - @事件进度检测/@下个事件/@下个章节 → 交给 event_manager 处理
+// - 普通对话 → 进入编排流程
+// ---------------------------------------------------------------------------
+function classifyIntent(text) {
+  const t = String(text || '').trim();
+  // @记忆管理 指令（memory_manager 独占处理）
+  if (/^@(记忆管理|记忆管理器)/.test(t)) {
+    return { intent: 'memory_update', directive: t };
+  }
+  // @事件进度 指令（event_manager 独占处理）
+  if (/^@(事件进度检测|下个?事件|下个?章节)/.test(t)) {
+    return { intent: 'event_control', directive: t };
+  }
+  // 普通对话 → 编排
+  return { intent: 'normal_dialog' };
+}
+
+// 读取意图模式（与 memory_manager 共享同一配置）
+function getIntentMode() {
+  try {
+    const edit = readChatVar('tf_story.edit') || {};
+    const m = edit.intentMode;
+    if (m === 'keyword' || m === 'model_api' || m === 'auto') return m;
+    return 'auto';
+  } catch (e) { return 'auto'; }
+}
+
+// ---------------------------------------------------------------------------
+// 编排前：读取记忆状态（来自 memory_manager 的 tmm/tmm_story）
+// 注入角色当前参数卡到编排 prompt，让编排 Agent 知道所有人的 HP/等级/当前行为
+// ---------------------------------------------------------------------------
+async function buildMemoryContext() {
+  try {
+    const tmm = readChatVar('tmm') || {};
+    const story = readChatVar('tmm_story') || readChatVar('tmm_story_static') || {};
+    const characters = (story && Array.isArray(story.characters)) ? story.characters : [];
+    if (!characters.length) return { summary: '', castState: '', castCards: [] };
+
+    const summary = tmm.summary || '';
+
+    // 构建在场角色状态块（对齐 story_speaker 的 buildCastState）
+    let castBlock = '【在场角色当前状态】（来自记忆插件，供编排决策）\n';
+    const cards = [];
+    for (const ch of characters) {
+      const c = ch.card || {};
+      const roleType = ch.roleType || 'npc';
+      const label = { player: '用户', npc: '一般角色', narrator: '旁白', system: '系统角色', general: '万能角色' }[roleType] || roleType;
+      const parts = [ch.name + '(' + label + ')'];
+      if (c.level != null && c.level !== '') parts.push('Lv.' + c.level);
+      if (c.level_desc) parts.push(c.level_desc);
+      if (c.hp != null && c.hp !== '') parts.push('HP' + c.hp + '/' + (100 + (c.level || 1) * 10));
+      if (c.mp != null && c.mp !== '') parts.push('MP' + c.mp + '/' + (100 + (c.level || 1) * 10));
+      if (c.role_key_information) parts.push('当前:' + String(c.role_key_information).slice(0, 60));
+      castBlock += '- ' + parts.join(' | ') + '\n';
+      cards.push({ name: ch.name, roleType, card: c });
+    }
+    castBlock += '（请严格按各角色当前状态决定谁发言）\n';
+    return { summary, castState: castBlock, castCards: cards };
+  } catch (e) {
+    console.warn('[' + ts() + '] 🎭 [mcs] buildMemoryContext failed', e);
+    return { summary: '', castState: '', castCards: [] };
+  }
+}
+
 // 解析编排 JSON 或「【角色名】台词」格式，提取发言者、动机和内容
 function parseOrchestration(raw) {
   // 0. 剥 markdown 围栏 ```json ... ``` / ``` ... ```
@@ -359,14 +426,19 @@ async function buildOrchestrationPrompt(userInput) {
   let storyStatus = null;
   try {
     if (window.tfStoryJudge && typeof window.tfStoryJudge.checkAndAdvance === 'function') {
+      const allMsgs = recentDialogue.slice(-5).map(m => m.speaker + '：' + m.content).join('\n');
       storyStatus = window.tfStoryJudge.checkAndAdvance({
         content: userInput || '',
         messageCount: recentDialogue.length,
+        allMessages: allMsgs,
       });
     }
   } catch (e) {
     console.warn('[' + ts() + '] 🎭 [mcs] tfStoryJudge.checkAndAdvance failed', e);
   }
+
+  // 从 memory_manager 读取记忆状态（角色当前参数卡）
+  const memCtx = await buildMemoryContext();
 
   // 世界知识（常驻条目）
   const worldKb = await getWorldbookInject();
@@ -386,6 +458,22 @@ async function buildOrchestrationPrompt(userInput) {
       title: chapter?.title || '未命名章节',
       directive: (chapter?.background || '').slice(0, 300),
       opening: (chapter?.openingLine || '').slice(0, 200),
+      condition: (storyStatus && storyStatus.chapterInfo && storyStatus.chapterInfo.condition) || null,
+    },
+    // 记忆上下文：角色参数卡（来自 memory_manager 维护的 tmm_story）
+    memory: {
+      summary: memCtx.summary || '',
+      cast: memCtx.castCards.map(c => ({
+        name: c.name,
+        role_type: c.roleType,
+        level: c.card?.level ?? null,
+        level_desc: c.card?.level_desc || '',
+        hp: c.card?.hp ?? null,
+        max_hp: c.card?.hp ? 100 + (c.card?.level || 1) * 10 : null,
+        mp: c.card?.mp ?? null,
+        max_mp: c.card?.mp ? 100 + (c.card?.level || 1) * 10 : null,
+        role_key_information: c.card?.role_key_information || '',
+      })),
     },
     roles: roles.map(r => ({ name: r.name, role_type: r.role_type })),
     wildcard_roles: wildcardRoles.map(w => ({ name: w.name, role_type: w.role_type })),
@@ -407,9 +495,55 @@ async function buildOrchestrationPrompt(userInput) {
     ...(freeMode ? { free_mode: true } : {}),
   };
 
+  // 章节状态说明（人类可读，追加到 prompt）
+  const storyStatusNote = (() => {
+    if (!storyStatus) return '';
+    const st = storyStatus;
+    if (st.chapterStatus === 'completed') return '\n【章节状态】所有章节已完成，故事完结，可自由对话。';
+    if (st.chapterStatus === 'free_mode') return '\n【章节状态】已进入自由模式，可自由对话。';
+    if (st.chapterStatus === 'chapter_switching') return '\n【章节状态】章节切换中，下一轮将进入新章节。';
+    if (st.chapterStatus === 'active' && st.progress) {
+      const p = st.progress;
+      const phaseNames = (p.phases || []).map((ph, i) => (i === p.currentPhase ? '▶' : '·') + '[' + i + ']' + ph.name).join(' ');
+      const curEv = (p.phases || [])[p.currentPhase];
+      const evName = curEv ? (curEv.events || [])[p.currentEvent]?.name || '' : '';
+      const cond = (st.chapterInfo && st.chapterInfo.condition) || '';
+      return '\n【章节状态】第' + ((p.currentChapterIndex||0)+1) + '章「' + (st.chapterInfo?.title||'未知') + '」' +
+        ' | Phase=' + (p.currentPhase||0) + '(' + ((p.phases||[])[p.currentPhase]?.name||'') + ')' +
+        ' | Event=' + (p.currentEvent||0) + '(' + evName + ')' +
+        (cond ? '\n【完成条件】' + cond : '');
+    }
+    return '';
+  })();
+
+  // 意图上下文（从 memory_manager 的意图识别注入编排 prompt）
+  // 让编排 Agent 知道当前轮的意图类型，辅助决策
+  const intentCtx = (() => {
+    const mode = getIntentMode();
+    if (mode === 'keyword') {
+      // keyword 模式：编排 Agent 只管正常编排，@记忆管理 指令已被 memory_manager 拦截
+      return '';
+    }
+    // model_api/auto 模式：注入意图分析结果（由编排插件自己先做意图识别）
+    const t = (userInput || '').trim();
+    const isDirective = /^@(记忆管理|记忆管理器|事件进度检测|下个?事件|下个?章节)/.test(t);
+    if (isDirective) {
+      // @记忆管理 / @事件进度 指令已被各插件拦截，编排只管正常流程
+      return '';
+    }
+    // 正常对话：简单意图推断
+    let intentNote = '';
+    if (/^(好|接受|开始|执行|创建|接取)/.test(t)) intentNote = '【意图提示】用户表达了接受/承诺任务意向';
+    else if (/退出|放弃|取消/.test(t)) intentNote = '【意图提示】用户表达了退出/放弃意向';
+    else if (/攻击|探索|交易|打开|使用/.test(t)) intentNote = '【意图提示】用户正在执行游戏行为';
+    return intentNote;
+  })();
+
   const promptParts = [
     `你是剧情编排师（对齐 Toonflow story-orchestrator-compact）。`,
     `返回严格 JSON（不要前缀注释、不要代码块、不要 markdown 围栏）。`,
+    storyStatusNote,
+    intentCtx,
     ``,
     `# JSON 输入快照`,
     JSON.stringify(snapshotJson, null, 2),
@@ -420,6 +554,8 @@ async function buildOrchestrationPrompt(userInput) {
     `**@角色名规则**：用户说了 "@{角色名} xxx" → 必须编排该角色说话，先回应用户再推进。`,
     `**等待用户**：如果当前事件是「用户发言」节点，或最后一句话是问用户事情，设置 await_user=true，等待用户输入。`,
     `**. 跳过**：用户输入 "." 代表剧情自动推进，直接编排下一个 NPC。`,
+    `**章节约束**：在章节完成条件未满足前，剧情必须围绕当前章节推进，禁止提前使用后续章节内容。`,
+    `**角色状态约束**：编排决定由谁发言时，必须参考 memory.cast 中各角色的当前 HP/等级/当前行为，HP 过低或处于特定状态的 NPC 应有对应表现。`,
     worldKb,
   ].filter(Boolean);
 
@@ -430,6 +566,10 @@ async function buildOrchestrationPrompt(userInput) {
     prompt: promptParts.join('\n') + '\n\n' + outputSchema,
     evDigest,
     nextEvInfo,
+    storyStatus,
+    memCtx,
+    chapterIdx,
+    chapterTitle,
   };
 }
 
@@ -618,8 +758,20 @@ tavo.plugin.on('input:beforeSend', async (event) => {
       await tavo.message.append({ role: 'user', content: userText, hidden: false });
       console.log('[' + ts() + '] 🎭 [mcs] 用户消息已 append');
 
-      // 2. 阶段一：编排器 → {speaker, role_type, motive, event_summary, evDigest, nextEvInfo}
-      const { prompt: orchPrompt, evDigest, nextEvInfo } = await buildOrchestrationPrompt(userText);
+      // 1b. 【记忆状态同步】编排前触发 memory_manager 记忆刷新
+      // 对齐 toonflow sendmsg 流程：编排前先确保记忆是最新的
+      try {
+        if (window.tmmIntent && typeof window.tmmIntent.refresh === 'function') {
+          // 异步触发，不阻塞编排（编排结果可以作为触发条件）
+          window.tmmIntent.refresh().catch(e => console.warn('[' + ts() + '] [mcs] tmmIntent.refresh failed', e));
+          console.log('[' + ts() + '] 🎭 [mcs] 🔄 记忆刷新已触发（异步）');
+        }
+      } catch (e) {
+        console.warn('[' + ts() + '] 🎭 [mcs] 记忆刷新调用失败', e);
+      }
+
+      // 2. 阶段一：编排器 → {speaker, role_type, motive, event_summary, evDigest, nextEvInfo, storyStatus, memCtx}
+      const { prompt: orchPrompt, evDigest, nextEvInfo, storyStatus, memCtx, chapterIdx, chapterTitle } = await buildOrchestrationPrompt(userText);
 
       // ===== 全链路编排 TRACE =====
       console.log('══════════════════════════════════════════════════');
@@ -627,20 +779,37 @@ tavo.plugin.on('input:beforeSend', async (event) => {
       console.log('[' + ts() + '] 🎭 [mcs] │ 📝 用户输入: ' + JSON.stringify(userText.slice(0,80)));
       console.log('[' + ts() + '] 🎭 [mcs] │ 🎯 意图: ' + (intentResult && intentResult.intent ? intentResult.intent : 'normal')
         + (intentResult && intentResult.confidence ? ' conf=' + intentResult.confidence : ''));
-      if (evDigest) {
-        console.log('[' + ts() + '] 🎭 [mcs] │ 📚 章节: ' + (evDigest.chapterTitle||'?') + ' 章节idx=' + evDigest.chapterIdx);
-        console.log('[' + ts() + '] 🎭 [mcs] │ 📊 事件进度: phase=' + evDigest.phaseName + '(' + evDigest.phaseIndex + ')'
-          + ' event=' + evDigest.eventName + '(' + evDigest.eventIndex + ')'
-          + ' state=' + evDigest.state + ' userPhase=' + evDigest.isUserPhase);
-        if (evDigest.recentFacts && evDigest.recentFacts.length) {
-          console.log('[' + ts() + '] 🎭 [mcs] │ 🔖 已完成事件: ' + JSON.stringify(evDigest.recentFacts.slice(0,3)));
-        }
-        if (evDigest.window) {
-          console.log('[' + ts() + '] 🎭 [mcs] │ 📖 事件背景: ' + evDigest.window.slice(0,100));
-        }
+      const progress = readChatVar('tf_progress') || {};
+      const phases = progress.phases || [];
+      const phaseIdx = Math.max(0, progress.currentPhase || 0);
+      const eventIdx = Math.max(0, progress.currentEvent || 0);
+      const curPhase = phases[phaseIdx] || {};
+      const curEvent = (curPhase.events || [])[eventIdx] || {};
+      console.log('[' + ts() + '] 🎭 [mcs] │ 📚 章节: 第' + (chapterIdx+1) + '章「' + (chapterTitle||'?') + '」');
+      console.log('[' + ts() + '] 🎭 [mcs] │ 📊 事件进度: Phase=' + phaseIdx + '(' + (curPhase.name||'无') + ')'
+        + ' Event=' + eventIdx + '(' + (curEvent.name||'无') + ')');
+      if (evDigest && evDigest.window) {
+        console.log('[' + ts() + '] 🎭 [mcs] │ 📖 事件背景: ' + evDigest.window.slice(0,100));
       }
       if (nextEvInfo) {
         console.log('[' + ts() + '] 🎭 [mcs] │ ⏭ 下一事件: ' + nextEvInfo.name + '(' + nextEvInfo.kind + ')');
+      }
+      // 记忆上下文 TRACE
+      if (memCtx && memCtx.castCards && memCtx.castCards.length) {
+        const sample = memCtx.castCards.slice(0, 2).map(c =>
+          c.name + (c.card?.level ? 'Lv.' + c.card.level : '') + (c.card?.hp ? ' HP' + c.card.hp : '')
+        ).join(', ');
+        console.log('[' + ts() + '] 🎭 [mcs] │ 🧠 记忆状态: ' + sample + (memCtx.castCards.length > 2 ? '...' : ''));
+      }
+      if (storyStatus) {
+        const sp = storyStatus.progress || {};
+        const ph = (sp.phases || [])[sp.currentPhase || 0];
+        const ev = (ph && (ph.events || []))[sp.currentEvent || 0];
+        console.log('[' + ts() + '] 🎭 [mcs] │ 📋 章节状态: ' + storyStatus.chapterStatus
+          + ' | 第' + ((sp.currentChapterIndex||0)+1) + '章「' + (storyStatus.chapterInfo?.title||'') + '」'
+          + ' | Phase=' + (sp.currentPhase||0) + '(' + (ph?.name||'') + ')'
+          + ' | Event=' + (sp.currentEvent||0) + '(' + (ev?.name||'') + ')'
+          + (storyStatus.pendingChapterId != null ? ' | ⏳pending切换到第' + (storyStatus.pendingChapterId+1) + '章' : ''));
       }
       console.log('[' + ts() + '] 🎭 [mcs] │ 📄 阶段一prompt长: ' + orchPrompt.length + '字符');
       // 打印当前章节/事件/进度（对齐 toonflow 编排调试信息）
@@ -789,7 +958,29 @@ tavo.plugin.on('input:beforeSend', async (event) => {
       console.log('[' + ts() + '] 🎭 [mcs] └─────────────────────────────────────');
       console.log('══════════════════════════════════════════════════');
 
-      // 4c. trigger_memory_agent 处理（后台异步刷新记忆，对齐 Toonflow triggerMemoryAgent=true 语义）
+      // 4c. 章节+事件状态同步（调用 event_manager API 更新 tf_progress）
+      // 对齐 event_manager 的 message:added → judgeAndAdvance 流程
+      try {
+        if (window.tfStoryJudge && typeof window.tfStoryJudge.checkAndAdvance === 'function') {
+          let msgCount = 1;
+          try { msgCount = await tavo.message.count(); } catch(e) {}
+          const msgContext = { content: userText || '', messageCount: msgCount };
+          const judgeResult = window.tfStoryJudge.checkAndAdvance(msgContext);
+          if (judgeResult && judgeResult.chapterStatus === 'active') {
+            console.log('[' + ts() + '] 🎭 [mcs] 章节状态: ' + judgeResult.chapterStatus
+              + ' | phase=' + (judgeResult.progress?.currentPhase||0) + '(' + ((judgeResult.progress?.phases||[])[judgeResult.progress?.currentPhase||0]?.name||'') + ')'
+              + ' | event=' + (judgeResult.progress?.currentEvent||0));
+          }
+          // 章节切换/完结提示
+          if (judgeResult && (judgeResult.chapterStatus === 'chapter_switching' || judgeResult.chapterStatus === 'completed')) {
+            console.log('[' + ts() + '] 🎭 [mcs] 📢 ' + (judgeResult.message || '章节状态变化: ' + judgeResult.chapterStatus));
+          }
+        }
+      } catch (e) {
+        console.warn('[' + ts() + '] 🎭 [mcs] 章节状态同步失败', e);
+      }
+
+      // 4d. trigger_memory_agent 处理（后台异步刷新记忆，对齐 Toonflow triggerMemoryAgent=true 语义）
       if (triggerMemoryAgent) {
         console.log('[' + ts() + '] 🔄 [mcs] trigger_memory_agent=true → 触发记忆刷新');
         try {
