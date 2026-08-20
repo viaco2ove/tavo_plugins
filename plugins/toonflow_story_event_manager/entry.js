@@ -941,8 +941,8 @@ async function playChapterOpening(boot) {
   }
 
   console.log('[tf_story] ─── 开场白流程-通知发言器 ──────────────────────────');
-  // 委托发言插件处理：设置标记，speaker generation:prepare 会拦截并生成台词+语音
-  tavo.set('tf_story.opening', { pending: true, role: role, text: text }, 'chat');
+  // 委托发言插件处理：window.tf_story_emit 触发，speaker 用 window.tf_story_on 监听
+  window.tf_story_emit('opening', { role: role, text: text });
 
   // 3. 返回播了几条（speaker 插件 append 后才算）
   return 1;
