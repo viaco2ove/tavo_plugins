@@ -151,7 +151,7 @@ async function buildRecentDialogue(n) {
 // 2. 写入消息列表（带角色名）
 // 3. 取消本轮 LLM 生成（event.cancel()）
 // 4. 触发语音播放（tavo.message.append 后 Tavo App 自动播放）
-tavo.plugin.on('generation:beforeGenerate', async (event) => {
+tavo.plugin.on('generation:prepare', async (event) => {
   const cfg = getConfig();
   if (!cfg.enabled) return;
   if (getOrchestration() === 'system') return;
@@ -301,3 +301,5 @@ tavo.plugin.onSidebarAction('speaker-char', async () => {
     console.warn('[tf_speaker] list failed', e);
   }
 });
+
+console.log('[toonflow_story_speaker] plugin entry loaded');

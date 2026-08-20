@@ -1138,6 +1138,77 @@ async function _retry(fn, label, maxTries) {
   throw lastErr;
 }
 
+// =========================================================================
+// 遮蔽层 + 开始按钮
+// =========================================================================
+let _startBtnEl = null;
+
+function showStartButton(onStart) {
+  hideStartButton(); // 防止重复
+
+  const overlay = document.createElement('div');
+  overlay.id = 'tf-story-start-overlay';
+  overlay.style.cssText = [
+    'position:fixed','top:0','left:0','right:0','bottom:0',
+    'background:rgba(0,0,0,0.88)','z-index:9999',
+    'display:flex','flex-direction:column',
+    'align-items:center','justify-content:center',
+    'font-family:"PingFang SC","Microsoft YaHei",sans-serif',
+    'pointer-events:all',
+  ].join(';');
+
+  const title = document.createElement('div');
+  title.textContent = '第 1 章';
+  title.style.cssText = 'font-size:14px;color:rgba(255,255,255,0.55);letter-spacing:4px;margin-bottom:10px;';
+
+  const name = document.createElement('div');
+  name.textContent = '穿越成山大王';
+  name.style.cssText = 'font-size:28px;font-weight:700;color:#fff;letter-spacing:3px;margin-bottom:60px;';
+
+  const btn = document.createElement('button');
+  btn.textContent = '开始';
+  btn.style.cssText = [
+    'padding:14px 64px','font-size:18px','font-weight:700',
+    'color:#fff','background:linear-gradient(135deg,#e8c97a,#c9943a)',
+    'border:none','border-radius:40px','cursor:pointer',
+    'letter-spacing:6px','transition':'all 0.2s ease',
+    'box-shadow':'0 4px 20px rgba(200,148,58,0.4)',
+  ].join(';');
+  btn.addEventListener('mouseenter', () => {
+    btn.style.transform = 'scale(1.06)';
+    btn.style.boxShadow = '0 6px 28px rgba(200,148,58,0.6)';
+  });
+  btn.addEventListener('mouseleave', () => {
+    btn.style.transform = 'scale(1)';
+    btn.style.boxShadow = '0 4px 20px rgba(200,148,58,0.4)';
+  });
+
+  overlay.appendChild(title);
+  overlay.appendChild(name);
+  overlay.appendChild(btn);
+  document.body.appendChild(overlay);
+  _startBtnEl = overlay;
+
+  btn.addEventListener('click', function onClick() {
+    btn.removeEventListener('click', onClick);
+    // 淡出
+    overlay.style.transition = 'opacity 0.5s ease';
+    overlay.style.opacity = '0';
+    setTimeout(() => { hideStartButton(); if (onStart) onStart(); }, 500);
+  });
+}
+
+function hideStartButton() {
+  if (_startBtnEl && _startBtnEl.parentNode) {
+    _startBtnEl.parentNode.removeChild(_startBtnEl);
+  }
+  _startBtnEl = null;
+}
+
+// =========================================================================
+// Boot 序列
+// =========================================================================
+
 // 完整 Boot 序列（5 阶段：uninitialized/reset/resumption_start -> data_loaded -> ready）
 async function bootSequence() {
   const myGuard = ++_bootGuard;
@@ -1206,11 +1277,17 @@ async function bootSequence() {
   }
 
   if (sessionStage !== 'resumption_start') {
-    _bootState = 'opening';
-    try {
-      const played = await playChapterOpening();
-      console.log('[tf_story][boot] playChapterOpening result=' + played);
-    } catch (e) { console.warn('[tf_story][boot] playChapterOpening failed', e); }
+    // 非继聊：先显示遮蔽层 + 开始按钮，等用户点击后再触发开场白
+    _bootState = 'waiting_start';
+    notifyBootStage('waiting_start', '点击「开始」进入第一章');
+    showStartButton(function () {
+      console.log('[tf_story][boot] 用户点击开始，触发开场白…');
+      _bootState = 'opening';
+      notifyBootStage('opening', '开场白生成中…');
+      playChapterOpening().then(played => {
+        console.log('[tf_story][boot] playChapterOpening result=' + played);
+      }).catch(e => { console.warn('[tf_story][boot] playChapterOpening failed', e); });
+    });
   }
 
   // openingDone：reset/uninitialized 都为 true（开场白已播），resumption 也为 true（直接用历史消息）

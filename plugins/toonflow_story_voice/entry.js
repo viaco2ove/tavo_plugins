@@ -501,11 +501,13 @@ tavo.plugin.on('chat:opened', async () => {
 
 vl('插件已加载');
 
+console.log('[toonflow_story_voice] plugin entry loaded');
 // 平台配置变化 -> 清空缓存
 try {
   tavo.plugin.config.onChange((changed) => {
     if (changed && changed.key === 'voice_platform') {
       window.tf_voice.clearAllVoiceIds();
+      console.log('[toonflow_story_voice] clearAllVoiceIds');
     }
   });
 } catch (e) {}
