@@ -1,4 +1,4 @@
-# tavo 与 toonflow-game 流程与接口对齐规格
+# tavo 插件与 toonflow-game 流程与接口对齐规格
 
 > 对齐目标：tavo_plugins/plugins/* 与 toonflow-game-app / Toonflow-game-web 的业务逻辑、提示词、入参出参、流程全面对齐
 > 参考文档：用发送后的大概流程.md
