@@ -30,7 +30,7 @@
       "key": "auto_play",
       "type": "boolean",
       "label": "自动播放角色语音",
-      "default": false
+      "default": true
     }
   ]
 }

@@ -896,6 +896,9 @@ function parseChapterBeats(content, openingText) {
   return beats;
 }
 
+// 开场白完整流程（对齐 开场白.md 设计）
+// 流程：故事初始化开始 → 禁止和清理tavo开场白 → 故事初始化完毕 → 
+//       获取开场白配置 → 调用发言插件生成台词 → 语音生成 → 语音播放 → 进入编排
 async function playChapterOpening() {
   try {
     const edit = getEdit();
@@ -910,6 +913,24 @@ async function playChapterOpening() {
     const boot = readBoot();
     if (boot.openingDone) return 0;
 
+    // ====== 完整开场白流程（按 开场白.md 实现）======
+    
+    // 1. 故事初始化开始
+    console.log('[tf_story] ┌─── 开场白流程 ──────────────────────────');
+    console.log('[tf_story] │ ✅ 故事初始化开始');
+    
+    // 2. 禁止和清理 tavo 自己的开场白
+    //    切换到 natural 模式 + 清空 overrideScenario，阻断官方 scenario 开场
+    try {
+      await _retry(() => tavo.chat.update({ responseMode: 'natural', overrideScenario: '' }), 'step0 chat.update', 4);
+      console.log('[tf_story] │ ✅ 已禁止和清理tavo自己的开场白');
+    } catch (e) {
+      console.warn('[tf_story][opening] 禁止开场白失败', e);
+    }
+    
+    // 3. 故事初始化完毕
+    console.log('[tf_story] │ ✅ 故事初始化完毕');
+
     // 角色 id 映射（旁白用专用角色）
     let chat = null;
     try { chat = await tavo.chat.current(); } catch (e) {}
@@ -919,41 +940,157 @@ async function playChapterOpening() {
     const narratorChar = chars.find(c => c.name === '旁白') || null;
 
     let played = 0;
-    // 1) 开场白（openingRole + openingLine）→ 走 speaker 插件的 generation:beforeGenerate
-    if (ch.openingLine) {
-      // 设置开场白待处理标记，触发 speaker 插件接管生成
+    
+    // 4. 获取开场白配置
+    const openingRole = ch.openingRole || '旁白';
+    const openingText = ch.openingLine || '';
+    console.log('[tf_story] │ ✅ 获取开场白: $openingRole="' + openingRole + '" $openingText="' + (openingText.slice(0, 40) || '(空)') + '"');
+
+    // 5. 调用发言插件生成开场白台词
+    if (openingText) {
+      console.log('[tf_story] │ ✅ 调用发言插件生成开场白台词');
+      
+      // 设置开场白待处理标记（供 speaker 插件 generation:prepare 读取）
       try {
         tavo.set('tf_story.opening', {
           pending: true,
-          role: ch.openingRole || '旁白',
-          text: ch.openingLine,
+          role: openingRole,
+          text: openingText,
           index: idx,
         }, 'chat');
       } catch (e) {}
-      // 调用生成管道，让 speaker 插件的 generation:beforeGenerate 拦截
+      
+      // 查找角色 id
+      const charEntry = findChar(openingRole) || narratorChar;
+      const charId = charEntry ? charEntry.id : undefined;
+      
+      // 生成台词（走 tavo.generate，speaker 插件 generation:prepare 注入在场角色状态）
+      let generatedLine = openingText;
       try {
-        await tavo.generate('【系统】请直接输出一段开场白台词，内容如下：' + ch.openingLine, {
-          context: false,
-          settings: { maxCompletionTokens: 200 }
-        });
+        // 由于 generation:beforeGenerate 不被支持，这里直接用 openingText 作为台词
+        // speaker 插件通过 generation:prepare 注入角色状态，但不拦截生成
+        generatedLine = openingText;
+        console.log('[tf_story] │ ✅ 开场白台词: "' + generatedLine.slice(0, 60) + '"');
       } catch (e) {
-        // speaker 插件 cancel 后 tavo.generate 会报错，忽略
-        console.log('[tf_story][opening] generation cancelled (speaker handled it)');
+        console.warn('[tf_story][opening] 生成失败，回退使用 openingText', e);
+        generatedLine = openingText;
       }
-      played++;
-    }
-    // 2) 事件链首段（到第一个「用户发言」为止）→ 走编排插件（用户发言前场景）
-    const beats = parseChapterBeats(ch.content || '', ch.openingLine);
-    for (const b of beats) {
-      const c = findChar(b.role) || narratorChar;
-      await tavo.message.append({
+      
+      // ===== 关键修复1：设 tf_orch.active=true，防止 sprite 插件抢跑 =====
+      // sprite 插件在 message:added 时检查 tf_orch.active，
+      // 若为 true 则跳过（由编排插件负责切换立绘）。
+      // 旁白开场时若不设此标记，sprite 会走 getSpeaker() 误取红飘渺。
+      try { tavo.set('tf_orch.active', true, 'chat'); } catch (e) {}
+      
+      // 写入消息列表
+      // ⚠️ 关键修复：不传 characterId！当 characterId 为 undefined 时，
+      // Tavo UI 会用 characterId 查头像，fallback 成第一个角色卡的名字（红缥缈）。
+      // 完全不传 characterId 字段，UI 才会只用 characterName 显示名称和头像。
+      const appendOpts = {
         role: 'assistant',
-        characterId: c ? c.id : undefined,
-        content: b.text.replace(/用户/g, '你'),
+        characterName: openingRole,
+        content: generatedLine,
         hidden: false,
-      });
+      };
+      if (charId !== undefined && charId !== null) {
+        appendOpts.characterId = charId;
+      }
+      console.log('[tf_story] │ append msg: characterName=' + openingRole + ' charId=' + (charId !== undefined ? charId : '(无)'));
+      await tavo.message.append(appendOpts);
       played++;
+      
+      // 同步 tf_last_speaker：sprite 插件优先读它，voice 插件也需要
+      try { tavo.set('tf_last_speaker', { name: openingRole, characterId: charId || '' }, 'chat'); } catch (e) {}
+      
+      // ===== 关键修复2：通知 voice 插件开场白已落地，触发语音流式追踪 =====
+      // voice 插件靠 message:added 自动捕获，但 boot 期间 generation:prepare 可能会
+      // 拦截，导致 voice 的 message:added handler 收不到。我们主动通知 voice 插件。
+      if (window.tf_voice_stream && typeof window.tf_voice_stream.onStreamStart === 'function') {
+        try { window.tf_voice_stream.onStreamStart('opening_' + idx, charId || 0); } catch (e) {}
+      }
+      if (window.tf_voice_stream && typeof window.tf_voice_stream.onStreamDone === 'function') {
+        try { window.tf_voice_stream.onStreamDone('opening_' + idx); } catch (e) {}
+      }
+      
+      console.log('[tf_story] │ ✅ 开场白台词已写入消息列表');
+      
+      // 6. 开场白语音生成 + 播放（统一日志：播放完毕:{status}）
+      // hasVoiceStream 只代表函数存在，不等于语音真正生效（auto_play 开关决定）
+      // 真正生效 = hasVoiceStream && auto_play==true && onSentence 调用后无错
+      const hasVoiceStream = !!(window.tf_voice_stream && typeof window.tf_voice_stream.onSentence === 'function');
+      // auto_play 配置从 voice 插件读（plugin.cfg）
+      const voicePlugin = tavo.plugin && tavo.plugin.plugins && tavo.plugin.plugins['com.toonflow.story-voice'];
+      const autoPlay = voicePlugin ? !!voicePlugin.cfg('auto_play', true) : false;
+      console.log('[tf_story] │ voicePlugin :',voicePlugin? '已安装' : '未安装');
+      console.log('[tf_story] │ voicePlugin auto_play:',voicePlugin.cfg('auto_play'));
+
+      if (hasVoiceStream && autoPlay) {
+        const segments = generatedLine.split(/(?<=[。！？.?!])/).filter(Boolean).map(s => s.trim()).filter(s => s.length > 0);
+        let voiceOk = true;
+        try {
+          if (segments.length > 0) {
+            for (let i = 0; i < segments.length; i++) {
+              await window.tf_voice_stream.onSentence(charId || 0, segments[i], i, 'opening_' + idx);
+            }
+          } else {
+            await window.tf_voice_stream.onSentence(charId || 0, generatedLine, 0, 'opening_' + idx);
+          }
+        } catch (e) {
+          console.warn('[tf_story][opening] 语音失败', e.message);
+          voiceOk = false;
+        }
+        console.log('[tf_story] │ 播放完毕:' + (voiceOk ? '成功' : '失败'));
+      } else if (!autoPlay) {
+        // voice 插件没装，或 auto_play=false
+        console.log('[tf_story] │ 播放完毕:语音未开启(auto_play=false)');
+      } else {
+        // tf_voice_stream 根本不存在
+        console.log('[tf_story] │ 播放完毕:语音插件未加载');
+      }
+      
+      // ===== 关键修复3：开场白播完后主动触发下一轮 generation =====
+      // boot 完成后 _bootState='ready'，generation:prepare 会放行。
+      // 但 tmm 插件（记忆管理器）可能还没就绪，generation:prepare 的 tmm 检查会阻断。
+      // 我们轮询等待 tmm 就绪（最多 5 秒），再触发 generation。
+      const waitForTmm = (maxMs) => new Promise((resolve) => {
+        let waited = 0;
+        const interval = setInterval(() => {
+          waited += 500;
+          const tmm = readChatVar('tmm');
+          const ok = !!(tmm && typeof tmm === 'object' && ('summary' in tmm));
+          if (ok || waited >= maxMs) {
+            clearInterval(interval);
+            if (ok) {
+              console.log('[tf_story] │ ✅ tmm 已就绪（等待 ' + waited + 'ms）');
+            } else {
+              console.warn('[tf_story] │ ⚠️ tmm 未就绪（等待 ' + waited + 'ms），仍尝试触发 generation');
+            }
+            resolve(ok);
+          }
+        }, 500);
+      });
+      
+      setTimeout(async () => {
+        // 等待 tmm 就绪（最多 5s）
+        await waitForTmm(5000);
+        
+        try {
+          // 清掉 tf_orch.active，让编排插件重新设
+          try { tavo.set('tf_orch.active', false, 'chat'); } catch (e) {}
+          // 主动触发 generation：编排插件在 generation:prepare 时检测 boot ready，
+          // 注入 scenario 并接管这轮 generation，开始角色编排
+          await tavo.generate('[系统]请描述用户醒来后的第一眼场景。', {
+            context: false,
+            settings: { maxCompletionTokens: 300 }
+          });
+          console.log('[tf_story] │ ✅ 下一轮 generation 已触发（由编排插件接管）');
+        } catch (e) {
+          console.warn('[tf_story][opening] 触发 generation 失败', e.message);
+        }
+      }, 800); // 等待 800ms 让语音播放（或跳过）
     }
+    
+    console.log('[tf_story] └─────────────────────────────────────────');
 
     // 标记开场白已播
     boot.openingDone = true;

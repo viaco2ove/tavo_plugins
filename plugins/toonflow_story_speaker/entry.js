@@ -211,13 +211,20 @@ tavo.plugin.on('generation:beforeGenerate', async (event) => {
   } catch (e) {}
 
   // 写入消息列表（Tavo App 监听 message:added 后自动触发语音播放）
+  // ⚠️ 关键：不传 characterId（旁白时为 undefined），
+  //    否则 UI 用 characterId 查头像 fallback 成第一个角色卡名字。
+  //    只传 characterName，让 UI 完全用名字显示。
+  const speakerAppendOpts = {
+    role: 'assistant',
+    characterName: openingRole,
+    content: openingText,
+    hidden: false,
+  };
+  if (charEntry && charEntry.id !== undefined) {
+    speakerAppendOpts.characterId = charEntry.id;
+  }
   try {
-    await tavo.message.append({
-      role: 'assistant',
-      characterId: charEntry ? charEntry.id : undefined,
-      content: openingText,
-      hidden: false,
-    });
+    await tavo.message.append(speakerAppendOpts);
     console.log('[tf_speaker][beforeGenerate] 已写入开场白: ' + openingRole + '：' + openingText.slice(0, 40));
   } catch (e) {
     console.warn('[tf_speaker][beforeGenerate] 写入开场白失败', e);

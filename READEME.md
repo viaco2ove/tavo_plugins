@@ -27,6 +27,13 @@ Toonflow-game 的agent list
 调用 tavo 命令 来维护 故事同步等功能
 减少ai 重复犯错的问题。
 例如：tavo characters  # 列出全部角色
+
+## story.json 控制的故事同步：
+完全同步：强力，角色查重,角色卡重建。
+```
+python -m tavo_plugins sync --story-json "story.json" --duplicate-delete --clean-cache --skip-plugins
+```
+
 # 目录结构
 
 ```

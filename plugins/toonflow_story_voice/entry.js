@@ -158,7 +158,7 @@ window.tf_voice = {
   getConfig: () => ({
     voice_platform: cfg('voice_platform', 'xiaomimimo'),
     voice_platform_apikey: cfg('voice_platform_apikey', ''),
-    auto_play: cfg('auto_play', false),
+    auto_play: cfg('auto_play', true),
   }),
 };
 
@@ -320,7 +320,7 @@ async function playTtsForSegments(charId, segments) {
 // - 非流式消息（meta.streaming !== true）直接触发 TTS
 tavo.plugin.on('message:added', async (event) => {
   const platform = cfg('voice_platform', 'xiaomimimo');
-  const autoPlay = cfg('auto_play', false);
+  const autoPlay = cfg('auto_play', true);
   if (platform === 'tavo' || !autoPlay) return;
 
   const msg = event && event.message;
@@ -412,7 +412,7 @@ window.tf_voice_stream = {
   // sentence: 本句文本，index: 句子序号（0-based），msgId: 关联消息ID，charId: 角色ID
   onSentence: async (charId, sentence, index, msgId) => {
     const platform = cfg('voice_platform', 'xiaomimimo');
-    const autoPlay = cfg('auto_play', false);
+    const autoPlay = cfg('auto_play', true);
     if (platform === 'tavo' || !autoPlay) return;
     const text = String(sentence || '').replace(/<[^>]+>/g, '').trim();
     if (!text) return;
