@@ -1173,7 +1173,8 @@ _safeOn('message:added', async (event) => {
   if (!msg || msg.role !== 'assistant') return;
   const boot = readBoot();
   // boot ready 且开场白已播 -> 正常消息
-  if (boot.status === 'ready' && boot.openingDone) return;
+  console.log('[tf_story] message:added！！！', boot.status,boot.openingDone);
+  if (boot.status === 'ready' && boot.openingDone === false) return;
   // 否则视为官方劫持 -> 删除
   // 但要小心：我们自己的 playChapterOpening 也会 append assistant 消息，
   // 用 openingDone 标记区分（playChapterOpening append 前先标记后写入会来不及，
