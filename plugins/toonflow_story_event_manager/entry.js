@@ -714,9 +714,10 @@ async function getMemoryItems() {
 // =========================================================================
 
 function defaultEditData() {
+  console.log('[tf_story] │ ？？？ 获取默认编辑数据，请检查检查故事数据异常！！！');
   return {
     intro: '', globalBackground: '', lineCount: 20, intentMode: 'keyword',
-    chapters: [{ title: '第 1 章', openingRole: '旁白', openingLine: '', background: '', content: '', successCondition: '', conditionVisible: true, entryCondition: '', musicAutoPlay: false }],
+    chapters: [{ title: '第 1 章', openingRole: '旁白', openingLine: '默认', background: '', content: '', successCondition: '', conditionVisible: true, entryCondition: '', musicAutoPlay: false }],
   };
 }
 
@@ -739,6 +740,9 @@ async function syncEditToWorldbook(edit) {
 
 function getEdit() {
   const v = readChatVar(NS + '.edit');
+  if(!(v && typeof v === 'object')){
+    console.error('[tf_story] │ ？？？readChatVar(NS + \'.edit\') 数据异常！！！');
+  }
   return (v && typeof v === 'object') ? v : defaultEditData();
 }
 function setEdit(edit) {
@@ -872,9 +876,9 @@ async function purgeOfficialHijack() {
 // 开场白完整流程（对齐 开场白.md 设计）
 // 流程：故事初始化开始 → 禁止和清理tavo开场白 → 故事初始化完毕 → 
 //       获取开场白配置 → 调用发言插件生成台词 → 语音生成 → 语音播放 → 进入编排
-async function story_start_init() {
+async function story_start_init(boot) {
     try {
-          // 2. 禁止和清理 tavo 自己的开场白
+          //    禁止和清理 tavo 自己的开场白
           //    切换到 natural 模式 + 清空 overrideScenario，阻断官方 scenario 开场
           try {
             await _retry(() => tavo.chat.update({ responseMode: 'natural', overrideScenario: '' }), 'step0 chat.update', 4);
@@ -885,6 +889,9 @@ async function story_start_init() {
 
           // 3. 故事初始化完毕
           console.log('[tf_story] │ ✅ 故事初始化完毕');
+          // 注意：openingDone 不能用于判断开场白是否完成，如果false ，生成的开场白会被删除
+          boot.openingDone = true;
+          boot.status ='ready';
     } catch (e) {}
 }
 
@@ -1111,12 +1118,12 @@ async function bootSequence() {
             _bootState = 'ready';
             notifyBootStage('ready', '故事已就绪');
             // setTimeout(function () { notifyBootStage('ready', ''); }, 400);
-            story_start_init();
-            boot.openingDone = false;
+            story_start_init(boot);
+
+            // 注意：openingDone 不能用于判断开场白是否完成，如果false ，生成的开场白会被删除
             setTimeout(function () {
                console.log('[tf_story][boot] playChapterOpening start...');
                playChapterOpening(boot).then(played => {
-               boot.openingDone = true;
                console.log('[tf_story][boot] playChapterOpening result=' + played);
               // 开场白执行完毕后再标记 openingDone=true，防止提前返回
              }).catch(e => { console.warn('[tf_story][boot] playChapterOpening failed', e); });
@@ -1174,12 +1181,13 @@ _safeOn('message:added', async (event) => {
   if (_bootState === 'opening') return; // 自己的开场白
   try {
     await tavo.message.delete(msg.id);
-    console.log('[tf_story] deleted official hijack message', msg.id);
+    console.log('[tf_story] deleted official hijack message！！！', msg.id);
   } catch (e) {}
 });
 
 _safeOn('chat:opened', async () => {
   // Boot 序列接管：数据恢复 -> 官方劫持清理 -> 开场白 -> 编排应用
+  console.log('[tf_story] Boot 序列接管：数据恢复 -> 官方劫持清理 -> 开场白 -> 编排应用');
   await bootSequence();
 
   // 章节修复（仅补全缺失字段，绝不清空/丢弃已有章节 —— 静态故事数据受保护）
@@ -1210,6 +1218,7 @@ _safeOn('chat:opened', async () => {
   const progress = getProgress();
   progress.updatedAt = Date.now();
   setProgress(progress);
+  console.log('[tf_story] Boot 序列接管：数据恢复 -> 官方劫持清理 -> 开场白 -> 编排应用 end');
 });
 
 // 判定器入口：每轮对话后评估章节结局（仅 boot ready 后生效）
