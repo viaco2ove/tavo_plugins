@@ -162,6 +162,13 @@ tavo.plugin.on('chat:opened', function() {
   try {
     var chat = await tavo.chat.current();
     var chars = (chat && chat.characters) || [];
+
+    if(chars !=null){
+       chars.forEach(el => {
+        console.log('[window.tf_story_on] [tf_speaker] chars ', el.name,el.id);
+       });
+    }
+
     var findChar = function(name) {
       return chars.find(function(c) { return c.name === name; })
         || (name === '旁白' || name === 'narrator' ? chars.find(function(c) { return c.name === '旁白'; }) : null);
@@ -178,10 +185,12 @@ tavo.plugin.on('chat:opened', function() {
   };
   if (charEntry && charEntry.id !== undefined) {
     speakerAppendOpts.characterId = charEntry.id;
+    console.log('[tf_speaker][opening] speakerAppendOpts charEntry: ' +charEntry.name);
   }
   try {
+
     await tavo.message.append(speakerAppendOpts);
-    console.log('[tf_speaker][opening] 已写入开场白: ' + role + ':' + text.slice(0,40));
+    console.log('[tf_speaker][opening] 已写入开场白: ' + speakerAppendOpts.characterId+":"+ role + ':' + text.slice(0,40));
     // 语音播放后触发下一轮 NPC 编排（不等用户）
     if (window.tf_story_emit) window.tf_story_emit('auto_orchestrate', {});
   } catch(e) { console.warn('[tf_speaker][opening] 写入开场白失败', e); }

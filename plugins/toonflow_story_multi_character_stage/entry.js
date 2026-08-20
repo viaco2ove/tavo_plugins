@@ -215,6 +215,7 @@ function triggerAutoOrchestrate() {
           ? await window.tf_llm.callDirect(orchPrompt, { maxCompletionTokens: 600 })
           : await tavo.generate(orchPrompt, { context: false, settings: { temperature: 0.3, maxCompletionTokens: 600 } });
       } catch(e) { console.error('[' + ts() + '] [mcs] auto 阶段一异常:', e.message); tavo.set(ORCH_FLAG, false, 'chat'); return; }
+      console.log("Orchestrate orchRaw:",orchRaw);
       const cleaned = (orchRaw||'').replace(/<thinking>[\s\S]*?<\/thinking>/gi,'').trim();
       let speaker='旁白', roleType='narrator', motive='', eventSummary='';
       try {
@@ -236,7 +237,7 @@ function triggerAutoOrchestrate() {
       const charId = await findCharacterId(speaker);
       await tavo.message.append({ role: 'assistant', characterId: charId||undefined, characterName: speaker, content, hidden: false });
       console.log('[' + ts() + '] [mcs] auto 角色消息已 append => ' + speaker + ':' + content.slice(0,30));
-    } catch(e) { console.error('[' + ts() + '] [mcs] auto 编排异常:', e); }
+    } catch(e) { console.error('[' + ts() + '] [mcs] auto 编排异常:', e, e && e.stack ? e.stack : ''); }
     finally { try { tavo.set(ORCH_FLAG, false, 'chat'); } catch(e) {} }
   })();
 }
