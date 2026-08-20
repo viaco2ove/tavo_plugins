@@ -830,9 +830,31 @@ function game_orchestration(userText,intentResult){
         console.warn('[' + ts() + '] 🎭 [mcs] 记忆刷新调用失败', e);
       }
 
-      //触发 章节判定agent
-      //触发 事件进度agent
-      //触发 刷新面板信息界面
+      // 触发 1: 章节判定 agent (LLM 辅助)
+      try {
+        if (window.tfStoryJudge && typeof window.tfStoryJudge.checkChapterDone === 'function') {
+          const r = window.tfStoryJudge.checkChapterDone({
+            content: userText || '',
+            allMessages: '',
+            messageCount: 0,
+          });
+          console.log('[' + ts() + '] [mcs] 章节判定 result=' + (r && r.result));
+        }
+      } catch (e) { console.warn('[' + ts() + '] [mcs] 章节判定失败', e); }
+
+      // 触发 2: 事件进度推进 (本地状态机，由 event_manager message:added 自动处理)
+      try {
+        const p = readChatVar('tf_progress') || {};
+        console.log('[' + ts() + '] [mcs] 事件进度读取 currentPhase=' + (p.currentPhase||0) + ' currentEvent=' + (p.currentEvent||0));
+      } catch (e) {}
+
+      // 触发 3: 刷新面板信息
+      try {
+        if (window.tfStoryPanel_refresh) {
+          window.tfStoryPanel_refresh('auto_orchestrate');
+        }
+      } catch (e) {}
+      //世界书关键词匹配到新的进行注入，非长柱的第二次编排时清除注入。
 
       // 2. 阶段一：编排器 → {speaker, role_type, motive, event_summary, evDigest, nextEvInfo, storyStatus, memCtx}
       const { prompt: orchPrompt, evDigest, nextEvInfo, storyStatus, memCtx, chapterIdx, chapterTitle } = await buildOrchestrationPrompt(userText);

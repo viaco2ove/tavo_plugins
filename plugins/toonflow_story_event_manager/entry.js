@@ -128,6 +128,44 @@ function tfStoryJudge_checkAndAdvance(messageContext) {
   }
 }
 
+// LLM 辅助章节判定：异步调用 LLM 评估条件
+async function tfStoryJudge_checkChapterDoneLLM(messageContext) {
+  try {
+    const progress = getProgress();
+    if (progress.storyCompleted || progress.sessionFreeMode) {
+      return { done: progress.storyCompleted, result: 'completed', reason: 'free_mode' };
+    }
+    const edit = getEdit();
+    const chapters = edit.chapters || [];
+    const idx = progress.currentChapterIndex || 0;
+    const chapter = chapters[idx];
+    if (!chapter) return { done: true, result: 'completed', reason: 'no_chapter' };
+    const cond = chapter.successCondition;
+    if (!cond) return { done: false, result: 'continue', reason: 'no_condition' };
+    const recent = (await getAllMessagesText()) || '';
+    const prompt = '判断当前章节是否完成。
+章节：' + (chapter.title||'') + '
+完成条件：' + cond + '
+最近对话：' + recent.slice(-1500) + '
+返回 JSON: {"result":"continue"或"done","reason":"一句话"}';
+    let raw;
+    try {
+      raw = (window.tf_llm && window.tf_llm.callDirect)
+        ? await window.tf_llm.callDirect(prompt, { maxCompletionTokens: 400 })
+        : await tavo.generate(prompt, { context: false, settings: { temperature: 0.3, maxCompletionTokens: 400 } });
+    } catch(e) { return { done: false, result: 'continue', reason: 'llm_error:' + e.message }; }
+    const fence = (raw||'').match(/```json\s*([\s\S]*?)```/);
+    const obj = fence ? JSON.parse(fence[1].trim()) : null;
+    if (obj && obj.result === 'done') {
+      return { done: true, result: 'success', reason: obj.reason || 'llm_judge' };
+    }
+    return { done: false, result: 'continue', reason: (obj && obj.reason) || 'llm_continue' };
+  } catch (e) {
+    return { done: false, result: 'continue', reason: 'exception:' + e.message };
+  }
+}
+
+
 // 检查章节完成条件是否满足（编排后调用，决定是否需要截断/提示）
 // 返回 { done, result, pendingChapterId, message }
 function tfStoryJudge_checkChapterDone(messageContext) {
@@ -1928,8 +1966,18 @@ _safeOnSide('tf-story-reset', async () => {
     // 编排前调用：快速返回章节+事件状态，同步 tf_progress 到最新
     window.tfStoryJudge = {
       checkAndAdvance: tfStoryJudge_checkAndAdvance,
-      // 编排后调用：判断章节是否完成
       checkChapterDone: tfStoryJudge_checkChapterDone,
+      checkChapterDoneLLM: tfStoryJudge_checkChapterDoneLLM,
+    };
+    // 全局面板刷新函数（mcs 调用）
+    window.tfStoryPanel_refresh = function(reason) {
+      try {
+        if (typeof window._tfPanel_refresh === 'function') {
+          window._tfPanel_refresh(reason);
+        } else if (typeof window.tfStoryPanel !== 'undefined' && window.tfStoryPanel.refresh) {
+          window.tfStoryPanel.refresh();
+        }
+      } catch (e) {}
     };
     console.log('[tf_story] ✅ window.tfStoryJudge 已注册');
   } catch (e) {

@@ -664,7 +664,7 @@
     if (chat.lorebooks && chat.lorebooks.length && T.lorebook) {
       try {
         var lb = await T.lorebook.get(chat.lorebooks[0].id);
-        if (lb) { wbName = lb.name; wbItems = lb.entries || []; }
+        if (lb) { wbName = lb.name; wbItems = (lb.entries || []).filter(function(e){return e && e.enabled !== false && e.strategy === 'constant';}); }
       } catch (e) {}
     }
     return { name: chat.name || '故事', responseMode: chat.responseMode, characters: cards, worldbook: { name: wbName, entries: wbItems } };
