@@ -717,7 +717,7 @@ function defaultEditData() {
   console.log('[tf_story] │ ？？？ 获取默认编辑数据，请检查检查故事数据异常！！！');
   return {
     intro: '', globalBackground: '', lineCount: 20, intentMode: 'keyword',
-    chapters: [{ title: '第 1 章', openingRole: '旁白', openingLine: '默认', background: '', content: '', successCondition: '', conditionVisible: true, entryCondition: '', musicAutoPlay: false }],
+    chapters: [{ title: '第 1 章', openingRole: '旁白', openingLine: '。。。', background: '', content: '', successCondition: '', conditionVisible: true, entryCondition: '', musicAutoPlay: false }],
   };
 }
 
