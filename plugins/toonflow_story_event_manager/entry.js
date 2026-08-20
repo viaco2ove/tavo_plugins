@@ -897,14 +897,16 @@ async function playChapterOpening(boot) {
   if (!ch) return 0;
 
   const role = ch.openingRole || '旁白';
-  const text = ch.openingLine || '';
+  let text = ch.openingLine || '';
 
   console.log('[tf_story] │ ✅ 获取开场白: $openingRole="' + role + '" $openingText="' + (text.slice(0, 40) || '(空)') + '"');
 
     // 5. 调用发言插
   if (!text) {
       console.log(ch);
-      console.log('[tf_story] error 播放开场白失败，开场白内容为空,策略：依然发送给发言器');
+       text="进入故事";
+      console.log('[tf_story] error 播放开场白失败，开场白内容为空,策略：依然发送给发言器',text);
+
   }
 
   console.log('[tf_story] ─── 开场白流程-通知发言器 ──────────────────────────');
@@ -923,7 +925,9 @@ async function getCurrChapter(){
     const edit = getEdit();
     const chapters = edit.chapters || [];
     const progress = getProgress();
+
     const idx = Math.min(progress.currentChapterIndex || 0, chapters.length - 1);
+    console.log("[tf_story]| 获取当前章节索引 progress:", progress.currentChapterIndex);
     return  chapters[idx];
 }
 
