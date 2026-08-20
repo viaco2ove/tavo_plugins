@@ -416,22 +416,35 @@ async function judgeAndAdvance(messageContext) {
 
   }
   advanceEventProgress(progress);
-  console.log("[tf_story][judge] after advance: phase=" + progress.currentPhase + " ev=" + progress.currentEvent);
+  // 阶段一：LLM 事件进度检测（对齐 toonflow applySessionUserEventProgress）
+  // 替代纯 +1 规则的 advanceEventProgress
+  const eventResult = await applySessionUserEventProgress(
+    chapter, progress, messageContext.content || '', '用户'
+  );
+  console.log("[tf_story][judge] after event_progress: phase=" + progress.currentPhase + " ev=" + progress.currentEvent + " advanced=" + eventResult.advanced);
   // 事件推进结果必须落盘（即使章节未完成，面板也要显示最新 stage 状态）
   setProgress(progress);
 
-  // 收集判定上下文
-  const ctx = {
-    latestMessage: messageContext.content || '',
-    allMessages: await getAllMessagesText(),
-    chapterTitle: chapter.title || '',
-    chapterContent: chapter.content || '',
-    messageCount: messageContext.messageCount || 0,
-    memoryItems: await getMemoryItems(),
-  };
-  console.log("[tf_story][judge] cond=" + JSON.stringify(chapter.successCondition) + " msgCount=" + ctx.messageCount);
+  // 阶段二：章节结局判定（优先 LLM，回退启发式）
+  console.log("[tf_story][judge] cond=" + JSON.stringify(chapter.successCondition) + " msgCount=" + (messageContext.messageCount || 0));
 
-  const outcome = evaluateChapterOutcome(chapter, ctx);
+  let outcome = null;
+  const llmOutcome = await evaluateChapterOutcomeByAi(chapter, progress, messageContext.content || '');
+  if (llmOutcome) {
+    outcome = { result: llmOutcome.result };
+  } else {
+    // 回退到原有启发式
+    const ctx = {
+      latestMessage: messageContext.content || '',
+      allMessages: await getAllMessagesText(),
+      chapterTitle: chapter.title || '',
+      chapterContent: chapter.content || '',
+      messageCount: messageContext.messageCount || 0,
+      memoryItems: await getMemoryItems(),
+    };
+    outcome = evaluateChapterOutcome(chapter, ctx);
+    console.log("[tf_story][judge] 章节判定回退到启发式: result=" + outcome.result);
+  }
 
   if (outcome.result === 'continue') return;
 
