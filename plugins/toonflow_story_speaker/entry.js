@@ -147,55 +147,98 @@ async function buildRecentDialogue(n) {
 
 // 方案1：window 事件总线监听开场白委托（event_manager 在 playChapterOpening 里调用 tf_story_emit）
 tavo.plugin.on('chat:opened', function() {
-  window.tf_story_on('opening', async function(data) {
-  console.log('[window.tf_story_on] [tf_speaker] opening');
+
+  window.tf_story_on('opening', async function(data) {tf_speaker('opening',data);});
+
+  window.tf_story_on('append_message', async function(data) {tf_speaker('append_message',data); });
+});
+async function tf_speaker(type, data) {
+
+  console.log('[window.tf_story_on] [tf_speaker] ', type);
   var cfg;
-  try { cfg = getConfig(); } catch(e) { return; }
+  try {
+    cfg = getConfig();
+  } catch (e) {
+    return;
+  }
   if (!cfg.enabled) return;
   if (getOrchestration() === 'system') return;
-  var role = (data && data.role) || '旁白';
-  var text = (data && data.text) || '';
-  if (!text) { console.log('[tf_speaker][opening] text 为空，跳过'); return; }
-  console.log('[tf_speaker][opening] 收到开场白委托 role=' + role + ' text=' + text.slice(0,40));
-  // 查找角色 id
-  var charEntry = null;
-  try {
-    var chat = await tavo.chat.current();
-    var chars = (chat && chat.characters) || [];
 
-    if(chars !=null){
-       chars.forEach(el => {
-        console.log('[window.tf_story_on] [tf_speaker] chars ', el.name,el.id);
-       });
+  if('opening' == type ){
+      var role = (data && data.role) || '旁白';
+    var text = (data && data.text) || '';
+    if (!text) {
+      console.log('[tf_speaker][opening] text 为空，跳过');
+      return;
     }
+    console.log('[tf_speaker][opening] 收到开场白委托 role=' + role + ' text=' + text.slice(0, 40));
+    // 查找角色 id
+    var charEntry = null;
+    try {
+      var chat = await tavo.chat.current();
+      var chars = (chat && chat.characters) || [];
 
-    var findChar = function(name) {
-      return chars.find(function(c) { return c.name === name; })
-        || (name === '旁白' || name === 'narrator' ? chars.find(function(c) { return c.name === '旁白'; }) : null);
+      if (chars != null) {
+        chars.forEach(el => {
+          console.log('[window.tf_story_on] [tf_speaker] chars ', el.name, el.id);
+        });
+      }
+
+      var findChar = function (name) {
+        return chars.find(function (c) {
+              return c.name === name;
+            })
+            || (name === '旁白' || name === 'narrator' ? chars.find(function (c) {
+              return c.name === '旁白';
+            }) : null);
+      };
+      var narratorChar = chars.find(function (c) {
+        return c.name === '旁白';
+      }) || null;
+      charEntry = findChar(role) || narratorChar;
+    } catch (e) {
+    }
+    // 写入消息列表（Tavo App 监听 message:added 后自动触发语音播放）
+    var speakerAppendOpts = {
+      role: 'assistant',
+      characterName: role,
+      content: text,
+      hidden: false,
     };
-    var narratorChar = chars.find(function(c) { return c.name === '旁白'; }) || null;
-    charEntry = findChar(role) || narratorChar;
-  } catch(e) {}
-  // 写入消息列表（Tavo App 监听 message:added 后自动触发语音播放）
-  var speakerAppendOpts = {
-    role: 'assistant',
-    characterName: role,
-    content: text,
-    hidden: false,
-  };
-  if (charEntry && charEntry.id !== undefined) {
-    speakerAppendOpts.characterId = charEntry.id;
-    console.log('[tf_speaker][opening] speakerAppendOpts charEntry: ' +charEntry.name);
+    if (charEntry && charEntry.id !== undefined) {
+      speakerAppendOpts.characterId = charEntry.id;
+      console.log('[tf_speaker][opening] speakerAppendOpts charEntry: ' + charEntry.name);
+    }
+    try {
+      await tavo.message.append(speakerAppendOpts);
+      console.log('[tf_speaker][opening] 已写入开场白: ' + speakerAppendOpts.characterId + ":" + role + ':' + text.slice(0, 40));
+    } catch (e) {
+      console.warn('[tf_speaker][opening] 写入开场白失败', e);
+    }
+  }else {
+    try {
+      await tavo.message.append(data);
+    } catch (e) {
+      console.warn('[tf_speaker][append_message] 写入台词白失败', e);
+    }
   }
-  try {
 
-    await tavo.message.append(speakerAppendOpts);
-    console.log('[tf_speaker][opening] 已写入开场白: ' + speakerAppendOpts.characterId+":"+ role + ':' + text.slice(0,40));
+
+  try {
+    //先生成语音！然后播放
+    // 4a. await_user 处理（对齐 Toonflow awaitUser 语义）：停止生成，等待用户输入
+    if (data.awaitUser!=null &&data.awaitUser== true) {
+      console.log('[' + ts() + '] ⏸ [mcs] await_user=true → 停止生成，等待用户输入');
+      try { tavo.set(ORCH_FLAG, false, 'chat'); } catch (e) {}
+      return; // 不 append 消息，不继续生成
+    }
     // 语音播放后触发下一轮 NPC 编排（不等用户）
     if (window.tf_story_emit) window.tf_story_emit('auto_orchestrate', {});
-  } catch(e) { console.warn('[tf_speaker][opening] 写入开场白失败', e); }
-  });
-});
+  } catch (e) {
+    console.warn('[tf_speaker] auto_orchestrate失败', e);
+  }
+
+}
 
 
 // 生成前：注入对齐 Toonflow story_speaker 的「入参」（当前事件 / 最近对话 / 在场角色当前状态）+ 编排标记

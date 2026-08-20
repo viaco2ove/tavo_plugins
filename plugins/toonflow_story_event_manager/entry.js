@@ -950,7 +950,7 @@ async function playChapterOpening(boot) {
 
   console.log('[tf_story] ─── 开场白流程-通知发言器 ──────────────────────────');
   // 委托发言插件处理：window.tf_story_emit 触发，speaker 用 window.tf_story_on 监听
-  tf_story_emit('opening', { role: role, text: text });
+  window.tf_story_emit('opening', { role: role, text: text });
   console.log('[tf_story]  sent window.tf_story_emit  opening',window.tf_story_emit);
   // 3. 返回播了几条（speaker 插件 append 后才算）
   return 1;

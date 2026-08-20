@@ -831,7 +831,7 @@ function game_orchestration(userText,intentResult){
 
       // 2. 阶段一：编排器 → {speaker, role_type, motive, event_summary, evDigest, nextEvInfo, storyStatus, memCtx}
       const { prompt: orchPrompt, evDigest, nextEvInfo, storyStatus, memCtx, chapterIdx, chapterTitle } = await buildOrchestrationPrompt(userText);
-
+      console.log("[game_orchestration] orchPrompt:", orchPrompt);
       // ===== 全链路编排 TRACE =====
       console.log('══════════════════════════════════════════════════');
       console.log('[' + ts() + '] 🎭 [mcs] ┌─── 编排全链路 TRACE ──────────────────────');
@@ -893,6 +893,8 @@ function game_orchestration(userText,intentResult){
         console.error('[' + ts() + '] ❌ [mcs] 阶段一 LLM 异常: ' + e.message + ' | name=' + e.name + ' | stack=' + (e.stack||'').slice(0,500));
         throw e;
       }
+
+
       const orchText = (orchRaw || '').trim();
 
       // 剥离推理标签，只保留正文
@@ -979,36 +981,39 @@ function game_orchestration(userText,intentResult){
       const content = body.replace(/^["']|["']$/g, '').trim();
       console.log('[' + ts() + '] [mcs] 阶段二台词: ' + JSON.stringify(content.slice(0, 80)));
 
+      console.log('[' + ts() + '] 🎭 [mcs] speaker("' + speaker + '") ');
       // 4. 查角色 id 并 append
       const charId = await findCharacterId(speaker);
-      console.log('[' + ts() + '] 🎭 [mcs] findCharacterId("' + speaker + '") = ' + charId);
+      if(speaker !="player" && speaker !="用户"){
 
-      tavo.set('tf_last_speaker', { name: speaker, characterId: charId || '' }, 'chat');
-      console.log('[' + ts() + '] 🎭 [mcs] tf_last_speaker → ' + speaker + ' (id=' + charId + ')');
+        console.log('[' + ts() + '] 🎭 [mcs] findCharacterId("' + speaker + '") = ' + charId);
 
-      // 打印编排阶段（阶段一）的 thinking（如果模型有输出）
-      try {
-        const orchThink = extractThinking(orchText);
-        if (orchThink.thinking) {
-          console.log('[' + ts() + '] 🎭 [mcs] 阶段一思考:\n' + orchThink.thinking.slice(0, 400));
+        tavo.set('tf_last_speaker', { name: speaker, characterId: charId || '' }, 'chat');
+        console.log('[' + ts() + '] 🎭 [mcs] tf_last_speaker → ' + speaker + ' (id=' + charId + ')');
+
+        // 打印编排阶段（阶段一）的 thinking（如果模型有输出）
+        try {
+          const orchThink = extractThinking(orchText);
+          if (orchThink.thinking) {
+            console.log('[' + ts() + '] 🎭 [mcs] 阶段一思考:\n' + orchThink.thinking.slice(0, 400));
+          }
+        } catch(e) {}
+
+
+        // 4b. append 角色消息
+        if (thinking) {
+          const esc = thinking.replace(/<\/div>/gi, '&lt;/div&gt;');
+          const block = '<div style="cursor:pointer;color:#888;font-size:0.85em" onclick="var d=this.getElementsByTagName(\'div\')[0];d.style.display=d.style.display==\'none\'?\'block\':\'none\'">💭 思考（点击展开）<div style="display:none;padding:8px 0;color:#666">' + esc + '</div></div>';
+          //await tavo.message.append({ role: 'assistant', characterId: charId || undefined, characterName: speaker, content: block + content, hidden: false });
+          window.tf_story_emit("append_message",{ role: 'assistant', characterId: charId || undefined, characterName: speaker, content: block + content, hidden: false,awaitUser:awaitUser });
+        } else {
+          //await tavo.message.append({ role: 'assistant', characterId: charId || undefined, characterName: speaker, content: content, hidden: false });
+          window.tf_story_emit("append_message",{ role: 'assistant', characterId: charId || undefined, characterName: speaker, content: content, hidden: false,awaitUser:awaitUser });
         }
-      } catch(e) {}
 
-      // 4a. await_user 处理（对齐 Toonflow awaitUser 语义）：停止生成，等待用户输入
-      if (awaitUser) {
-        console.log('[' + ts() + '] ⏸ [mcs] await_user=true → 停止生成，等待用户输入');
-        try { tavo.set(ORCH_FLAG, false, 'chat'); } catch (e) {}
-        return; // 不 append 消息，不继续生成
+
       }
 
-      // 4b. append 角色消息
-      if (thinking) {
-        const esc = thinking.replace(/<\/div>/gi, '&lt;/div&gt;');
-        const block = '<div style="cursor:pointer;color:#888;font-size:0.85em" onclick="var d=this.getElementsByTagName(\'div\')[0];d.style.display=d.style.display==\'none\'?\'block\':\'none\'">💭 思考（点击展开）<div style="display:none;padding:8px 0;color:#666">' + esc + '</div></div>';
-        await tavo.message.append({ role: 'assistant', characterId: charId || undefined, characterName: speaker, content: block + content, hidden: false });
-      } else {
-        await tavo.message.append({ role: 'assistant', characterId: charId || undefined, characterName: speaker, content: content, hidden: false });
-      }
       console.log('[' + ts() + '] ✅ [mcs] 角色消息已 append → speaker=' + speaker + ' charId=' + charId);
       console.log('[' + ts() + '] 🎭 [mcs] │ 💬 台词: ' + JSON.stringify(content.slice(0, 80)));
       if (motive) console.log('[' + ts() + '] 🎭 [mcs] │ 💡 动机: ' + motive.slice(0,60));
