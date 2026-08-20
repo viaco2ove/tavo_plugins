@@ -415,7 +415,60 @@ async function judgeAndAdvance(messageContext) {
     console.log('[tf_story][judge] phases=' + progress.phases.length + ' ' + JSON.stringify(progress.phases.map(p=>({n:p.name,e:p.events.length}))));
 
   }
-  advanceEventProgress(progress);
+  // ========== pendingChapterId 处理（对齐官方 pendingChapterId 双阶段语义）==========
+  // 阶段0：检测 pendingChapterId —— 上一轮结局已宣告本章完成，本轮才正式切换
+  if (progress.pendingChapterId) {
+    const prevChapterId = progress.currentChapterIndex;
+    const prevChapter = chapters[prevChapterId];
+    const nextIdx = progress.pendingChapterId;
+    console.log('[tf_story][judge] pendingChapterId detected: prev=' + prevChapterId + ' next=' + nextIdx);
+    progress.pendingChapterId = null; // 先清除标记
+    if (nextIdx >= chapters.length) {
+      // 故事完结
+      progress.storyCompleted = true;
+      progress.sessionFreeMode = (cfgGet('autoFreeMode', true) !== false);
+      progress.currentChapterIndex = nextIdx;
+      progress.currentPhase = 0;
+      progress.currentEvent = 0;
+      progress.updatedAt = Date.now();
+      setProgress(progress);
+      syncChapterIndex(nextIdx);
+      tavo.utils.toast('🎉 故事已完结！' + (progress.sessionFreeMode ? '已进入自由模式' : ''));
+      try {
+        await tavo.message.append({
+          content: '【故事完结】所有章节已完成。' + (progress.sessionFreeMode ? ' 进入自由模式，用户可继续对话，无需推进章节。' : ''),
+          hidden: false,
+        });
+      } catch (e) {}
+    } else {
+      // 正式切换章节
+      progress.currentChapterIndex = nextIdx;
+      progress.currentPhase = 0;
+      progress.currentEvent = 0;
+      progress.failedAttempts = 0;
+      // 重新解析新章节 phases
+      const nextCh = chapters[nextIdx];
+      if (nextCh) {
+        progress.phases = parseProgress(nextCh.content || '');
+        progress.chaptersKey = chapters.length + ':' + nextIdx;
+      }
+      progress.updatedAt = Date.now();
+      setProgress(progress);
+      syncChapterIndex(nextIdx);
+      tavo.utils.toast('✅ 进入「' + (nextCh.title || '下一章') + '」');
+      try {
+        let openingLine = '（场景切换至 ' + (nextCh.title || '下一章') + '）';
+        if (nextCh.openingLine) openingLine = nextCh.openingLine;
+        await tavo.message.append({ content: openingLine, hidden: false });
+      } catch (e) {}
+    }
+    // 章节已切换，当前轮次的剩余逻辑（event_progress / 章节判定）基于新章节执行
+    // 重新获取当前章节引用
+    const newIdx = progress.currentChapterIndex;
+    chapter = chapters[newIdx];
+    console.log('[tf_story][judge] chapter switched to idx=' + newIdx + ' title=' + (chapter ? chapter.title : 'NULL'));
+  }
+
   // 阶段一：LLM 事件进度检测（对齐 toonflow applySessionUserEventProgress）
   // 替代纯 +1 规则的 advanceEventProgress
   const eventResult = await applySessionUserEventProgress(
@@ -460,9 +513,11 @@ async function judgeAndAdvance(messageContext) {
   // success
   if (!progress.completedChapters.includes(idx)) progress.completedChapters.push(idx);
 
-  // 推进
+  // 对齐官方 pendingChapterId 语义：只宣告下一章，不立即切换
+  // 下一轮 judgeAndAdvance 的 phase0 会检测到 pendingChapterId 并执行真正切换
   const nextIdx = idx + 1;
   if (nextIdx >= chapters.length) {
+    // 故事完结：直接切换（无下一章，不需要延迟语义）
     progress.storyCompleted = true;
     progress.sessionFreeMode = (cfgGet('autoFreeMode', true) !== false);
     progress.currentChapterIndex = nextIdx;
@@ -470,7 +525,6 @@ async function judgeAndAdvance(messageContext) {
     setProgress(progress);
     syncChapterIndex(nextIdx);
     tavo.utils.toast('🎉 故事已完结！' + (progress.sessionFreeMode ? '已进入自由模式' : ''));
-    // 注入故事完结旁白（隐藏消息，方便模型感知）
     try {
       await tavo.message.append({
         content: '【故事完结】所有章节已完成。' + (progress.sessionFreeMode ? ' 进入自由模式，用户可继续对话，无需推进章节。' : ''),
@@ -478,21 +532,12 @@ async function judgeAndAdvance(messageContext) {
       });
     } catch (e) {}
   } else {
-    progress.currentChapterIndex = nextIdx;
-    progress.currentPhase = 0;
-    progress.currentEvent = 0;
-    progress.failedAttempts = 0;
+    // 有下一章：设置 pendingChapterId（本轮宣告，下轮生效）
+    progress.pendingChapterId = nextIdx;
     progress.updatedAt = Date.now();
     setProgress(progress);
-    syncChapterIndex(nextIdx);
-    const nextCh = chapters[nextIdx];
-    tavo.utils.toast('✅ 进入「' + (nextCh.title || '下一章') + '」');
-    // 注入章节切换旁白
-    try {
-      let openingLine = '（场景切换至 ' + (nextCh.title || '下一章') + '）';
-      if (nextCh.openingLine) openingLine = nextCh.openingLine;
-      await tavo.message.append({ content: openingLine, hidden: false });
-    } catch (e) {}
+    console.log('[tf_story][judge] chapter success: pendingChapterId=' + nextIdx + ' (will switch next round)');
+    tavo.utils.toast('✅ 第 ' + (idx + 1) + ' 章完成！下一章将在下一轮对话开始时切换');
   }
 }
 
@@ -967,10 +1012,12 @@ _safeOn('message:added', async (event) => {
   }
 });
 
-// 整章推进（复用判定成功分支）：进入下一章或完结进入自由模式。供自动判定与手动指令共用。
+// 整章推进（对齐 judgeAndAdvance 的 success 分支 pendingChapterId 语义）
+// 有下一章时设置 pendingChapterId，下一轮 judgeAndAdvance 阶段0执行真正切换
 async function manualChapterAdvance(chapters, idx, progress) {
   const nextIdx = idx + 1;
   if (nextIdx >= chapters.length) {
+    // 故事完结：直接切换
     progress.storyCompleted = true;
     progress.sessionFreeMode = (cfgGet('autoFreeMode', true) !== false);
     progress.currentChapterIndex = nextIdx;
@@ -987,20 +1034,13 @@ async function manualChapterAdvance(chapters, idx, progress) {
       });
     } catch (e) {}
   } else {
-    progress.currentChapterIndex = nextIdx;
-    progress.currentPhase = 0;
-    progress.currentEvent = 0;
-    progress.failedAttempts = 0;
+    // 有下一章：设置 pendingChapterId（下一轮 judgeAndAdvance 阶段0执行真正切换）
+    progress.pendingChapterId = nextIdx;
     progress.updatedAt = Date.now();
     setProgress(progress);
-    syncChapterIndex(nextIdx);
     const nextCh = chapters[nextIdx];
-    tavo.utils.toast('✅ 进入「' + (nextCh.title || '下一章') + '」');
-    try {
-      let openingLine = '（场景切换至 ' + (nextCh.title || '下一章') + '）';
-      if (nextCh.openingLine) openingLine = nextCh.openingLine;
-      await tavo.message.append({ content: openingLine, hidden: false });
-    } catch (e) {}
+    tavo.utils.toast('✅ 第 ' + (idx + 1) + ' 章完成！下一章将在下一轮对话开始时切换');
+    console.log('[tf_story][manual] pendingChapterId=' + nextIdx + ' (will switch next round)');
   }
 }
 

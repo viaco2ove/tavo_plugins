@@ -245,87 +245,254 @@ async function aliyunTts(apiKey, voiceId, text) {
 // 按句号/感叹号/问号拆分，保留标点，保留动作描写小括号内的完整内容（不打断）
 function splitSpeechSegments(text) {
   // 保护动作描写：(...) 内不拆分
-  const protected = [];
+  const protectedPhrases = [];
   let clean = text.replace(/\([^)]+\)/g, (m) => {
-    protected.push(m);
-    return '\x00PROT' + (protected.length - 1) + '\x00';
+    protectedPhrases.push(m);
+    return '\x00PROT' + (protectedPhrases.length - 1) + '\x00';
   });
   // 按句子切分（保留句末标点）
   const segments = clean.split(/(?<=[。！？.?!])/).filter(Boolean);
   // 恢复保护内容
-  return segments.map(s => s.replace(/\x00PROT(\d+)\x00/g, (_, i) => protected[parseInt(i)]))
+  return segments.map(s => s.replace(/\x00PROT(\d+)\x00/g, (_, i) => protectedPhrases[parseInt(i)]))
     .map(s => s.trim())
     .filter(s => s.length > 0);
 }
 
-// ---------- 消息到达 -> 逐句串行播放 ----------
+// ---------- 流式状态追踪（对齐 toonflow NDJSON sentence-event 语义） ----------
+// pendingMessages: msgId -> { charId, content, meta, streaming, startedAt }
+// 用于在 message:added（流式开始）后等待流式完成（message:updated），再触发完整 TTS
+const _pendingStreamMessages = new Map();
+
+// 核心 TTS 播放函数（供 message:added 和 sentence-event 回调共用）
+async function playTtsForSegments(charId, segments) {
+  const platform = cfg('voice_platform', 'xiaomimimo');
+  const apiKey = cfg('voice_platform_apikey', '');
+  if (!apiKey) { vw('未配置 API Key，跳过语音'); return; }
+
+  let voiceId = window.tf_voice.getVoiceId(charId);
+  if (!voiceId) {
+    const vf = window.tf_voice.getVoiceFile(charId);
+    if (!vf || !vf.file) { vw('角色 ' + charId + ' 无音色文件，跳过'); return; }
+    const audioUrl = tavo.file.url(vf.file, 'chat');
+    voiceId = (platform === 'aliyun')
+      ? await aliyunEnrollVoice(apiKey, audioUrl, 'tf_' + charId)
+      : await xiaomiCloneVoice(apiKey, audioUrl);
+    window.tf_voice.cacheVoiceId(charId, voiceId);
+  }
+
+  for (let i = 0; i < segments.length; i++) {
+    const segText = segments[i].slice(0, 200);
+    try {
+      if (platform === 'aliyun') {
+        const audioUrl = await aliyunTts(apiKey, voiceId, segText);
+        const audio = new Audio(audioUrl);
+        await new Promise((resolve, reject) => {
+          audio.onended = resolve;
+          audio.onerror = reject;
+          audio.play();
+        });
+      } else {
+        const buf = await xiaomiTts(apiKey, voiceId, segText);
+        const blob = new Blob([buf], { type: 'audio/mpeg' });
+        const url = URL.createObjectURL(blob);
+        const audio = new Audio(url);
+        audio.onended = () => URL.revokeObjectURL(url);
+        await new Promise((resolve, reject) => {
+          audio.onended = () => { resolve(); };
+          audio.onerror = (e) => { reject(e); };
+          audio.play().catch(reject);
+        });
+      }
+      vl('[逐句] 第' + (i + 1) + '/' + segments.length + '句播放完毕: ' + segText.slice(0, 20));
+    } catch (e) {
+      vw('[逐句] 第' + (i + 1) + '句 TTS 失败: ' + e.message);
+      window.tf_voice.invalidateVoiceId(charId);
+      break;
+    }
+  }
+  vl('[逐句] 全部播放完毕 charId=' + charId);
+}
+
+// ---------- message:added -> 检测流式开始/完整消息 ----------
+// 对齐官方 introduction.ts streamSessionIntroductionPlan：
+// - message:added 可能是流式中间态（content 还在追加，meta.streaming=true）
+// - 流式开始时记录消息，收到 message:updated 时触发完整 TTS
+// - 非流式消息（meta.streaming !== true）直接触发 TTS
 tavo.plugin.on('message:added', async (event) => {
   const platform = cfg('voice_platform', 'xiaomimimo');
   const autoPlay = cfg('auto_play', false);
-  if (platform === 'tavo' || !autoPlay) return;  // tavo 平台不接管
+  if (platform === 'tavo' || !autoPlay) return;
 
   const msg = event && event.message;
   if (!msg || msg.role !== 'assistant' || !msg.characterId) return;
 
   const charId = String(msg.characterId);
+  const msgId = String(msg.id || '');
   const rawText = (msg.content || '').replace(/<[^>]+>/g, '').trim();
   if (!rawText) return;
 
-  // 逐句拆分（对齐官方 splitSpeechSegments）
-  const segments = splitSpeechSegments(rawText);
-  vl('[逐句] charId=' + charId + ' 共' + segments.length + '句: ' + JSON.stringify(segments.map(s => s.slice(0, 20))));
+  // 读取 meta 判断是否流式（对齐官方 message.meta.streaming）
+  const meta = msg.meta || {};
+  const isStreaming = meta.streaming === true;
+  vl('[流式] msgId=' + msgId + ' streaming=' + isStreaming + ' content_len=' + rawText.length);
 
-  try {
-    const apiKey = cfg('voice_platform_apikey', '');
-    if (!apiKey) { vw('未配置 API Key，跳过语音'); return; }
-
-    // 获取 voiceId（有缓存用缓存，无则克隆）
-    let voiceId = window.tf_voice.getVoiceId(charId);
-    if (!voiceId) {
-      const vf = window.tf_voice.getVoiceFile(charId);
-      if (!vf || !vf.file) { vw('角色 ' + charId + ' 无音色文件，跳过'); return; }
-      const audioUrl = tavo.file.url(vf.file, 'chat');
-      voiceId = (platform === 'aliyun')
-        ? await aliyunEnrollVoice(apiKey, audioUrl, 'tf_' + charId)
-        : await xiaomiCloneVoice(apiKey, audioUrl);
-      window.tf_voice.cacheVoiceId(charId, voiceId);
+  if (isStreaming) {
+    // 流式中间态：记录消息，等待 message:updated 触发完整 TTS
+    _pendingStreamMessages.set(msgId, { charId, content: rawText, meta, startedAt: Date.now() });
+    vl('[流式] 记录流式消息，等待完成 msgId=' + msgId);
+  } else {
+    // 完整消息：直接触发 TTS
+    const segments = splitSpeechSegments(rawText);
+    vl('[完整] charId=' + charId + ' 共' + segments.length + '句');
+    try {
+      await playTtsForSegments(charId, segments);
+    } catch (e) {
+      vw('语音失败: ' + e.message);
+      window.tf_voice.invalidateVoiceId(charId);
     }
-
-    // 逐句串行播放：等上一句播放完才播下一句（对齐 toonflow 逐句语义）
-    for (let i = 0; i < segments.length; i++) {
-      const segText = segments[i].slice(0, 200); // 单句上限 200 字防超限
-      try {
-        if (platform === 'aliyun') {
-          const audioUrl = await aliyunTts(apiKey, voiceId, segText);
-          const audio = new Audio(audioUrl);
-          await new Promise((resolve, reject) => {
-            audio.onended = resolve;
-            audio.onerror = reject;
-            audio.play();
-          });
-        } else {
-          const buf = await xiaomiTts(apiKey, voiceId, segText);
-          const blob = new Blob([buf], { type: 'audio/mpeg' });
-          const url = URL.createObjectURL(blob);
-          const audio = new Audio(url);
-          await new Promise((resolve, reject) => {
-            audio.onended = resolve;
-            audio.onerror = reject;
-          });
-        }
-        vl('[逐句] 第' + (i + 1) + '/' + segments.length + '句播放完毕: ' + segText.slice(0, 20));
-      } catch (e) {
-        vw('[逐句] 第' + (i + 1) + '句 TTS 失败: ' + e.message);
-        window.tf_voice.invalidateVoiceId(charId);
-        break; // 单句失败则停止整条消息的播放
-      }
-    }
-    vl('[逐句] 全部播放完毕 charId=' + charId);
-  } catch (e) {
-    vw('语音失败（voiceId 可能过期，已失效重试）: ' + e.message);
-    window.tf_voice.invalidateVoiceId(charId);
   }
 });
+
+// ---------- message:updated -> 流式完成，触发完整 TTS ----------
+// 对齐官方 NDJSON done 事件语义：流式完成后一次性处理完整 content
+tavo.plugin.on('message:updated', async (event) => {
+  const msgId = String(event && event.message && event.message.id || '');
+  if (!msgId) return;
+
+  const pending = _pendingStreamMessages.get(msgId);
+  if (!pending) return;
+
+  // 流式完成：读取完整 content（可能通过 message.find 重新获取）
+  let fullContent = '';
+  try {
+    const msgs = await tavo.message.find([0, 100]);
+    const found = (msgs || []).find(m => String(m.id || '') === msgId);
+    if (found) {
+      fullContent = (found.content || '').replace(/<[^>]+>/g, '').trim();
+    } else {
+      // 找不到就用缓存 content
+      fullContent = pending.content;
+    }
+  } catch (e) {
+    fullContent = pending.content;
+  }
+
+  // 判断流式是否真正结束（meta.streaming !== true）
+  let streamingDone = true;
+  try {
+    const msgs = await tavo.message.find([0, 100]);
+    const found = (msgs || []).find(m => String(m.id || '') === msgId);
+    if (found && found.meta && found.meta.streaming === true) {
+      streamingDone = false; // 还在流式，暂不触发
+    }
+  } catch (e) {}
+
+  if (!streamingDone) return;
+
+  _pendingStreamMessages.delete(msgId);
+  vl('[流式完成] msgId=' + msgId + ' content_len=' + fullContent.length);
+
+  if (!fullContent) return;
+
+  const segments = splitSpeechSegments(fullContent);
+  vl('[流式TTS] charId=' + pending.charId + ' 共' + segments.length + '句');
+  try {
+    await playTtsForSegments(pending.charId, segments);
+  } catch (e) {
+    vw('流式语音失败: ' + e.message);
+    window.tf_voice.invalidateVoiceId(pending.charId);
+  }
+});
+
+// ---------- tf_voice_stream API（对齐官方 sentence-event NDJSON 语义） ----------
+// 外部（mcs 编排插件）可在每句生成时调用 onSentence，实现真正的逐句实时 TTS
+// 当 TTS 服务支持低延迟单句合成时，用此接口替代等待 message:updated
+window.tf_voice_stream = {
+  // sentence-event 回调：编排插件每生成一句台词时调用，实时触发 TTS
+  // sentence: 本句文本，index: 句子序号（0-based），msgId: 关联消息ID，charId: 角色ID
+  onSentence: async (charId, sentence, index, msgId) => {
+    const platform = cfg('voice_platform', 'xiaomimimo');
+    const autoPlay = cfg('auto_play', false);
+    if (platform === 'tavo' || !autoPlay) return;
+    const text = String(sentence || '').replace(/<[^>]+>/g, '').trim();
+    if (!text) return;
+    vl('[sentence] charId=' + charId + ' idx=' + index + ' text=' + text.slice(0, 30));
+
+    try {
+      const apiKey = cfg('voice_platform_apikey', '');
+      if (!apiKey) return;
+
+      let voiceId = window.tf_voice.getVoiceId(charId);
+      if (!voiceId) {
+        const vf = window.tf_voice.getVoiceFile(charId);
+        if (!vf || !vf.file) return;
+        const audioUrl = tavo.file.url(vf.file, 'chat');
+        voiceId = (platform === 'aliyun')
+          ? await aliyunEnrollVoice(apiKey, audioUrl, 'tf_' + charId)
+          : await xiaomiCloneVoice(apiKey, audioUrl);
+        window.tf_voice.cacheVoiceId(charId, voiceId);
+      }
+
+      const segText = text.slice(0, 200);
+      if (platform === 'aliyun') {
+        const audioUrl = await aliyunTts(apiKey, voiceId, segText);
+        const audio = new Audio(audioUrl);
+        await new Promise((resolve, reject) => {
+          audio.onended = resolve;
+          audio.onerror = reject;
+          audio.play();
+        });
+      } else {
+        const buf = await xiaomiTts(apiKey, voiceId, segText);
+        const blob = new Blob([buf], { type: 'audio/mpeg' });
+        const url = URL.createObjectURL(blob);
+        const audio = new Audio(url);
+        audio.onended = () => URL.revokeObjectURL(url);
+        await new Promise((resolve, reject) => {
+          audio.onended = () => { resolve(); };
+          audio.onerror = (e) => { reject(e); };
+          audio.play().catch(reject);
+        });
+      }
+      vl('[sentence] TTS完成 charId=' + charId + ' idx=' + index);
+    } catch (e) {
+      vw('[sentence] TTS失败 charId=' + charId + ': ' + e.message);
+      window.tf_voice.invalidateVoiceId(charId);
+    }
+  },
+
+  // 流式消息开始：通知开始追踪（配合 message:added 流式中间态）
+  onStreamStart: (msgId, charId) => {
+    vl('[stream] start msgId=' + msgId + ' charId=' + charId);
+    _pendingStreamMessages.set(String(msgId), { charId: String(charId), content: '', meta: { streaming: true }, startedAt: Date.now() });
+  },
+
+  // 流式消息完成：强制触发 TTS（外部可调用，覆盖 message:updated 的自动检测）
+  onStreamDone: async (msgId) => {
+    const pending = _pendingStreamMessages.get(String(msgId));
+    if (!pending) return;
+    let fullContent = pending.content;
+    // 尝试从消息列表获取最新 content
+    try {
+      const msgs = await tavo.message.find([0, 100]);
+      const found = (msgs || []).find(m => String(m.id || '') === String(msgId));
+      if (found) fullContent = (found.content || '').replace(/<[^>]+>/g, '').trim();
+    } catch (e) {}
+    _pendingStreamMessages.delete(String(msgId));
+    if (!fullContent) return;
+    const segments = splitSpeechSegments(fullContent);
+    vl('[streamDone] msgId=' + msgId + ' charId=' + pending.charId + ' 共' + segments.length + '句');
+    try {
+      await playTtsForSegments(pending.charId, segments);
+    } catch (e) {
+      vw('[streamDone] 失败: ' + e.message);
+      window.tf_voice.invalidateVoiceId(pending.charId);
+    }
+  },
+
+  // 查询流式状态
+  isStreaming: (msgId) => _pendingStreamMessages.has(String(msgId)),
+};
 
 // ---------- 平台切换 -> 清空 voiceId ----------
 tavo.plugin.on('chat:opened', async () => {

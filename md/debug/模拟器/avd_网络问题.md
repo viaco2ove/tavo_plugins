@@ -18,8 +18,6 @@ C:\Users\xxx\.android\avd\Pixel_8_Pro_4.avd\config.ini
 dns1=223.5.5.5
 dns2=114.114.114.114
 `
-桥接模式（进阶，彻底绕开 slirp）
-emulator -avd Pixel_8_Pro -netfast -qemu -net nic -net bridge,br=br0
 
 路线二：换模拟器
 Genymotion（推荐试试）
