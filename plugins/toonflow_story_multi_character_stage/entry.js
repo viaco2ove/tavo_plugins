@@ -203,43 +203,7 @@ tavo.plugin.on('chat:opened', async () => {
 // 自由模式切换时同步 overrideScenario
 // 开场白写完后自动触发 NPC 编排（不等用户输入）
 function triggerAutoOrchestrate() {
-  (async () => {
-    try {
-      tavo.set(ORCH_FLAG, true, 'chat');
-      const orchPrompt = await buildOrchestrationPrompt('');
-      console.log('[' + ts() + '] [mcs] auto 阶段一 prompt len=' + orchPrompt.length);
-      const llmMode = (window.tf_llm && window.tf_llm.callDirect) ? '接管' : 'tavo原生';
-      let orchRaw;
-      try {
-        orchRaw = llmMode === '接管'
-          ? await window.tf_llm.callDirect(orchPrompt, { maxCompletionTokens: 600 })
-          : await tavo.generate(orchPrompt, { context: false, settings: { temperature: 0.3, maxCompletionTokens: 600 } });
-      } catch(e) { console.error('[' + ts() + '] [mcs] auto 阶段一异常:', e.message); tavo.set(ORCH_FLAG, false, 'chat'); return; }
-      console.log("Orchestrate orchRaw:",orchRaw);
-      const cleaned = (orchRaw||'').replace(/<thinking>[\s\S]*?<\/thinking>/gi,'').trim();
-      let speaker='旁白', roleType='narrator', motive='', eventSummary='';
-      try {
-        const fence = cleaned.match(/```json\s*([\s\S]*?)```/);
-        const jsonText = fence ? fence[1].trim() : cleaned;
-        const obj = JSON.parse(jsonText);
-        speaker = obj.speaker || '旁白'; roleType = obj.role_type || 'narrator';
-        motive = obj.motive || ''; eventSummary = obj.event_summary || '';
-      } catch(e) {}
-      const speakerPrompt = await buildSpeakerPrompt(speaker, roleType, motive, eventSummary);
-      const llm2 = (window.tf_llm && window.tf_llm.callDirect) ? '接管' : 'tavo原生';
-      let speakerRaw;
-      try {
-        speakerRaw = llm2 === '接管'
-          ? await window.tf_llm.callDirect(speakerPrompt, { maxCompletionTokens: 1500 })
-          : await tavo.generate(speakerPrompt, { context: false, settings: { maxCompletionTokens: 1500 } });
-      } catch(e) { console.error('[' + ts() + '] [mcs] auto 阶段二异常:', e.message); tavo.set(ORCH_FLAG, false, 'chat'); return; }
-      const content = (speakerRaw||'').replace(/<thinking>[\s\S]*?<\/thinking>/gi,'').replace(/^["']|["']$/g,'').trim();
-      const charId = await findCharacterId(speaker);
-      await tavo.message.append({ role: 'assistant', characterId: charId||undefined, characterName: speaker, content, hidden: false });
-      console.log('[' + ts() + '] [mcs] auto 角色消息已 append => ' + speaker + ':' + content.slice(0,30));
-    } catch(e) { console.error('[' + ts() + '] [mcs] auto 编排异常:', e, e && e.stack ? e.stack : ''); }
-    finally { try { tavo.set(ORCH_FLAG, false, 'chat'); } catch(e) {} }
-  })();
+  game_orchestration('');
 }
 // 监听 speaker 发的 auto_orchestrate 事件，开场白写完后自动触发 NPC 编排
 tavo.plugin.on('chat:opened', function() {
@@ -387,6 +351,7 @@ async function findCharacterId(name) {
 // ============================================================
 // 返回 { prompt, evDigest, nextEvInfo } 让调用方同时拿到 prompt 和事件元数据
 async function buildOrchestrationPrompt(userInput) {
+  console.log('[buildOrchestrationPrompt ]promptParts get start');
   const n = getLineCount();
   const edit = readChatVar('tf_story.edit') || {};
   const chapters = edit.chapters || [];
@@ -406,6 +371,7 @@ async function buildOrchestrationPrompt(userInput) {
         const entry = (sprites.byName || {})[c.name] || {};
         roleType = entry.roleType || 'npc';
       } catch (e) {}
+      console.log('[buildOrchestrationPrompt ]promptParts get 1');
       return { name: c.name, role_type: roleType };
     });
     // 旁白作为内置角色加入（不在 wildcard_roles 中）
@@ -420,6 +386,7 @@ async function buildOrchestrationPrompt(userInput) {
       const msgs = tavo.message.find([Math.max(0, cnt - n), cnt]) || [];
       recentDialogue = msgs.map(m => {
         const name = m.characterName || (m.role === 'user' ? '用户' : '旁白');
+        console.log('[buildOrchestrationPrompt ]promptParts get 2');
         return { speaker: name, content: String(m.content || '').slice(0, 150) };
       });
     }
@@ -611,7 +578,7 @@ async function buildOrchestrationPrompt(userInput) {
 
   const outputSchema = `直接输出 JSON，不要任何其他文字：
 {"speaker":"角色名","role_type":"npc/narrator/general","motive":"一句话动机","await_user":false,"trigger_memory_agent":false,"event_adjust_mode":"keep","event_status":"active","event_summary":"当前事件一句话","event_facts":["关键事实1","关键事实2"]}`;
-
+  console.log('[buildOrchestrationPrompt ]promptParts last');
   return {
     prompt: promptParts.join('\n') + '\n\n' + outputSchema,
     evDigest,
@@ -825,13 +792,18 @@ tavo.plugin.on('input:beforeSend', async (event) => {
       + ' conf=' + (intentResult && intentResult.confidence ? intentResult.confidence : 'n/a'));
     return;
   }
-
-  console.log('[' + ts() + '] 🎭 [mcs] input:beforeSend → 拦截用户: ' + userText.slice(0, 80));
+ console.log('[' + ts() + '] 🎭 [mcs] input:beforeSend → 拦截用户: ' + userText.slice(0, 80));
 
   // 【关键】立即 cancel，不等任何 async 操作
   // tavo 在 handler 返回前不会继续原生流程
   event.cancel('角色编排插件接管');
   console.log('[' + ts() + '] 🎭 [mcs] 已 cancel tavo 原生流程');
+
+  game_orchestration(userText,intentResult);
+});
+
+function game_orchestration(userText,intentResult){
+
 
   // 后台异步执行编排 + 发言（不阻塞 handler）
   (async () => {
@@ -839,8 +811,11 @@ tavo.plugin.on('input:beforeSend', async (event) => {
       tavo.set(ORCH_FLAG, true, 'chat');
 
       // 1. append 用户消息
-      await tavo.message.append({ role: 'user', content: userText, hidden: false });
-      console.log('[' + ts() + '] 🎭 [mcs] 用户消息已 append');
+      if(userText!=null && userText!=''){
+          await tavo.message.append({ role: 'user', content: userText, hidden: false });
+          console.log('[' + ts() + '] 🎭 [mcs] 用户消息已 append');
+      }
+
 
       // 1b. 【记忆状态同步】编排前触发 memory_manager 记忆刷新
       // 对齐 toonflow sendmsg 流程：编排前先确保记忆是最新的
@@ -1084,7 +1059,7 @@ tavo.plugin.on('input:beforeSend', async (event) => {
       try { tavo.set(ORCH_FLAG, false, 'chat'); } catch (e) {}
     }
   })();
-});
+}
 
 // generation 生命周期：只做日志和标记清理（因为现在不是主要触发路径）
 tavo.plugin.on('generation:prepare', async (event) => {
