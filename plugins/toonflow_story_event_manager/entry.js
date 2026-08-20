@@ -523,7 +523,7 @@ async function judgeAndAdvance(messageContext) {
   if (!chapters.length) return;
 
   const idx = progress.currentChapterIndex || 0;
-  const chapter = chapters[idx];
+  let chapter = chapters[idx];
   const phases = progress.phases || [];
   const phaseIdx = Math.max(0, progress.currentPhase || 0);
   const eventIdx = Math.max(0, progress.currentEvent || 0);
@@ -999,6 +999,26 @@ async function playChapterOpening() {
       await tavo.message.append(appendOpts);
       played++;
       
+      // ===== 关键修复：开场白时主动切换到第一位 NPC 立绘（旁白/无立绘角色时） =====
+      // tf_orch.active=true 时 sprite 插件不会自动切换，需要主动调用 tfSpriteAPI
+      try {
+        const sprites = (function(){
+          try { return tavo.get('tf_sprites', 'chat') || {}; } catch(e) { return {}; }
+        })();
+        const byName = sprites.byName || {};
+        const npcKeys = Object.keys(byName).filter(k => byName[k].roleType === 'npc' || byName[k].roleType === 'character');
+        const npcName = npcKeys[0] || null;
+        const npcEntry = npcName ? byName[npcName] : null;
+        if (npcEntry && window.tfSpriteAPI && typeof window.tfSpriteAPI.showSprite === 'function') {
+          window.tfSpriteAPI.showSprite(npcEntry.fg || npcEntry.bg || '', npcName);
+          console.log('[tf_story] │ 开场白立绘→' + npcName);
+        } else {
+          console.log('[tf_story] │ 开场白立绘→未找到NPC或tfSpriteAPI不可用（npcName=' + npcName + ' api=' + typeof window.tfSpriteAPI.showSprite + '）');
+        }
+      } catch(e) {
+        console.warn('[tf_story][opening] 切换立绘失败', e.message);
+      }
+      
       // 同步 tf_last_speaker：sprite 插件优先读它，voice 插件也需要
       try { tavo.set('tf_last_speaker', { name: openingRole, characterId: charId || '' }, 'chat'); } catch (e) {}
       
@@ -1022,7 +1042,7 @@ async function playChapterOpening() {
       const voicePlugin = tavo.plugin && tavo.plugin.plugins && tavo.plugin.plugins['com.toonflow.story-voice'];
       const autoPlay = voicePlugin ? !!voicePlugin.cfg('auto_play', true) : false;
       console.log('[tf_story] │ voicePlugin :',voicePlugin? '已安装' : '未安装');
-      console.log('[tf_story] │ voicePlugin auto_play:',voicePlugin.cfg('auto_play'));
+      console.log('[tf_story] │ voicePlugin auto_play:', voicePlugin && voicePlugin.cfg ? voicePlugin.cfg('auto_play') : 'N/A');
 
       if (hasVoiceStream && autoPlay) {
         const segments = generatedLine.split(/(?<=[。！？.?!])/).filter(Boolean).map(s => s.trim()).filter(s => s.length > 0);
@@ -1145,6 +1165,8 @@ let _startBtnEl = null;
 
 function showStartButton(onStart) {
   hideStartButton(); // 防止重复
+  // 隐藏 HTML 模板里的 boot 遮蔽层（避免和 start-overlay 叠加出现两层遮蔽）
+  try { document.getElementById('tf-boot-overlay').style.display = 'none'; } catch (e) {}
 
   const overlay = document.createElement('div');
   overlay.id = 'tf-story-start-overlay';
@@ -1167,12 +1189,14 @@ function showStartButton(onStart) {
 
   const btn = document.createElement('button');
   btn.textContent = '开始';
+  overlay.id = 'tf-story-start-btn';
+  btn.class ='tf-story-start-btn';
   btn.style.cssText = [
     'padding:14px 64px','font-size:18px','font-weight:700',
     'color:#fff','background:linear-gradient(135deg,#e8c97a,#c9943a)',
     'border:none','border-radius:40px','cursor:pointer',
-    'letter-spacing:6px','transition':'all 0.2s ease',
-    'box-shadow':'0 4px 20px rgba(200,148,58,0.4)',
+    'letter-spacing:6px','transition:all 0.2s ease',
+    'box-shadow:0 4px 20px rgba(200,148,58,0.4)',
   ].join(';');
   btn.addEventListener('mouseenter', () => {
     btn.style.transform = 'scale(1.06)';
@@ -1286,16 +1310,26 @@ async function bootSequence() {
       notifyBootStage('opening', '开场白生成中…');
       playChapterOpening().then(played => {
         console.log('[tf_story][boot] playChapterOpening result=' + played);
+        // 开场白执行完毕后再标记 openingDone=true，防止提前返回
+        const boot = readBoot();
+        boot.openingDone = true;
+        writeBoot(boot);
+        _bootState = 'ready';
+        notifyBootStage('ready', '故事已就绪');
+        setTimeout(function () { notifyBootStage('ready', ''); }, 400);
       }).catch(e => { console.warn('[tf_story][boot] playChapterOpening failed', e); });
     });
   }
 
-  // openingDone：reset/uninitialized 都为 true（开场白已播），resumption 也为 true（直接用历史消息）
-  const finalBoot = { status: 'ready', stage: 'ready', chatId, openedAt: Date.now(), openingDone: true, sessionType: sessionStage, restored, rebuilt, readyAt: Date.now() };
-  writeBoot(finalBoot);
-  _bootState = 'ready';
-  notifyBootStage('ready', '故事已就绪');
-  setTimeout(function () { notifyBootStage('ready', ''); }, 400);
+  // openingDone：reset/uninitialized 等按钮点击后再写（在 playChapterOpening.then 里）
+  // resumption_start 直接写（开场白已由历史消息承载，openingDone 在上一轮已设为 true 或直接跳到这里）
+  if (sessionStage === 'resumption_start') {
+    const finalBoot = { status: 'ready', stage: 'ready', chatId, openedAt: Date.now(), openingDone: true, sessionType: sessionStage, restored, rebuilt, readyAt: Date.now() };
+    writeBoot(finalBoot);
+    _bootState = 'ready';
+    notifyBootStage('ready', '故事已就绪');
+    setTimeout(function () { notifyBootStage('ready', ''); }, 400);
+  }
 
   console.log('[tf_story][boot] DONE sessionType=' + sessionStage + ' restored=' + restored + ' rebuilt=' + rebuilt);
 
@@ -1503,6 +1537,21 @@ async function advanceManually(rawText) {
 _safeOn('input:beforeSend', async (event) => {
   if (cfgGet('enabled', true) === false) return;
   const text = String((event && event.text) || '').trim();
+  (function clearInputNow() {
+    try {
+      const candidates = document.querySelectorAll('textarea, [contenteditable="true"], input[type="text"]');
+      let cleared = false;
+      candidates.forEach(el => {
+        if (el.offsetParent !== null && !el.readOnly) {
+          if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') { el.value = ''; cleared = true; }
+          else { el.innerText = ''; el.textContent = ''; cleared = true; }
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      });
+      if (cleared) console.log('[tmm] input cleared (sync)');
+    } catch (e) { /* ignore */ }
+  })();
 
   const boot = readBoot();
   const tmm = readChatVar('tmm');

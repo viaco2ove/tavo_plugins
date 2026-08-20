@@ -701,6 +701,22 @@ tavo.plugin.on('input:beforeSend', async (event) => {
   if (!cfg.enabled) return;
   if (getOrchestration() === 'system') return; // 跟随系统：不接管
 
+  (function clearInputNow() {
+    try {
+      const candidates = document.querySelectorAll('textarea, [contenteditable="true"], input[type="text"]');
+      let cleared = false;
+      candidates.forEach(el => {
+        if (el.offsetParent !== null && !el.readOnly) {
+          if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') { el.value = ''; cleared = true; }
+          else { el.innerText = ''; el.textContent = ''; cleared = true; }
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      });
+      if (cleared) console.log('[tmm] input cleared (sync)');
+    } catch (e) { /* ignore */ }
+  })();
+
   // 【关键】boot 未就绪时必须让出，让 event_manager 的 playChapterOpening 先播完开场白
   // 否则 input:beforeSend 会 cancel 原生流程，但编排还没跑起来，导致 Tavo 原生生成劫持
   const boot = readTfBoot();
