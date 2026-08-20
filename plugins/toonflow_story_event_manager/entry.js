@@ -892,6 +892,7 @@ async function story_start_init(boot) {
           // 注意：openingDone 不能用于判断开场白是否完成，如果false ，生成的开场白会被删除
           boot.openingDone = true;
           boot.status ='ready';
+          console.log('[tf_story] message:added！！！status{}, openingDone{}",', boot.status, boot.openingDone);
     } catch (e) {}
 }
 
@@ -1173,7 +1174,7 @@ _safeOn('message:added', async (event) => {
   if (!msg || msg.role !== 'assistant') return;
   const boot = readBoot();
   // boot ready 且开场白已播 -> 正常消息
-  console.log('[tf_story] message:added！！！', boot.status,boot.openingDone);
+  console.log('[tf_story] message:added！！！status{}, openingDone{}",', boot.status, boot.openingDone);
   if (boot.status === 'ready' && boot.openingDone === false) return;
   // 否则视为官方劫持 -> 删除
   // 但要小心：我们自己的 playChapterOpening 也会 append assistant 消息，
