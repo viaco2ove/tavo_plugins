@@ -322,6 +322,19 @@ tavo.plugin.onSidebarAction('tf-sprite-toggle', () => {
   } catch(e) { tavo.utils.toast('切换失败'); }
 });
 
+// ===== 对外 API（供其他插件主动切换立绘） =====
+window.tfSpriteAPI = {
+  showSprite: (fgPath, speakerName) => {
+    sl('[tfSpriteAPI] showSprite fg=' + fgPath + ' speaker=' + speakerName);
+    updateSprite(speakerName || null);
+  },
+  hideSprite: () => {
+    sl('[tfSpriteAPI] hideSprite');
+    updateSprite(null);
+  }
+};
+sl('[sprite] tfSpriteAPI registered');
+
 // ===== 初始化 =====
 sl('[sprite] init in 800ms...');
 setTimeout(() => {
