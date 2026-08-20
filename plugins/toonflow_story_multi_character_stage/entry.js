@@ -201,6 +201,47 @@ tavo.plugin.on('chat:opened', async () => {
 });
 
 // 自由模式切换时同步 overrideScenario
+// 开场白写完后自动触发 NPC 编排（不等用户输入）
+function triggerAutoOrchestrate() {
+  (async () => {
+    try {
+      tavo.set(ORCH_FLAG, true, 'chat');
+      const orchPrompt = await buildOrchestrationPrompt('');
+      console.log('[' + ts() + '] [mcs] auto 阶段一 prompt len=' + orchPrompt.length);
+      const llmMode = (window.tf_llm && window.tf_llm.callDirect) ? '接管' : 'tavo原生';
+      let orchRaw;
+      try {
+        orchRaw = llmMode === '接管'
+          ? await window.tf_llm.callDirect(orchPrompt, { maxCompletionTokens: 600 })
+          : await tavo.generate(orchPrompt, { context: false, settings: { temperature: 0.3, maxCompletionTokens: 600 } });
+      } catch(e) { console.error('[' + ts() + '] [mcs] auto 阶段一异常:', e.message); tavo.set(ORCH_FLAG, false, 'chat'); return; }
+      const cleaned = (orchRaw||'').replace(/<thinking>[\s\S]*?<\/thinking>/gi,'').trim();
+      let speaker='旁白', roleType='narrator', motive='', eventSummary='';
+      try {
+        const fence = cleaned.match(/```json\s*([\s\S]*?)```/);
+        const jsonText = fence ? fence[1].trim() : cleaned;
+        const obj = JSON.parse(jsonText);
+        speaker = obj.speaker || '旁白'; roleType = obj.role_type || 'narrator';
+        motive = obj.motive || ''; eventSummary = obj.event_summary || '';
+      } catch(e) {}
+      const speakerPrompt = await buildSpeakerPrompt(speaker, roleType, motive, eventSummary);
+      const llm2 = (window.tf_llm && window.tf_llm.callDirect) ? '接管' : 'tavo原生';
+      let speakerRaw;
+      try {
+        speakerRaw = llm2 === '接管'
+          ? await window.tf_llm.callDirect(speakerPrompt, { maxCompletionTokens: 1500 })
+          : await tavo.generate(speakerPrompt, { context: false, settings: { maxCompletionTokens: 1500 } });
+      } catch(e) { console.error('[' + ts() + '] [mcs] auto 阶段二异常:', e.message); tavo.set(ORCH_FLAG, false, 'chat'); return; }
+      const content = (speakerRaw||'').replace(/<thinking>[\s\S]*?<\/thinking>/gi,'').replace(/^["']|["']$/g,'').trim();
+      const charId = await findCharacterId(speaker);
+      await tavo.message.append({ role: 'assistant', characterId: charId||undefined, characterName: speaker, content, hidden: false });
+      console.log('[' + ts() + '] [mcs] auto 角色消息已 append => ' + speaker + ':' + content.slice(0,30));
+    } catch(e) { console.error('[' + ts() + '] [mcs] auto 编排异常:', e); }
+    finally { try { tavo.set(ORCH_FLAG, false, 'chat'); } catch(e) {} }
+  })();
+}
+
+
 tavo.plugin.on('message:added', async () => {
   const cfg = getConfig();
   if (!cfg.enabled) return;

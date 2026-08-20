@@ -1,4 +1,25 @@
 // toonflow_story_event_manager - entry.js
+
+// ============================================================
+// 自建事件总线（tavo.plugin.emit 不存在，用 window 模拟）
+// window.tf_story_on(event, handler)  监听
+// window.tf_story_emit(event, data)   触发
+// ============================================================
+(function() {
+  var _handlers = {};
+  window.tf_story_on = function(event, handler) {
+    if (!_handlers[event]) _handlers[event] = [];
+    _handlers[event].push(handler);
+  };
+  window.tf_story_emit = function(event, data) {
+    console.log('[tf_story][event] emit ' + event, data);
+    var list = _handlers[event] || [];
+    list.forEach(function(fn) {
+      try { fn(data); } catch(e) { console.warn('[tf_story][event] handler error', e); }
+    });
+  };
+})();
+
 // 故事信息面板 + 事件管理 + 故事编辑器 + 编排联动
 // + 章节结局判定器 + 事件进度追踪 + 自由模式（完全对齐 Toonflow-game）
 //
@@ -920,15 +941,10 @@ async function playChapterOpening(boot) {
   }
 
   console.log('[tf_story] ─── 开场白流程-通知发言器 ──────────────────────────');
-  // 2. 通知发言器：谁说、说什么
-  await tavo.message.append({
-    role: 'assistant',
-    characterName: role,
-    content: text,
-    hidden: false,
-  });
+  // 委托发言插件处理：设置标记，speaker generation:prepare 会拦截并生成台词+语音
+  tavo.set('tf_story.opening', { pending: true, role: role, text: text }, 'chat');
 
-  // 3. 返回播了几条（其他事情发言器自己决定）
+  // 3. 返回播了几条（speaker 插件 append 后才算）
   return 1;
 }
 async function getCurrChapter(){

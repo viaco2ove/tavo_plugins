@@ -2004,3 +2004,4 @@ triggerSlash('/send Hello World | /trigger')
 <Callout type="info" title="⏳ 持续更新中">
 TavoJS API 现在还处于早期的 beta 阶段，我们仍在持续建设中，如果你有疑问或好的想法，欢迎到社区中进行反馈。
 </Callout>
+ 
