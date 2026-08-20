@@ -685,11 +685,29 @@ async function buildSpeakerPrompt(speaker, roleType, motive, eventSummary, evDig
   return lines;
 }
 
+// 读取 tf_story boot 状态（event_manager 维护）
+function readTfBoot() {
+  try {
+    let v = tavo.get('tf_story.boot');
+    let guard = 0;
+    while (v && typeof v === 'object' && v.found !== undefined && 'value' in v && guard < 5) { v = v.value; guard++; }
+    return v || {};
+  } catch (e) { return {}; }
+}
+
 // 编排主流程：handler 同步 cancel → 后台 append 用户消息 + 生成 + append 角色消息
 tavo.plugin.on('input:beforeSend', async (event) => {
   const cfg = getConfig();
   if (!cfg.enabled) return;
   if (getOrchestration() === 'system') return; // 跟随系统：不接管
+
+  // 【关键】boot 未就绪时必须让出，让 event_manager 的 playChapterOpening 先播完开场白
+  // 否则 input:beforeSend 会 cancel 原生流程，但编排还没跑起来，导致 Tavo 原生生成劫持
+  const boot = readTfBoot();
+  if (boot.status !== 'ready') {
+    console.log('[' + ts() + '] 🎭 [mcs] 让出：boot.status=' + boot.status + ' (等待 boot 完成)');
+    return;
+  }
 
   // 指令类前缀由 memory-manager / event-manager 等指令插件独占处理；mcs 不应抢先 cancel
   // 三种 intent 模式（读 tf_story.edit.intentMode，由 tmmIntent.getMode() 暴露）：
