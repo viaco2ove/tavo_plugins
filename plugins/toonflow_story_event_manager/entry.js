@@ -6,11 +6,16 @@
 // window.tf_story_emit(event, data)   触发
 // ============================================================
 (function() {
+  console.log('[_handlers] add start 1');
   var _handlers = {};
+
+  console.log('[_handlers] add  window.tf_story_on');
   window.tf_story_on = function(event, handler) {
+    console.log('[_handlers]  window.tf_story_on');
     if (!_handlers[event]) _handlers[event] = [];
     _handlers[event].push(handler);
   };
+  console.log('[_handlers] add   window.tf_story_emit');
   window.tf_story_emit = function(event, data) {
     console.log('[tf_story][event] emit ' + event, data);
     var list = _handlers[event] || [];
@@ -19,6 +24,9 @@
     });
   };
 })();
+if (typeof window !== 'undefined') {
+  console.log(window.tf_story_on);
+}
 
 // 故事信息面板 + 事件管理 + 故事编辑器 + 编排联动
 // + 章节结局判定器 + 事件进度追踪 + 自由模式（完全对齐 Toonflow-game）
@@ -942,8 +950,8 @@ async function playChapterOpening(boot) {
 
   console.log('[tf_story] ─── 开场白流程-通知发言器 ──────────────────────────');
   // 委托发言插件处理：window.tf_story_emit 触发，speaker 用 window.tf_story_on 监听
-  window.tf_story_emit('opening', { role: role, text: text });
-
+  tf_story_emit('opening', { role: role, text: text });
+  console.log('[tf_story]  sent window.tf_story_emit  opening',window.tf_story_emit);
   // 3. 返回播了几条（speaker 插件 append 后才算）
   return 1;
 }

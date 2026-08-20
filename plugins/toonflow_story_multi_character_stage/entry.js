@@ -241,9 +241,11 @@ function triggerAutoOrchestrate() {
   })();
 }
 // 监听 speaker 发的 auto_orchestrate 事件，开场白写完后自动触发 NPC 编排
-window.tf_story_on('auto_orchestrate', function() {
+tavo.plugin.on('chat:opened', function() {
+  window.tf_story_on('auto_orchestrate', function() {
   console.log('[' + ts() + '] [mcs] 收到 auto_orchestrate 事件，触发自动编排');
   triggerAutoOrchestrate();
+  });
 });
 
 

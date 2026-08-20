@@ -146,7 +146,9 @@ async function buildRecentDialogue(n) {
 }
 
 // 方案1：window 事件总线监听开场白委托（event_manager 在 playChapterOpening 里调用 tf_story_emit）
-window.tf_story_on('opening', async function(data) {
+tavo.plugin.on('chat:opened', function() {
+  window.tf_story_on('opening', async function(data) {
+  console.log('[window.tf_story_on] [tf_speaker] opening');
   var cfg;
   try { cfg = getConfig(); } catch(e) { return; }
   if (!cfg.enabled) return;
@@ -183,6 +185,7 @@ window.tf_story_on('opening', async function(data) {
     // 语音播放后触发下一轮 NPC 编排（不等用户）
     if (window.tf_story_emit) window.tf_story_emit('auto_orchestrate', {});
   } catch(e) { console.warn('[tf_speaker][opening] 写入开场白失败', e); }
+  });
 });
 
 
