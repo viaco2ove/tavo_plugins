@@ -892,6 +892,8 @@ async function story_start_init(boot) {
           // 注意：openingDone 不能用于判断开场白是否完成，如果false ，生成的开场白会被删除
           boot.openingDone = true;
           boot.status ='ready';
+          // 写到 boot 对应的tavo 变量
+          writeBoot(boot);
           console.log('[tf_story] message:added！！！status{}, openingDone{}",', boot.status, boot.openingDone);
     } catch (e) {}
 }
@@ -900,7 +902,7 @@ async function story_start_init(boot) {
 async function playChapterOpening(boot) {
   console.log('[tf_story] ─── 开场白流程 ──────────────────────────');
   // 1. 找到当前章节的开场白配置
-  const ch = getCurrChapter();
+  const ch = await getCurrChapter();
   console.log('[tf_story] │ ✅ 找到当前章节的开场白配置 ch:', ch);
   if (!ch) return 0;
 
