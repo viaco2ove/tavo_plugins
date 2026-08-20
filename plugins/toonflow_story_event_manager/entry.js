@@ -22,6 +22,138 @@ try {
   console.error('[tf_story] entry log failed', e);
 }
 
+// =========================================================================
+// 供其他插件调用的 API（暴露到 window）
+// =========================================================================
+// 完整章节+事件判定入口（mcs 编排前调用，同步返回章节状态 + 更新事件进度）
+// 对齐 judgeAndAdvance 逻辑，但不 append 消息（mcs 自己 append）
+// 返回：{ chapterStatus, pendingChapterId, storyCompleted, freeMode, progress }
+function tfStoryJudge_checkAndAdvance(messageContext) {
+  try {
+    const cfg = cfgGet('enabled', true);
+    if (cfg === false) return { chapterStatus: 'continue' };
+
+    const progress = getProgress();
+    if (progress.storyCompleted || progress.sessionFreeMode) {
+      return {
+        chapterStatus: progress.storyCompleted ? 'completed' : 'free_mode',
+        pendingChapterId: progress.pendingChapterId || null,
+        storyCompleted: progress.storyCompleted,
+        freeMode: progress.sessionFreeMode,
+        progress: { currentChapterIndex: progress.currentChapterIndex, currentPhase: progress.currentPhase, currentEvent: progress.currentEvent, phases: progress.phases },
+      };
+    }
+
+    const edit = getEdit();
+    const chapters = edit.chapters || [];
+    if (!chapters.length) return { chapterStatus: 'continue' };
+
+    const idx = progress.currentChapterIndex || 0;
+    const chapter = chapters[idx];
+    if (!chapter) return { chapterStatus: 'completed' };
+
+    // 解析 phases（首次进入新章节时）
+    let prog = Object.assign({}, progress);
+    if (!prog.phases || prog.chaptersKey !== chapters.length + ':' + idx) {
+      prog.phases = parseProgress(chapter.content || '');
+      prog.currentPhase = 0;
+      prog.currentEvent = 0;
+      prog.chaptersKey = chapters.length + ':' + idx;
+    }
+
+    // 快速同步到 tf_progress（供编排 prompt 读取最新进度）
+    setProgress(prog);
+
+    // pendingChapterId 检测（章节切换中）
+    if (prog.pendingChapterId) {
+      const nextIdx = prog.pendingChapterId;
+      return {
+        chapterStatus: 'chapter_switching',
+        pendingChapterId: nextIdx,
+        storyCompleted: nextIdx >= chapters.length,
+        freeMode: nextIdx >= chapters.length && cfgGet('autoFreeMode', true) !== false,
+        progress: { currentChapterIndex: nextIdx, currentPhase: 0, currentEvent: 0, phases: prog.phases },
+        message: '章节切换中，将在下一轮生效',
+      };
+    }
+
+    // 章节结局条件快速检查（无条件 = 不判）
+    const cond = chapter.successCondition;
+    const hasCondition = cond && String(cond).trim();
+
+    // 返回当前状态供编排使用
+    return {
+      chapterStatus: 'active',
+      pendingChapterId: null,
+      storyCompleted: false,
+      freeMode: false,
+      progress: { currentChapterIndex: prog.currentChapterIndex, currentPhase: prog.currentPhase, currentEvent: prog.currentEvent, phases: prog.phases },
+      chapterInfo: {
+        title: chapter.title || '未命名章节',
+        condition: hasCondition ? cond.slice(0, 100) : null,
+      },
+    };
+  } catch (e) {
+    console.warn('[tf_story][mcs_api] checkAndAdvance error', e);
+    return { chapterStatus: 'error', error: e.message };
+  }
+}
+
+// 检查章节完成条件是否满足（编排后调用，决定是否需要截断/提示）
+// 返回 { done, result, pendingChapterId, message }
+function tfStoryJudge_checkChapterDone(messageContext) {
+  try {
+    const progress = getProgress();
+    if (progress.storyCompleted || progress.sessionFreeMode) {
+      return { done: progress.storyCompleted, result: progress.storyCompleted ? 'completed' : 'free_mode', pendingChapterId: null, message: '' };
+    }
+    const edit = getEdit();
+    const chapters = edit.chapters || [];
+    const idx = progress.currentChapterIndex || 0;
+    const chapter = chapters[idx];
+    if (!chapter) return { done: true, result: 'completed', pendingChapterId: null, message: '' };
+    const cond = chapter.successCondition;
+    if (!cond || !String(cond).trim()) return { done: false, result: 'continue', pendingChapterId: null, message: '' };
+
+    // 简单启发式判断（与 evaluateChapterOutcome 一致）
+    const ctx = {
+      latestMessage: messageContext.content || '',
+      allMessages: messageContext.allMessages || '',
+      chapterTitle: chapter.title || '',
+      chapterContent: chapter.content || '',
+      messageCount: messageContext.messageCount || 0,
+      memoryItems: [],
+    };
+    const matched = evalFreeText(cond, ctx);
+    if (!matched) return { done: false, result: 'continue', pendingChapterId: null, message: '' };
+
+    // 章节完成！
+    const nextIdx = idx + 1;
+    if (!progress.completedChapters.includes(idx)) {
+      progress.completedChapters = [...(progress.completedChapters||[]), idx];
+    }
+    if (nextIdx >= chapters.length) {
+      progress.storyCompleted = true;
+      progress.sessionFreeMode = (cfgGet('autoFreeMode', true) !== false);
+      progress.currentChapterIndex = nextIdx;
+      progress.currentPhase = 0;
+      progress.currentEvent = 0;
+      progress.updatedAt = Date.now();
+      setProgress(progress);
+      return { done: true, result: 'completed', pendingChapterId: null, message: '故事已完结！' + (progress.sessionFreeMode ? ' 进入自由模式' : '') };
+    } else {
+      progress.pendingChapterId = nextIdx;
+      progress.updatedAt = Date.now();
+      setProgress(progress);
+      const nextCh = chapters[nextIdx];
+      return { done: true, result: 'success', pendingChapterId: nextIdx, message: '第 ' + (idx+1) + ' 章完成！下一章将在下一轮切换' };
+    }
+  } catch (e) {
+    console.warn('[tf_story][mcs_api] checkChapterDone error', e);
+    return { done: false, result: 'error', error: e.message };
+  }
+}
+
 // hook 注册用 try/catch 包裹：抓 Tavo API 抛错（之前没错误日志 = 静默死，导致 message:added 监听没注册成功）
 const _safeOn = (name, fn) => {
   try {
@@ -392,6 +524,24 @@ async function judgeAndAdvance(messageContext) {
 
   const idx = progress.currentChapterIndex || 0;
   const chapter = chapters[idx];
+  const phases = progress.phases || [];
+  const phaseIdx = Math.max(0, progress.currentPhase || 0);
+  const eventIdx = Math.max(0, progress.currentEvent || 0);
+  const curPhase = phases[phaseIdx] || null;
+  const curEvent = (curPhase && curPhase.events) ? (curPhase.events[eventIdx] || null) : null;
+
+  console.log('[tf_story] ┌─── judgeAndAdvance 入口 ─────────────────');
+  console.log('[tf_story] │ 📝 用户消息: ' + JSON.stringify((messageContext.content||'').slice(0,100)));
+  console.log('[tf_story] │ 📚 章节: ' + (idx+1) + '/' + chapters.length + (chapter ? '「' + chapter.title + '」' : '(无)'));
+  console.log('[tf_story] │ 📋 完成条件: ' + (chapter && chapter.successCondition ? chapter.successCondition.slice(0,80) : '(无)'));
+  console.log('[tf_story] │ 📊 事件进度: Phase=' + phaseIdx + '(' + (curPhase?curPhase.name:'无') + ')'
+    + ' Event=' + eventIdx + '/' + ((curPhase&&curPhase.events)?curPhase.events.length:0)
+    + '(' + (curEvent?curEvent.name:'无') + ')');
+  console.log('[tf_story] │ 🏷  phases: ' + JSON.stringify(phases.map(p=>({n:p.name,e:p.events.map(e=>e.name||'')}))));
+  console.log('[tf_story] │ 🔖 pendingChapterId=' + progress.pendingChapterId
+    + ' failedAttempts=' + progress.failedAttempts
+    + ' completedChapters=' + JSON.stringify(progress.completedChapters||[]));
+  console.log('[tf_story] └─────────────────────────────────────────');
   console.log('[tf_story][judge] idx=' + idx + ' chapters.len=' + chapters.length + ' chapter.title=' + (chapter ? chapter.title : 'NULL'));
   if (!chapter) {
     // 越界：所有章节完成
@@ -421,7 +571,8 @@ async function judgeAndAdvance(messageContext) {
     const prevChapterId = progress.currentChapterIndex;
     const prevChapter = chapters[prevChapterId];
     const nextIdx = progress.pendingChapterId;
-    console.log('[tf_story][judge] pendingChapterId detected: prev=' + prevChapterId + ' next=' + nextIdx);
+    console.log('[tf_story] ⏳ [pendingChapterId] 章节切换: ' + (prevChapterId+1) + '「' + (prevChapter?prevChapter.title:'?') + '」'
+      + ' → ' + (nextIdx+1) + '/' + chapters.length);
     progress.pendingChapterId = null; // 先清除标记
     if (nextIdx >= chapters.length) {
       // 故事完结
@@ -1005,8 +1156,59 @@ _safeOn('message:added', async (event) => {
   try {
     let count = 0;
     try { count = await tavo.message.count(); } catch (e) {}
-    console.log('[tf_story][msg:added] ★ 触发 judgeAndAdvance count=' + count);
+
+    // ===== 全链路 TRACE LOG =====
+    const progress = getProgress();
+    const edit = getEdit();
+    const chapters = edit.chapters || [];
+    const idx = progress.currentChapterIndex || 0;
+    const chapter = chapters[idx] || null;
+    const phases = progress.phases || [];
+    const phaseIdx = Math.max(0, progress.currentPhase || 0);
+    const eventIdx = Math.max(0, progress.currentEvent || 0);
+    const curPhase = phases[phaseIdx] || null;
+    const curEvent = (curPhase && curPhase.events) ? (curPhase.events[eventIdx] || null) : null;
+    const nextEvent = (curPhase && curPhase.events) ? (curPhase.events[eventIdx + 1] || null) : null;
+
+    console.log('══════════════════════════════════════════');
+    console.log('[tf_story] ┌─── 全链路 TRACE ───────────────────');
+    console.log('[tf_story] │ 📝 用户输入: ' + JSON.stringify((msg.content||'').slice(0,80)));
+    console.log('[tf_story] │ 📚 章节状态: 第' + (idx+1) + '/' + chapters.length + '章'
+      + (chapter ? '「' + chapter.title + '」' : '(无)'));
+    if (chapter && chapter.successCondition) {
+      console.log('[tf_story] │ 📋 完成条件: ' + chapter.successCondition.slice(0,100));
+    }
+    console.log('[tf_story] │ 📊 事件进度: Phase=' + phaseIdx + '(' + (curPhase?curPhase.name:'无') + ')'
+      + ' / Event=' + eventIdx + '(' + (curEvent?curEvent.name:'无') + ')'
+      + ' / next=' + (nextEvent?nextEvent.name:'无'));
+    console.log('[tf_story] │    phases总数=' + phases.length
+      + ' completedChapters=[' + (progress.completedChapters||[]).map(i=>i+1).join(',') + ']'
+      + ' pendingChapterId=' + progress.pendingChapterId
+      + ' storyCompleted=' + progress.storyCompleted
+      + ' freeMode=' + progress.sessionFreeMode);
+    console.log('[tf_story] │ 🔄 触发: judgeAndAdvance (messageCount=' + count + ')');
+    console.log('[tf_story] └─────────────────────────────────────');
+
     await judgeAndAdvance({ content: msg.content || '', messageCount: count });
+
+    // ===== judgeAndAdvance 完成后 TRACE =====
+    const progressAfter = getProgress();
+    const phasesAfter = progressAfter.phases || [];
+    const phaseIdxAfter = Math.max(0, progressAfter.currentPhase || 0);
+    const eventIdxAfter = Math.max(0, progressAfter.currentEvent || 0);
+    const curPhaseAfter = phasesAfter[phaseIdxAfter] || null;
+    const curEventAfter = (curPhaseAfter && curPhaseAfter.events) ? (curPhaseAfter.events[eventIdxAfter] || null) : null;
+    console.log('══════════════════════════════════════════');
+    console.log('[tf_story] ┌─── judgeAndAdvance 结果 ─────────────');
+    console.log('[tf_story] │ ✅ 章节: ' + (idx+1) + '/' + chapters.length
+      + (progressAfter.pendingChapterId ? ' → pending切第' + (progressAfter.pendingChapterId+1) + '章' : '')
+      + (progressAfter.storyCompleted ? ' 故事完结!' : ''));
+    console.log('[tf_story] │ 📊 事件进度(后): Phase=' + phaseIdxAfter + '(' + (curPhaseAfter?curPhaseAfter.name:'无') + ')'
+      + ' / Event=' + eventIdxAfter + '(' + (curEventAfter?curEventAfter.name:'无') + ')');
+    console.log('[tf_story] │    pendingChapterId=' + progressAfter.pendingChapterId
+      + ' failedAttempts=' + progressAfter.failedAttempts);
+    console.log('[tf_story] └─────────────────────────────────────');
+    console.log('══════════════════════════════════════════');
   } catch (e) {
     console.warn('[tf_story] judge failed', e);
   }
@@ -1274,7 +1476,10 @@ async function evaluateEventProgressByAi(chapter, progress, latestMessageContent
     const fence = cleaned.match(/```(?:json)?\s*([\s\S]*?)```/);
     const jsonText = fence ? fence[1].trim() : cleaned;
     const obj = JSON.parse(jsonText);
-    console.log('[tf_story][event_progress] LLM 结果: ended=' + obj.ended + ' status=' + obj.event_status + ' reason=' + (obj.reason || '').slice(0, 60));
+    console.log('[tf_story] 🤖 [event_progress] LLM调用 → ended=' + obj.ended + ' status=' + obj.event_status);
+    console.log('[tf_story]    reason=' + (obj.reason || '').slice(0, 100));
+    console.log('[tf_story]    progress_summary=' + (obj.progress_summary || '').slice(0, 80));
+    console.log('[tf_story]    progress_facts=' + JSON.stringify((obj.progress_facts||[]).slice(0,3)));
     return {
       ended: !!(obj.ended),
       event_status: obj.event_status || 'active',
@@ -1523,7 +1728,12 @@ async function evaluateChapterOutcomeByAi(chapter, progress, latestMessageConten
     const fence = cleaned.match(/```(?:json)?\s*([\s\S]*?)```/);
     const jsonText = fence ? fence[1].trim() : cleaned;
     const obj = JSON.parse(jsonText);
-    console.log('[tf_story][chapter_judge] LLM 结果: result=' + obj.result + ' reason=' + (obj.reason || '').slice(0, 80));
+    console.log('[tf_story] 🤖 [chapter_judge] LLM调用 → result=' + obj.result + ' matched_rule=' + (obj.matched_rule||'null'));
+    console.log('[tf_story]    reason=' + (obj.reason || '').slice(0, 120));
+    if (obj.result === 'guide') {
+      console.log('[tf_story]    guide_summary=' + (obj.guide_summary || '').slice(0, 80));
+      console.log('[tf_story]    guide_facts=' + JSON.stringify((obj.guide_facts||[]).slice(0,3)));
+    }
     return {
       result: obj.result || 'continue',
       matched_rule: obj.matched_rule || null,
@@ -1584,3 +1794,21 @@ _safeOnSide('tf-story-reset', async () => {
   setProgress(p);
   tavo.utils.toast('故事进度已重置');
 });
+
+// =========================================================================
+// 对外 API（供其他插件如 multi_character_stage 调用）
+// =========================================================================
+(function () {
+  try {
+    if (typeof window === 'undefined') return;
+    // 编排前调用：快速返回章节+事件状态，同步 tf_progress 到最新
+    window.tfStoryJudge = {
+      checkAndAdvance: tfStoryJudge_checkAndAdvance,
+      // 编排后调用：判断章节是否完成
+      checkChapterDone: tfStoryJudge_checkChapterDone,
+    };
+    console.log('[tf_story] ✅ window.tfStoryJudge 已注册');
+  } catch (e) {
+    console.warn('[tf_story] window.tfStoryJudge 注册失败', e);
+  }
+})();

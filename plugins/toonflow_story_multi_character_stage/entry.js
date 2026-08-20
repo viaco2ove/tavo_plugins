@@ -355,6 +355,19 @@ async function buildOrchestrationPrompt(userInput) {
 
   const freeMode = (readChatVar('tf_progress') || {}).sessionFreeMode;
 
+  // 从 event_manager 获取章节+事件状态（编排前同步）
+  let storyStatus = null;
+  try {
+    if (window.tfStoryJudge && typeof window.tfStoryJudge.checkAndAdvance === 'function') {
+      storyStatus = window.tfStoryJudge.checkAndAdvance({
+        content: userInput || '',
+        messageCount: recentDialogue.length,
+      });
+    }
+  } catch (e) {
+    console.warn('[' + ts() + '] 🎭 [mcs] tfStoryJudge.checkAndAdvance failed', e);
+  }
+
   // 世界知识（常驻条目）
   const worldKb = await getWorldbookInject();
 
@@ -607,7 +620,29 @@ tavo.plugin.on('input:beforeSend', async (event) => {
 
       // 2. 阶段一：编排器 → {speaker, role_type, motive, event_summary, evDigest, nextEvInfo}
       const { prompt: orchPrompt, evDigest, nextEvInfo } = await buildOrchestrationPrompt(userText);
-      console.log('[' + ts() + '] 🎭 [mcs] 阶段一 prompt len=' + orchPrompt.length + ' evDigest=' + JSON.stringify(evDigest || {}).slice(0,100));
+
+      // ===== 全链路编排 TRACE =====
+      console.log('══════════════════════════════════════════════════');
+      console.log('[' + ts() + '] 🎭 [mcs] ┌─── 编排全链路 TRACE ──────────────────────');
+      console.log('[' + ts() + '] 🎭 [mcs] │ 📝 用户输入: ' + JSON.stringify(userText.slice(0,80)));
+      console.log('[' + ts() + '] 🎭 [mcs] │ 🎯 意图: ' + (intentResult && intentResult.intent ? intentResult.intent : 'normal')
+        + (intentResult && intentResult.confidence ? ' conf=' + intentResult.confidence : ''));
+      if (evDigest) {
+        console.log('[' + ts() + '] 🎭 [mcs] │ 📚 章节: ' + (evDigest.chapterTitle||'?') + ' 章节idx=' + evDigest.chapterIdx);
+        console.log('[' + ts() + '] 🎭 [mcs] │ 📊 事件进度: phase=' + evDigest.phaseName + '(' + evDigest.phaseIndex + ')'
+          + ' event=' + evDigest.eventName + '(' + evDigest.eventIndex + ')'
+          + ' state=' + evDigest.state + ' userPhase=' + evDigest.isUserPhase);
+        if (evDigest.recentFacts && evDigest.recentFacts.length) {
+          console.log('[' + ts() + '] 🎭 [mcs] │ 🔖 已完成事件: ' + JSON.stringify(evDigest.recentFacts.slice(0,3)));
+        }
+        if (evDigest.window) {
+          console.log('[' + ts() + '] 🎭 [mcs] │ 📖 事件背景: ' + evDigest.window.slice(0,100));
+        }
+      }
+      if (nextEvInfo) {
+        console.log('[' + ts() + '] 🎭 [mcs] │ ⏭ 下一事件: ' + nextEvInfo.name + '(' + nextEvInfo.kind + ')');
+      }
+      console.log('[' + ts() + '] 🎭 [mcs] │ 📄 阶段一prompt长: ' + orchPrompt.length + '字符');
       // 打印当前章节/事件/进度（对齐 toonflow 编排调试信息）
       try {
         const p = readChatVar('tf_progress') || {};
@@ -676,6 +711,10 @@ tavo.plugin.on('input:beforeSend', async (event) => {
         console.log('[' + ts() + '] 🎭 [mcs] 阶段一解析 → speaker=' + speaker + ' role_type=' + roleType
           + ' motive=' + motive + ' await_user=' + awaitUser + ' trigger_memory_agent=' + triggerMemoryAgent
           + ' event_adjust_mode=' + eventAdjustMode + ' event_status=' + eventStatus);
+      console.log('[' + ts() + '] 🎭 [mcs] │ 🎤 编排结果: speaker="' + speaker + '" role_type="' + roleType + '"');
+      console.log('[' + ts() + '] 🎭 [mcs] │ 💡 发言动机: ' + (motive || '(无)').slice(0,80));
+      console.log('[' + ts() + '] 🎭 [mcs] │ 📋 事件摘要: ' + (eventSummary || '(无)').slice(0,80));
+      console.log('[' + ts() + '] 🎭 [mcs] │ ⚡ await_user=' + awaitUser + ' trigger_memory_agent=' + triggerMemoryAgent);
       } catch (e) {
         // fallback：正则抽字段
         const m = cleaned.match(/"speaker"\s*:\s*"([^"]+)"/);
@@ -742,7 +781,13 @@ tavo.plugin.on('input:beforeSend', async (event) => {
       } else {
         await tavo.message.append({ role: 'assistant', characterId: charId || undefined, characterName: speaker, content: content, hidden: false });
       }
-      console.log('[' + ts() + '] ✅ [mcs] 角色消息已 append → speaker=' + speaker + ' charId=' + charId + ' content=' + content.slice(0, 50));
+      console.log('[' + ts() + '] ✅ [mcs] 角色消息已 append → speaker=' + speaker + ' charId=' + charId);
+      console.log('[' + ts() + '] 🎭 [mcs] │ 💬 台词: ' + JSON.stringify(content.slice(0, 80)));
+      if (motive) console.log('[' + ts() + '] 🎭 [mcs] │ 💡 动机: ' + motive.slice(0,60));
+      if (thinking) console.log('[' + ts() + '] 🎭 [mcs] │ 🧠 思考: ' + thinking.slice(0,80));
+      console.log('[' + ts() + '] 🎭 [mcs] │ ⚡ await_user=' + awaitUser + ' trigger_memory_agent=' + triggerMemoryAgent);
+      console.log('[' + ts() + '] 🎭 [mcs] └─────────────────────────────────────');
+      console.log('══════════════════════════════════════════════════');
 
       // 4c. trigger_memory_agent 处理（后台异步刷新记忆，对齐 Toonflow triggerMemoryAgent=true 语义）
       if (triggerMemoryAgent) {

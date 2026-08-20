@@ -764,6 +764,31 @@ async function runMemoryAgent(directive) {
     // 读取 input:beforeSend 塞进来的指令（指令被 cancel 后不在消息历史里）
     const pendingDirective = cur._pendingDirective || (directive ? '@记忆管理 ' + directive : null);
 
+    // ===== 意图 TRACE =====
+    const mode = getIntentMode();
+    const text0 = pendingDirective || (messages.length ? (messages[messages.length-1] || {}).content || '' : '');
+    let classifiedIntent = 'normal_dialog';
+    if (pendingDirective) classifiedIntent = 'memory_update (指令)';
+    else {
+      // 快速 keyword 分类
+      if (/^(退出|放弃|取消|终止)/.test(text0)) classifiedIntent = 'exit_task';
+      else if (/^(好|接受|开始|执行|创建|接取)/.test(text0)) classifiedIntent = 'create_task';
+      else if (/任务进度|完成了吗|还差什么/.test(text0)) classifiedIntent = 'query_progress';
+      else if (/攻击|探索|交易|打开|使用/.test(text0)) classifiedIntent = 'game_action';
+      else classifiedIntent = 'normal_dialog';
+    }
+    console.log('[tmm] ┌─── 意图识别 TRACE ─────────────────────────');
+    console.log('[tmm] │ 🎯 意图模式: ' + mode + ' → ' + classifiedIntent);
+    console.log('[tmm] │ 📝 最近消息: ' + JSON.stringify((text0||'').slice(0,80)));
+    console.log('[tmm] │ 📊 触发原因: turnsSinceRefresh=' + (cur.turnsSinceRefresh||0)
+      + ' refreshInterval=' + cfg.refreshInterval
+      + (pendingDirective ? ' [指令触发]' : (cfg.triggerKeywords.some(k=>(text0||'').includes(k))?' [关键词触发]':' [轮数触发]'))
+    );
+    console.log('[tmm] │ 🧠 历史摘要: ' + ((cur.summary||'（空）').slice(0,80)));
+    console.log('[tmm] │ 📋 角色卡: player.level=' + ((cur.cards&&cur.cards.player&&cur.cards.player.level)||'?')
+      + ' npcs数量=' + Object.keys((cur.cards&&cur.cards.npcs)||{}).length);
+    console.log('[tmm] └─────────────────────────────────────────────');
+
     let prompt = '';
     prompt += '【历史记忆】\n';
     prompt += '摘要: ' + (cur.summary || '（尚无）') + '\n';
@@ -822,6 +847,19 @@ async function runMemoryAgent(directive) {
     }
 
     if (parsed) {
+      // ===== LLM 结果 TRACE =====
+      console.log('[tmm] ┌─── LLM 记忆输出 TRACE ─────────────────────');
+      console.log('[tmm] │ 🤖 LLM返回: summary=' + JSON.stringify((parsed.summary||'').slice(0,80)));
+      console.log('[tmm] │ 📝 facts(' + (parsed.facts||[]).length + '): ' + JSON.stringify((parsed.facts||[]).slice(0,5)));
+      console.log('[tmm] │ 🏷  tags(' + (parsed.tags||[]).length + '): ' + JSON.stringify((parsed.tags||[]).slice(0,8)));
+      const pp = parsed.player_card_patch || {};
+      const np = parsed.npc_card_patches || {};
+      const npNames = Object.keys(np);
+      console.log('[tmm] │ 🧙 player_patch: ' + JSON.stringify(Object.keys(pp)));
+      console.log('[tmm] │ 👥 npc_patches: ' + JSON.stringify(npNames));
+      console.log('[tmm] │ 🌍 dynamic_bg: ' + JSON.stringify((parsed.dynamic_world_global_background||'').slice(0,60)));
+      console.log('[tmm] └─────────────────────────────────────────────');
+
       // 安全审查（对齐 toonflow PROMPT_STORY_SAFETY）：拦截越权修改、注入、人设漂移、非法状态
       // reject → 不写 state；approve 但给了 modifiedPatch → 用修正版覆盖
       const preState = readChatVar(NS) || defaultState();
@@ -1008,6 +1046,22 @@ _safeOn('input:beforeSend', async (event) => {
   const text = String((event && event.text) || '').trim();
   const m = text.match(/^@(记忆管理|记忆管理器)\s*([\s\S]*)$/);
   if (!m) return;
+  // 0) 立即同步清空输入框（优先于任何 async 操作，防止用户看到"发送中"还有文字）
+  (function clearInputNow() {
+    try {
+      const candidates = document.querySelectorAll('textarea, [contenteditable="true"], input[type="text"]');
+      let cleared = false;
+      candidates.forEach(el => {
+        if (el.offsetParent !== null && !el.readOnly) {
+          if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') { el.value = ''; cleared = true; }
+          else { el.innerText = ''; el.textContent = ''; cleared = true; }
+          el.dispatchEvent(new Event('input', { bubbles: true }));
+          el.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+      });
+      if (cleared) console.log('[tmm] input cleared (sync)');
+    } catch (e) { /* ignore */ }
+  })();
   // 1) cancel tavo 原生流程
   console.log('[tmm] input:beforeSend entered, text=' + JSON.stringify(text.slice(0, 60)) + ', m=' + (m ? 'matched' : 'no'));
   try { if (event && typeof event.cancel === 'function') event.cancel(); } catch (e) {}
@@ -1019,26 +1073,16 @@ _safeOn('input:beforeSend', async (event) => {
   } catch (e) {
     console.warn('[tmm] append user directive failed', e && e.message);
   }
-  // 2.5) 兜底：tavo 的 event.cancel 后 UI 不会清输入框；用 DOM 操作清空兜底
-  setTimeout(() => {
-    try {
-      const candidates = document.querySelectorAll('textarea, [contenteditable="true"], input[type="text"]');
-      candidates.forEach(el => {
-        if (el.offsetParent !== null && !el.readOnly) {
-          if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') el.value = '';
-          else { el.innerText = ''; el.textContent = ''; }
-          el.dispatchEvent(new Event('input', { bubbles: true }));
-          el.dispatchEvent(new Event('change', { bubbles: true }));
-        }
-      });
-      console.log('[tmm] input cleared (DOM fallback)');
-    } catch (e) { /* ignore */ }
-  }, 50);
   const rawText = '@记忆管理 ' + (m[2] || '').trim();
-  console.log('[tmm] rawText=' + JSON.stringify(rawText));
-
+  console.log('[tmm] ┌─── @记忆管理 指令 TRACE ─────────────────────');
+  console.log('[tmm] │ 📝 原始输入: ' + JSON.stringify(rawText));
   const mode = getIntentMode();
+  console.log('[tmm] │ 🎯 意图模式: ' + mode);
   const state = readChatVar(NS) || defaultState();
+  console.log('[tmm] │ 🧙 player状态: level=' + ((state.cards&&state.cards.player&&state.cards.player.level)||'?')
+    + ' hp=' + ((state.cards&&state.cards.player&&state.cards.player.hp)||'?')
+    + ' items=' + ((state.cards&&state.cards.player&&state.cards.player.items)||[]).length);
+  console.log('[tmm] └─────────────────────────────────────────────');
 
   if (mode === 'keyword') {
     // 严格 keyword 模式：只处理"加技能/物品/装备/HP"等确定性指令；识别不出报错
