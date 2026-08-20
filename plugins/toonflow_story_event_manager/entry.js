@@ -1163,7 +1163,7 @@ async function _retry(fn, label, maxTries) {
 // =========================================================================
 let _startBtnEl = null;
 
-function showStartButton(onStart) {
+function showStartButton(start_story) {
   hideStartButton(); // 防止重复
   // 隐藏 HTML 模板里的 boot 遮蔽层（避免和 start-overlay 叠加出现两层遮蔽）
   try { document.getElementById('tf-boot-overlay').style.display = 'none'; } catch (e) {}
@@ -1218,9 +1218,11 @@ function showStartButton(onStart) {
     // 淡出
     overlay.style.transition = 'opacity 0.5s ease';
     overlay.style.opacity = '0';
-    setTimeout(() => { hideStartButton(); if (onStart) onStart(); }, 500);
+    // setTimeout(() => { hideStartButton(); if (onStart) onStart(); }, 500);
+    setTimeout(() => { hideStartButton(); if (start_story) start_story(); }, 500);
   });
 }
+
 
 function hideStartButton() {
   if (_startBtnEl && _startBtnEl.parentNode) {
@@ -1304,21 +1306,30 @@ async function bootSequence() {
     // 非继聊：先显示遮蔽层 + 开始按钮，等用户点击后再触发开场白
     _bootState = 'waiting_start';
     notifyBootStage('waiting_start', '点击「开始」进入第一章');
-    showStartButton(function () {
-      console.log('[tf_story][boot] 用户点击开始，触发开场白…');
-      _bootState = 'opening';
-      notifyBootStage('opening', '开场白生成中…');
-      playChapterOpening().then(played => {
-        console.log('[tf_story][boot] playChapterOpening result=' + played);
-        // 开场白执行完毕后再标记 openingDone=true，防止提前返回
-        const boot = readBoot();
-        boot.openingDone = true;
-        writeBoot(boot);
-        _bootState = 'ready';
-        notifyBootStage('ready', '故事已就绪');
-        setTimeout(function () { notifyBootStage('ready', ''); }, 400);
-      }).catch(e => { console.warn('[tf_story][boot] playChapterOpening failed', e); });
-    });
+
+    setTimeout(() => {
+          // start_story fun
+          showStartButton(function () {
+            console.log('[tf_story][boot] 用户点击开始，触发开场白…');
+            _bootState = 'opening';
+            // notifyBootStage('opening', '开场白生成中…');
+            const boot = readBoot();
+            boot.openingDone = true;
+            writeBoot(boot);
+            _bootState = 'ready';
+            notifyBootStage('ready', '故事已就绪');
+            // setTimeout(function () { notifyBootStage('ready', ''); }, 400);
+            setTimeout(function () {
+               playChapterOpening().then(played => {
+               console.log('[tf_story][boot] playChapterOpening result=' + played);
+              // 开场白执行完毕后再标记 openingDone=true，防止提前返回
+             }).catch(e => { console.warn('[tf_story][boot] playChapterOpening failed', e); });
+            }, 400);
+
+          });
+
+      }, 500);
+
   }
 
   // openingDone：reset/uninitialized 等按钮点击后再写（在 playChapterOpening.then 里）
