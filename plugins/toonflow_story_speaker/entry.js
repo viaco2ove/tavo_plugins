@@ -145,6 +145,85 @@ async function buildRecentDialogue(n) {
   } catch (e) { return ''; }
 }
 
+// 开场白生成拦截（对齐你说的流程：发言插件 → 发言agent → 语音合成）
+// 当 event_manager 设置了 tf_story.opening.pending=true 时，接管本轮生成
+// 1. 用 openingText + openingRole 生成台词
+// 2. 写入消息列表（带角色名）
+// 3. 取消本轮 LLM 生成（event.cancel()）
+// 4. 触发语音播放（tavo.message.append 后 Tavo App 自动播放）
+tavo.plugin.on('generation:beforeGenerate', async (event) => {
+  const cfg = getConfig();
+  if (!cfg.enabled) return;
+  if (getOrchestration() === 'system') return;
+
+  // 读开场白待处理标记（event_manager 在 opening 状态设置）
+  let openingPending = false;
+  try {
+    let v = tavo.get('tf_story.opening', 'chat');
+    let guard = 0;
+    while (v && typeof v === 'object' && v.found !== undefined && 'value' in v && guard < 5) {
+      v = v.value; guard++;
+    }
+    if (v && typeof v === 'object' && v.pending === true) openingPending = true;
+  } catch (e) {}
+
+  if (!openingPending) return;
+  console.log('[tf_speaker][beforeGenerate] 开场白拦截，开始生成…');
+
+  // 清除标记
+  try { tavo.set('tf_story.opening', { pending: false }, 'chat'); } catch (e) {}
+
+  // 读取开场白内容
+  let openingRole = '旁白', openingText = '';
+  try {
+    const edit = readChatVar('tf_story.edit') || {};
+    const chapters = edit.chapters || [];
+    let prog = null;
+    try { prog = readChatVar('tf_progress'); } catch (e) {}
+    const idx = (prog && typeof prog.currentChapterIndex === 'number') ? prog.currentChapterIndex : 0;
+    const ch = chapters[idx];
+    if (ch) {
+      openingRole = ch.openingRole || '旁白';
+      openingText = ch.openingLine || '';
+    }
+  } catch (e) {}
+
+  if (!openingText) {
+    console.log('[tf_speaker][beforeGenerate] openingText 为空，跳过');
+    return;
+  }
+
+  // 查找角色 id
+  let chat = null;
+  try { chat = await tavo.chat.current(); } catch (e) {}
+  const chars = (chat && chat.characters) || [];
+  const findChar = (name) => chars.find(c => c.name === name)
+    || (name === '旁白' || name === 'narrator' ? chars.find(c => c.name === '旁白') : null);
+  const narratorChar = chars.find(c => c.name === '旁白') || null;
+  const charEntry = findChar(openingRole) || narratorChar;
+
+  // 取消 LLM 生成（开场白直接写死）
+  try {
+    if (event && typeof event.cancel === 'function') {
+      event.cancel();
+      console.log('[tf_speaker][beforeGenerate] 已取消本轮 LLM 生成');
+    }
+  } catch (e) {}
+
+  // 写入消息列表（Tavo App 监听 message:added 后自动触发语音播放）
+  try {
+    await tavo.message.append({
+      role: 'assistant',
+      characterId: charEntry ? charEntry.id : undefined,
+      content: openingText,
+      hidden: false,
+    });
+    console.log('[tf_speaker][beforeGenerate] 已写入开场白: ' + openingRole + '：' + openingText.slice(0, 40));
+  } catch (e) {
+    console.warn('[tf_speaker][beforeGenerate] 写入开场白失败', e);
+  }
+});
+
 // 生成前：注入对齐 Toonflow story_speaker 的「入参」（当前事件 / 最近对话 / 在场角色当前状态）+ 编排标记
 tavo.plugin.on('generation:prepare', async (event) => {
   const cfg = getConfig();

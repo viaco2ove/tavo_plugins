@@ -1,6 +1,6 @@
 {
   "id": "com.toonflow.llm-optimization",
-  "name": "Toonflow-LLM优化器",
+  "name": "Toonflow-群聊-LLM优化器",
   "version": "1.1.0",
   "description": "完全接管 LLM 接口调用：对齐 toonflow-game，支持 MiniMax/SiliconFlow/DashScope 等适配器直接 fetch",
   "author": "viaco",

@@ -1,5 +1,5 @@
 {
-  "plugin.name": "Toonflow-Stage",
+  "plugin.name": "Toonflow-群聊-Stage",
   "plugin.description": "Scenario-based orchestration for group chats.",
   "sidebar.toggle": "Toggle",
   "sidebar.area": "Area",

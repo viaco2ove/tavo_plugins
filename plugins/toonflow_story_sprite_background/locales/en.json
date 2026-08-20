@@ -1,5 +1,5 @@
 {
-  "plugin.name": "Toonflow-Sprite Background",
+  "plugin.name": "Toonflow-群聊-Sprite Background",
   "plugin.description": "Render chapter backgrounds and character foreground sprites in tavo chat page.",
   "sidebar.toggle": "Sprite Toggle",
   "sidebar.bind": "Sprite Bindings",

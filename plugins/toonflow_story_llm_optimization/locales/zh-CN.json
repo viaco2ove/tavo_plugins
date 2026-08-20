@@ -1,5 +1,5 @@
 {
-  "plugin.name": "Toonflow-LLM优化器",
+  "plugin.name": "Toonflow-群聊-LLM优化器",
   "plugin.description": "统一接管所有 LLM 调用，提供 reasoningEffort 思考程度控制和对齐 Toonflow 的 JSON 响应解析。",
   "settings.info": "LLM 调用参数配置（对齐 Toonflow reasoningEffort 机制）",
   "settings.enabled": "启用 LLM 优化",

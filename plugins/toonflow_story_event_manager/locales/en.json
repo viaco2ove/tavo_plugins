@@ -1,5 +1,5 @@
 {
-  "plugin.name": "Toonflow-Story Panel & Event Manager",
+  "plugin.name": "Toonflow-群聊-Story Panel & Event Manager",
   "plugin.description": "Story info panel + editor + orchestration + chapter outcome judge + event progress + free mode.",
   "sidebar.freeMode": "Enter Free Mode",
   "sidebar.exitFreeMode": "Exit Free Mode",

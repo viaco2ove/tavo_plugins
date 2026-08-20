@@ -1,5 +1,5 @@
 {
-  "plugin.name": "Toonflow-故事记忆",
+  "plugin.name": "Toonflow-群聊-故事记忆",
   "plugin.description": "打开聊天时初始化故事动态参数（角色参数卡），异步提炼剧情记忆与角色状态并回流动态数值，注入上下文到生成。",
   "sidebar.refresh": "刷新记忆",
   "sidebar.inspect": "查看记忆",

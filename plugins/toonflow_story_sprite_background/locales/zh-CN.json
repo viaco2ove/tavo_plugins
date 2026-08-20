@@ -1,5 +1,5 @@
 {
-  "plugin.name": "Toonflow-立绘背景人像",
+  "plugin.name": "Toonflow-群聊-立绘背景人像",
   "plugin.description": "在 tavo 聊天页复刻 Toonflow-game 的 LayeredAvatar 立绘效果：章节场景背景 + 角色前景立绘。",
   "sidebar.toggle": "立绘开关",
   "sidebar.bind": "立绘绑定",

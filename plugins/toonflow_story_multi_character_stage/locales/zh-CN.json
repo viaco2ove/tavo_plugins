@@ -1,5 +1,5 @@
 {
-  "plugin.name": "Toonflow-角色编排",
+  "plugin.name": "Toonflow-群聊-角色编排",
   "plugin.description": "基于群聊的场景模式编排，动态指定发言者。",
   "sidebar.toggle": "编排开关",
   "sidebar.area": "当前区域",

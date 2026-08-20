@@ -1,5 +1,5 @@
 {
-  "plugin.name": "Toonflow-Bubble Style",
+  "plugin.name": "Toonflow-群聊-Bubble Style",
   "plugin.description": "Single/multi display mode + bubble opacity. Pure CSS control, zero API calls, zero permission dialogs.",
   "settings.info": "Single: show only the latest bubble; Multi: show all. New version uses CSS toggle for visibility, no message data modification.",
   "settings.enabled": "Enable"

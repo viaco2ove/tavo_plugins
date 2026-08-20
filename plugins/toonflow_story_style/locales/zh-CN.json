@@ -1,5 +1,5 @@
 {
-  "plugin.name": "Toonflow-气泡样式",
+  "plugin.name": "Toonflow-群聊-气泡样式",
   "plugin.description": "单条/多条显示模式 + 气泡透明度调节；纯 CSS 控制，零 API 调用、零权限弹框。",
   "settings.info": "单条模式：仅显示最新一条气泡；多条模式：显示全部。新版用 CSS 切换可见性，不修改消息数据。",
   "settings.enabled": "启用"

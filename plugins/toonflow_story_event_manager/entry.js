@@ -919,18 +919,30 @@ async function playChapterOpening() {
     const narratorChar = chars.find(c => c.name === '旁白') || null;
 
     let played = 0;
-    // 1) 开场白（openingRole + openingLine）
+    // 1) 开场白（openingRole + openingLine）→ 走 speaker 插件的 generation:beforeGenerate
     if (ch.openingLine) {
-      const opener = findChar(ch.openingRole || '旁白') || narratorChar;
-      await tavo.message.append({
-        role: 'assistant',
-        characterId: opener ? opener.id : undefined,
-        content: ch.openingLine,
-        hidden: false,
-      });
+      // 设置开场白待处理标记，触发 speaker 插件接管生成
+      try {
+        tavo.set('tf_story.opening', {
+          pending: true,
+          role: ch.openingRole || '旁白',
+          text: ch.openingLine,
+          index: idx,
+        }, 'chat');
+      } catch (e) {}
+      // 调用生成管道，让 speaker 插件的 generation:beforeGenerate 拦截
+      try {
+        await tavo.generate('【系统】请直接输出一段开场白台词，内容如下：' + ch.openingLine, {
+          context: false,
+          settings: { maxCompletionTokens: 200 }
+        });
+      } catch (e) {
+        // speaker 插件 cancel 后 tavo.generate 会报错，忽略
+        console.log('[tf_story][opening] generation cancelled (speaker handled it)');
+      }
       played++;
     }
-    // 2) 事件链首段（到第一个「用户发言」为止）
+    // 2) 事件链首段（到第一个「用户发言」为止）→ 走编排插件（用户发言前场景）
     const beats = parseChapterBeats(ch.content || '', ch.openingLine);
     for (const b of beats) {
       const c = findChar(b.role) || narratorChar;
@@ -1051,6 +1063,11 @@ async function bootSequence() {
   writeBoot({ status: 'loading', stage: 'data_loaded', chatId, openedAt: Date.now(), openingDone: false, sessionType: sessionStage, restored, rebuilt });
   notifyBootStage('data_loaded', '数据已加载，准备开场白…');
 
+  // 编排模式必须在开场白之前应用（speaker 插件的 generation:prepare 需要读到 orchestration='plugin'）
+  if (sessionStage !== 'resumption_start') {
+    await applyOrchestrationMode();
+  }
+
   if (sessionStage !== 'resumption_start') {
     _bootState = 'opening';
     try {
@@ -1068,13 +1085,13 @@ async function bootSequence() {
 
   console.log('[tf_story][boot] DONE sessionType=' + sessionStage + ' restored=' + restored + ' rebuilt=' + rebuilt);
 
-  await applyOrchestrationMode();
   return sessionStage;
 }
 
 // boot 未就绪时拦截所有生成（阻止官方开场白/第一个角色自动发言）
+// 注意：_bootState='opening' 时不拦截，放行给 speaker 插件接管开场白生成
 _safeOn('generation:prepare', async (event) => {
-  if (_bootState !== 'ready') {
+  if (_bootState !== 'ready' && _bootState !== 'opening') {
     try { event.text = ''; } catch (e) {}
     return;
   }

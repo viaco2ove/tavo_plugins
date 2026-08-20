@@ -1,5 +1,5 @@
 {
-  "plugin.name": "Toonflow-角色发言",
+  "plugin.name": "Toonflow-群聊-角色发言",
   "plugin.description": "为群聊中的角色生成台词，配合角色编排插件使用。",
   "sidebar.test": "测试发言",
   "sidebar.char": "角色列表",

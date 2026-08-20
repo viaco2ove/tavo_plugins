@@ -1,5 +1,5 @@
 {
-  "plugin.name": "Toonflow-Speaker",
+  "plugin.name": "Toonflow-群聊-Speaker",
   "plugin.description": "Generate dialogue for group chat characters.",
   "sidebar.test": "Test Speech",
   "sidebar.char": "Characters",

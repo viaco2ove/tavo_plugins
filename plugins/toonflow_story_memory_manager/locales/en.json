@@ -1,5 +1,5 @@
 {
-  "plugin.name": "Toonflow-Memory",
+  "plugin.name": "Toonflow-群聊-Memory",
   "plugin.description": "Initialize story dynamic params (role cards) on chat open, extract long-term memory and reflect dynamic values back for the info panel.",
   "sidebar.refresh": "Refresh",
   "sidebar.inspect": "View",
