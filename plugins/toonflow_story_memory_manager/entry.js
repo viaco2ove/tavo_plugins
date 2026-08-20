@@ -977,6 +977,16 @@ if (typeof window !== 'undefined') {
         return 'auto';
       } catch (e) { return 'auto'; }
     },
+    // 外部触发记忆刷新（供 mcs 等插件调用，对齐 Toonflow triggerMemoryAgent=true 语义）
+    // triggerMemoryAgent=true 时编排器认为当前回合记忆变化较大，需要立即刷新参数卡
+    refresh: async function (directive) {
+      if (refreshing) {
+        console.log('[tmm][external] refresh skipped: still refreshing');
+        return;
+      }
+      // 内部 runMemoryAgent 不接受空 directive（表示普通刷新，不是指令）
+      await runMemoryAgent(directive || null);
+    },
   };
   console.log('[tmm] intent shared: ' + DIRECTIVE_PREFIXES.length + ' prefixes registered, window.tmmIntent=function');
 }

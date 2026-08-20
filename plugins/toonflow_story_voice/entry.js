@@ -241,7 +241,24 @@ async function aliyunTts(apiKey, voiceId, text) {
   return data.output.audio.url;
 }
 
-// ---------- 消息到达 -> 自动播放 ----------
+// ---------- 逐句拆分（对齐 toonflow splitSpeechSegments） ----------
+// 按句号/感叹号/问号拆分，保留标点，保留动作描写小括号内的完整内容（不打断）
+function splitSpeechSegments(text) {
+  // 保护动作描写：(...) 内不拆分
+  const protected = [];
+  let clean = text.replace(/\([^)]+\)/g, (m) => {
+    protected.push(m);
+    return '\x00PROT' + (protected.length - 1) + '\x00';
+  });
+  // 按句子切分（保留句末标点）
+  const segments = clean.split(/(?<=[。！？.?!])/).filter(Boolean);
+  // 恢复保护内容
+  return segments.map(s => s.replace(/\x00PROT(\d+)\x00/g, (_, i) => protected[parseInt(i)]))
+    .map(s => s.trim())
+    .filter(s => s.length > 0);
+}
+
+// ---------- 消息到达 -> 逐句串行播放 ----------
 tavo.plugin.on('message:added', async (event) => {
   const platform = cfg('voice_platform', 'xiaomimimo');
   const autoPlay = cfg('auto_play', false);
@@ -251,16 +268,20 @@ tavo.plugin.on('message:added', async (event) => {
   if (!msg || msg.role !== 'assistant' || !msg.characterId) return;
 
   const charId = String(msg.characterId);
-  const text = (msg.content || '').replace(/<[^>]+>/g, '').trim().slice(0, 120);
-  if (!text) return;
+  const rawText = (msg.content || '').replace(/<[^>]+>/g, '').trim();
+  if (!rawText) return;
+
+  // 逐句拆分（对齐官方 splitSpeechSegments）
+  const segments = splitSpeechSegments(rawText);
+  vl('[逐句] charId=' + charId + ' 共' + segments.length + '句: ' + JSON.stringify(segments.map(s => s.slice(0, 20))));
 
   try {
     const apiKey = cfg('voice_platform_apikey', '');
     if (!apiKey) { vw('未配置 API Key，跳过语音'); return; }
 
+    // 获取 voiceId（有缓存用缓存，无则克隆）
     let voiceId = window.tf_voice.getVoiceId(charId);
     if (!voiceId) {
-      // 无 voiceId，查是否有音色文件 -> 克隆
       const vf = window.tf_voice.getVoiceFile(charId);
       if (!vf || !vf.file) { vw('角色 ' + charId + ' 无音色文件，跳过'); return; }
       const audioUrl = tavo.file.url(vf.file, 'chat');
@@ -270,19 +291,36 @@ tavo.plugin.on('message:added', async (event) => {
       window.tf_voice.cacheVoiceId(charId, voiceId);
     }
 
-    // 合成
-    if (platform === 'aliyun') {
-      const audioUrl = await aliyunTts(apiKey, voiceId, text);
-      const audio = new Audio(audioUrl);
-      audio.play();
-    } else {
-      const buf = await xiaomiTts(apiKey, voiceId, text);
-      const blob = new Blob([buf], { type: 'audio/mpeg' });
-      const url = URL.createObjectURL(blob);
-      const audio = new Audio(url);
-      audio.play();
+    // 逐句串行播放：等上一句播放完才播下一句（对齐 toonflow 逐句语义）
+    for (let i = 0; i < segments.length; i++) {
+      const segText = segments[i].slice(0, 200); // 单句上限 200 字防超限
+      try {
+        if (platform === 'aliyun') {
+          const audioUrl = await aliyunTts(apiKey, voiceId, segText);
+          const audio = new Audio(audioUrl);
+          await new Promise((resolve, reject) => {
+            audio.onended = resolve;
+            audio.onerror = reject;
+            audio.play();
+          });
+        } else {
+          const buf = await xiaomiTts(apiKey, voiceId, segText);
+          const blob = new Blob([buf], { type: 'audio/mpeg' });
+          const url = URL.createObjectURL(blob);
+          const audio = new Audio(url);
+          await new Promise((resolve, reject) => {
+            audio.onended = resolve;
+            audio.onerror = reject;
+          });
+        }
+        vl('[逐句] 第' + (i + 1) + '/' + segments.length + '句播放完毕: ' + segText.slice(0, 20));
+      } catch (e) {
+        vw('[逐句] 第' + (i + 1) + '句 TTS 失败: ' + e.message);
+        window.tf_voice.invalidateVoiceId(charId);
+        break; // 单句失败则停止整条消息的播放
+      }
     }
-    vl('播放语音 charId=' + charId);
+    vl('[逐句] 全部播放完毕 charId=' + charId);
   } catch (e) {
     vw('语音失败（voiceId 可能过期，已失效重试）: ' + e.message);
     window.tf_voice.invalidateVoiceId(charId);

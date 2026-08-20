@@ -12,6 +12,42 @@
 
 'use strict';
 
+// 诊断：确认 entry.js 真的被 Tavo 加载并执行（之前发现 message:added 监听没跑，怀疑 entry 加载时就静默失败）
+try {
+  console.log('[tf_story] ENTRY START v1.4.0 ' + new Date().toISOString()
+    + ' tavo=' + (typeof tavo)
+    + ' tavo.plugin=' + ((typeof tavo !== 'undefined' && tavo.plugin) ? typeof tavo.plugin : 'undefined')
+    + ' tavo.plugin.on=' + ((typeof tavo !== 'undefined' && tavo.plugin) ? typeof tavo.plugin.on : 'undefined'));
+} catch (e) {
+  console.error('[tf_story] entry log failed', e);
+}
+
+// hook 注册用 try/catch 包裹：抓 Tavo API 抛错（之前没错误日志 = 静默死，导致 message:added 监听没注册成功）
+const _safeOn = (name, fn) => {
+  try {
+    if (typeof tavo === 'undefined' || !tavo.plugin || typeof tavo.plugin.on !== 'function') {
+      console.error('[tf_story] hook 注册失败: tavo.plugin.on 不可用, hook=' + name);
+      return;
+    }
+    tavo.plugin.on(name, fn);
+    console.log('[tf_story] hook registered: ' + name);
+  } catch (e) {
+    console.error('[tf_story] hook 注册失败: hook=' + name, e && (e.message || e));
+  }
+};
+const _safeOnSide = (name, fn) => {
+  try {
+    if (typeof tavo === 'undefined' || !tavo.plugin || typeof tavo.plugin.onSidebarAction !== 'function') {
+      console.error('[tf_story] sidebar 注册失败: tavo.plugin.onSidebarAction 不可用, name=' + name);
+      return;
+    }
+    tavo.plugin.onSidebarAction(name, fn);
+    console.log('[tf_story] sidebar registered: ' + name);
+  } catch (e) {
+    console.error('[tf_story] sidebar 注册失败: name=' + name, e && (e.message || e));
+  }
+};
+
 const NS = 'tf_story';
 const PROGRESS_NS = 'tf_progress';
 const STAGE_PLUGIN_ID = 'com.toonflow.multi-character-stage';
@@ -828,7 +864,7 @@ async function bootSequence() {
 }
 
 // boot 未就绪时拦截所有生成（阻止官方开场白/第一个角色自动发言）
-tavo.plugin.on('generation:prepare', async (event) => {
+_safeOn('generation:prepare', async (event) => {
   if (_bootState !== 'ready') {
     try { event.text = ''; } catch (e) {}
     return;
@@ -844,7 +880,7 @@ tavo.plugin.on('generation:prepare', async (event) => {
 });
 
 // 官方首条消息落地即删（message:added 里做二次保险）
-tavo.plugin.on('message:added', async (event) => {
+_safeOn('message:added', async (event) => {
   const msg = event && event.message;
   if (!msg || msg.role !== 'assistant') return;
   const boot = readBoot();
@@ -861,7 +897,7 @@ tavo.plugin.on('message:added', async (event) => {
   } catch (e) {}
 });
 
-tavo.plugin.on('chat:opened', async () => {
+_safeOn('chat:opened', async () => {
   // Boot 序列接管：数据恢复 -> 官方劫持清理 -> 开场白 -> 编排应用
   await bootSequence();
 
@@ -896,7 +932,7 @@ tavo.plugin.on('chat:opened', async () => {
 });
 
 // 判定器入口：每轮对话后评估章节结局（仅 boot ready 后生效）
-tavo.plugin.on('message:added', async (event) => {
+_safeOn('message:added', async (event) => {
   if (!event || !event.message) return;
   const msg = event.message;
   console.log('[tf_story][msg:added] role=' + msg.role + ' content=' + JSON.stringify((msg.content||'').slice(0,60)));
@@ -978,7 +1014,7 @@ async function advanceManually(rawText) {
   }
 }
 
-tavo.plugin.on('input:beforeSend', async (event) => {
+_safeOn('input:beforeSend', async (event) => {
   if (cfgGet('enabled', true) === false) return;
   const text = String((event && event.text) || '').trim();
 
@@ -1013,29 +1049,466 @@ tavo.plugin.on('input:beforeSend', async (event) => {
 });
 
 // =========================================================================
+// 事件进度 LLM（对齐 toonflow story-event-progress Agent）
+// 替代纯 +1 规则的 advanceEventProgress，用 LLM 判断当前事件是否结束
+// =========================================================================
+
+// 对齐 toonflow fixDB.prompts.ts _PROMPT_STORY_EVENT_PROGRESS
+const PROMPT_STORY_EVENT_PROGRESS = `你是事件进度检测器。你只判断"当前事件是否结束、现在进行到哪一步"，不判断章节是否成功或失败。
+你只是状态机，不是剧情导演！禁止猜测用户的意图，禁止认为用户输入 "." 或无效字符是因为"迷茫"或"需要引导"
+## 任务
+根据当前事件、当前进度和最近 10 条台词，判断：
+- 当前事件是否已经结束
+- 当前事件当前应处于什么状态
+- 当前事件应该如何总结当前进度
+- 如果事件是要求某个角色说个台词，那么他说了给类似的台词这个事件就是结束
+- 你倾向于宽松地认为事件已经结束，除非事件里有强硬的说一定要完成些什么事情。
+- 如果事件是要求用户回应什么的，那么不说话也是一种回应，输入"."也是一种回应
+
+## 关键规则：关于用户输入 "."
+- 用户输入 "." 是一个明确的**跳过指令**。
+"." 就是明确的发言和行动。应该判定为已完成用户发言阶段！！！
+模型禁止返回类似的判定：【"reason": "当前阶段是用户发言阶段，用户虽然多次输入'.'但根据事件流程仍在等待用户做出明确的发言或行动来决定下一步方向，因此事件尚未结束，继续等待用户输入"】
+- 它代表用户不想进行当前互动，希望剧情自动推进。
+- 当检测到用户输入为 "." 时，应认为当前需要用户回应的阶段已经**被用户主动跳过并完成**。
+- 此时，\`event_status\` 应判定为 \`active\`，表示系统可以继续推进剧情，而不是 \`waiting_input\`。
+
+## 约束
+1. 只判断当前事件，不判断章节整体成败
+2. 不要自己编造新剧情
+3. recent_dialogue 里的"用户"才代表真实用户发言
+4. 不能把单个数字误判成"输入了多次"
+5. 如果事件还没达成，只能 ended=false
+6. 用户输入 "." 是跳过，不是迷茫，不需要引导。
+
+## 输出格式
+必须只输出一个 JSON 对象，不要解释，不要代码块。
+
+字段固定为：
+- ended: boolean
+- event_status: "active" | "waiting_input" | "completed"
+- progress_summary: string
+- progress_facts: string[]
+- reason: string
+
+## 判定规则
+- ended=true：代表当前事件已经完成，系统应切到下一个事件
+- ended=false：代表当前事件仍未完成，系统继续停留在当前事件
+- event_status=waiting_input：代表当前事件还需要用户输入
+- event_status=active：代表当前事件仍在推进，但还没轮到用户
+- event_status=completed：只在 ended=true 时使用
+
+## 用户发言阶段完成判定（重要）
+当 current_stage.label 含"用户发言"且需要判定该阶段是否完成时：
+- 用户**任何**非空、非纯标点的输入都算已发言（"." 视为跳过表达，也算完成）
+- 不要把"用户发言"理解为"用户必须下达具体动作指令"——表达意愿、提问、感叹、命令、沉默跳过都属于"发言"
+- 用户一旦在该阶段留下任何有效输入，ended=true、event_status=active，让系统推进剧情
+- 不要因为"剧情还没发生具体变化"就判定用户还没发言——那是编排师的事，不是你的事
+- 若用户**连续多轮**都被判 waiting_input 但实际已多次输入，应主动结束该阶段，避免死循环
+
+## 输出示例
+{"ended":false,"event_status":"waiting_input","progress_summary":"当前事件仍在等待用户补充角色名称、性别和年龄","progress_facts":["用户尚未提供完整角色信息","当前仅完成开场引导","需要继续等待用户输入"],"reason":"当前事件目标尚未完成，仍需用户继续提供信息"}
+`;
+
+// 构建事件进度检测输入快照（对齐官方 buildEventProgressInputSnapshot）
+async function buildEventProgressSnapshot(chapter, progress, latestMessageContent, latestMessageRole) {
+  const phases = progress.phases || [];
+  const phaseIdx = Math.max(0, progress.currentPhase || 0);
+  const eventIdx = Math.max(0, progress.currentEvent || 0);
+  const phase = phases[phaseIdx] || {};
+  const events = phase.events || [];
+  const curEv = events[eventIdx] || {};
+  const nextEv = events[eventIdx + 1] || null;
+  const isUserPhase = /用户发言/.test(curEv.name || '');
+  const isUserNode = /用户发言/.test(curEv.name || '');
+
+  // recent_dialogue: 最近 10 条
+  let recentDialogue = [];
+  try {
+    const cnt = await tavo.message.count();
+    if (cnt > 0) {
+      const msgs = tavo.message.find([Math.max(0, cnt - 10), cnt]) || [];
+      recentDialogue = msgs.map(m => {
+        const role = m.characterName || (m.role === 'user' ? '用户' : '旁白');
+        const role_type = m.role === 'user' ? 'player' : (m.characterName ? 'npc' : 'narrator');
+        return {
+          role: role,
+          role_type: role_type,
+          content: String(m.content || '').replace(/<[^>]+>/g, '').slice(0, 160),
+        };
+      });
+    }
+  } catch (e) {}
+
+  // current_stage（tavo 没有 runtimeOutline，简化版）
+  const currentStage = {
+    index: eventIdx,
+    label: curEv.name || '事件',
+    kind: isUserNode ? 'user' : 'scene',
+    summary: curEv.name || '',
+    user_speak_required: isUserNode ? true : null,
+  };
+  const nextStage = nextEv ? {
+    index: eventIdx + 1,
+    label: nextEv.name || '',
+    kind: /用户发言/.test(nextEv.name || '') ? 'user' : 'scene',
+    summary: nextEv.name || '',
+  } : null;
+
+  // next_event
+  const nextEvent = nextEv ? {
+    index: eventIdx + 2,
+    kind: /用户发言/.test(nextEv.name || '') ? 'user' : 'scene',
+    label: nextEv.name || '',
+    summary: nextEv.name || '',
+  } : null;
+
+  // 计算 user_speak_count（用户发言轮数）
+  const userSpeakCount = recentDialogue.filter(m => m.role === '用户').length;
+
+  return {
+    chapter: {
+      id: 0,
+      title: chapter?.title || '未命名章节',
+    },
+    current_event: {
+      index: eventIdx + 1,
+      kind: isUserNode ? 'user' : 'scene',
+      flow: isUserPhase ? 'user_phase' : 'chapter_content',
+      status: isUserPhase ? 'waiting_input' : 'active',
+      summary: (phase.name || '') + (curEv.name ? ' > ' + curEv.name : ''),
+      facts: [phase.name || '', curEv.name || ''].filter(Boolean),
+    },
+    current_progress: {
+      phase_id: phase.name || '',
+      phase_index: phaseIdx,
+      stage_index: eventIdx,
+      total_stages: events.length,
+      user_node_status: isUserPhase ? 'waiting' : 'idle',
+      completed_events: [],
+      user_speak_count: userSpeakCount,
+      user_speak_required: isUserNode ? true : null,
+    },
+    current_stage: currentStage,
+    next_stage: nextStage,
+    next_event: nextEvent,
+    phase_transition_hint: '',
+    latest_message: {
+      role: latestMessageRole || '用户',
+      role_type: 'player',
+      event_type: 'on_message',
+      content: (latestMessageContent || '').replace(/<[^>]+>/g, '').slice(0, 200),
+    },
+    recent_dialogue: recentDialogue,
+  };
+}
+
+// 调用 LLM 判断事件进度（对齐官方 evaluateEventProgressByAi）
+async function evaluateEventProgressByAi(chapter, progress, latestMessageContent, latestMessageRole) {
+  try {
+    const snapshot = await buildEventProgressSnapshot(chapter, progress, latestMessageContent, latestMessageRole);
+    const userPrompt = JSON.stringify(snapshot, null, 2);
+    const llmMode = (window.tf_llm && window.tf_llm.callDirect) ? '接管' : 'tavo原生';
+
+    const rawText = llmMode === '接管'
+      ? await window.tf_llm.callDirect(PROMPT_STORY_EVENT_PROGRESS + '\n\n' + userPrompt, { maxCompletionTokens: 400 })
+      : await tavo.generate(PROMPT_STORY_EVENT_PROGRESS + '\n\n' + userPrompt, { context: false, settings: { maxCompletionTokens: 400 } });
+
+    const cleaned = (rawText || '').trim()
+      .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')
+      .replace(/<think>[\s\S]*?<\/think>/gi, '')
+      .replace(/<[^>]+>/g, '');
+    const fence = cleaned.match(/```(?:json)?\s*([\s\S]*?)```/);
+    const jsonText = fence ? fence[1].trim() : cleaned;
+    const obj = JSON.parse(jsonText);
+    console.log('[tf_story][event_progress] LLM 结果: ended=' + obj.ended + ' status=' + obj.event_status + ' reason=' + (obj.reason || '').slice(0, 60));
+    return {
+      ended: !!(obj.ended),
+      event_status: obj.event_status || 'active',
+      progress_summary: obj.progress_summary || '',
+      progress_facts: Array.isArray(obj.progress_facts) ? obj.progress_facts : [],
+      reason: obj.reason || '',
+    };
+  } catch (e) {
+    console.warn('[tf_story][event_progress] LLM 调用失败，回退到规则:', e.message);
+    return null;
+  }
+}
+
+// LLM 事件进度应用：替代 advanceEventProgress（对齐官方 applySessionUserEventProgress）
+// 返回 { advanced: true } 表示推进了，{ advanced: false } 表示未推进
+async function applySessionUserEventProgress(chapter, progress, latestMessageContent, latestMessageRole, precomputedResolution) {
+  const phases = progress.phases || [];
+  if (!phases.length) return { advanced: false };
+
+  let pi = Math.max(0, progress.currentPhase || 0);
+  const phase = phases[pi];
+  const events = phase?.events || [];
+  let ei = Math.max(0, progress.currentEvent || 0);
+  const curEv = events[ei] || {};
+  const isUserPhase = /用户发言/.test(curEv.name || '');
+  const trimmed = (latestMessageContent || '').trim();
+
+  // user phase：用户发言即完成节点，规则推进，不调 AI
+  if (isUserPhase) {
+    console.log('[tf_story][event_progress] user phase，规则推进 ei=' + ei + ' -> ' + (ei + 1));
+    ei += 1;
+    // 消费后若是用户发言节点，继续跳过
+    while (ei < events.length && /用户发言/.test(events[ei].name || '')) ei += 1;
+    if (ei >= events.length) {
+      // 本 phase 完成
+      let np = pi + 1;
+      while (np < phases.length && /^非事件/.test(phases[np].name || '')) np++;
+      progress.currentPhase = np;
+      progress.currentEvent = 0;
+      const nEvents = (phases[np] && phases[np].events) || [];
+      let ne = 0;
+      while (ne < nEvents.length && /用户发言/.test(nEvents[ne].name || '')) ne++;
+      progress.currentEvent = ne;
+    } else {
+      progress.currentEvent = ei;
+    }
+    progress.updatedAt = Date.now();
+    return { advanced: true };
+  }
+
+  // 非 user phase：仅当 "." 或 forceAi 时才调 LLM
+  const shouldSkipAi = trimmed !== '.' && !precomputedResolution;
+  if (shouldSkipAi) {
+    console.log('[tf_story][event_progress] 非 user phase + 非 "." 快路径，事件不推进');
+    return { advanced: false };
+  }
+
+  // 调用 LLM 判断
+  const resolution = precomputedResolution || await evaluateEventProgressByAi(chapter, progress, latestMessageContent, latestMessageRole);
+  if (!resolution) {
+    // LLM 不可用，回退到 "." 跳过规则
+    if (trimmed === '.') {
+      ei += 1;
+      while (ei < events.length && /用户发言/.test(events[ei].name || '')) ei += 1;
+      if (ei >= events.length) {
+        let np = pi + 1;
+        while (np < phases.length && /^非事件/.test(phases[np].name || '')) np++;
+        progress.currentPhase = np;
+        progress.currentEvent = 0;
+        const nEvents = (phases[np] && phases[np].events) || [];
+        let ne = 0;
+        while (ne < nEvents.length && /用户发言/.test(nEvents[ne].name || '')) ne++;
+        progress.currentEvent = ne;
+      } else {
+        progress.currentEvent = ei;
+      }
+      progress.updatedAt = Date.now();
+      return { advanced: true };
+    }
+    return { advanced: false };
+  }
+
+  // LLM 判定 ended=true → 推进
+  if (resolution.ended) {
+    console.log('[tf_story][event_progress] LLM ended=true，推进: ei=' + ei + ' -> ' + (ei + 1) + ' reason=' + (resolution.reason || '').slice(0, 80));
+    ei += 1;
+    while (ei < events.length && /用户发言/.test(events[ei].name || '')) ei += 1;
+    if (ei >= events.length) {
+      let np = pi + 1;
+      while (np < phases.length && /^非事件/.test(phases[np].name || '')) np++;
+      progress.currentPhase = np;
+      progress.currentEvent = 0;
+      const nEvents = (phases[np] && phases[np].events) || [];
+      let ne = 0;
+      while (ne < nEvents.length && /用户发言/.test(nEvents[ne].name || '')) ne++;
+      progress.currentEvent = ne;
+    } else {
+      progress.currentEvent = ei;
+    }
+    progress.updatedAt = Date.now();
+    return { advanced: true };
+  }
+
+  console.log('[tf_story][event_progress] LLM ended=false，事件未推进: ' + (resolution.reason || '').slice(0, 80));
+  return { advanced: false };
+}
+
+// =========================================================================
+// 章节判定 LLM（对齐 toonflow story-chapter Agent）
+// 在 evaluateChapterOutcome 基础上增强：优先用 LLM，失败时回退启发式
+// =========================================================================
+
+// 对齐 toonflow fixDB.prompts.ts _PROMPT_STORY_CHAPTER
+const PROMPT_STORY_CHAPTER = `你是章节判定器。你只判断当前章节是否成功、失败或继续，以及是否进入下一章。
+你只是状态机，不是剧情导演！禁止猜测用户的意图，禁止认为用户输入 "." 或无效字符是因为"迷茫"或"需要引导"。
+## 任务
+根据用户提供的章节信息、当前事件状态和运行态数据，判断章节是否应该结束。
+
+## 关键规则：关于用户输入 "."
+- 用户输入 "." 是一个明确的**跳过指令**。
+- 它代表用户不想进行当前互动，希望剧情自动推进。
+- 当检测到用户输入为 "." 时，应认为当前需要用户回应的阶段已经**被用户主动跳过并完成**。
+
+## 特别注意
+用户指的是台词（recent_dialogue）里用户： recent_dialogue 数据里的 "role": "用户"
+用户输入："2", 不是代表输入了两次！！！
+## 入参说明
+current_event：当前事件
+next_event：该章节的下一事件，用于判断是否需要引导。一般来说没有下一事件，才需要result="guide"
+## 输出格式
+必须只输出一个 JSON 对象，不要解释，不要代码块，不要 markdown 格式。
+
+字段固定为：
+- result: string - 只能是 "continue" /"guide"/ "success" / "failed"
+- matched_rule: string | null - 命中的规则标识，未命中时为 null
+- reason: string - 判定原因说明
+- next_chapter_id: number | null - 下一章 ID，无则为 null
+- guide_summary: string - 当 result="guide" 时的引导摘要，说明如何满足结束条件
+- guide_facts: string[] - 当 result="guide" 时的引导事实列表（1-3条）
+
+## 输出规则
+- 当 result="continue" 时，无须给出 guide_summary和 guide_facts.代表的是继续该章节的事件推进
+- 当 result="guide" 时，必须给出 guide_summary 和 1~3 条 guide_facts，说明下一步如何满足结束条件
+- 当 result="success" 或 "failed" 时，guide_summary 置空串，guide_facts 置空数组
+
+## 输出示例
+
+result=guide:
+{"result":"guide","matched_rule":null,"reason":"用户尚未输入名称、性别、年龄，未满足结束条件","next_chapter_id":null,"guide_summary":"需要引导用户输入角色名称、性别和年龄","guide_facts":["用户尚未提供角色基本信息","需要询问用户角色名称","需要询问用户角色性别和年龄"]}
+result=continue:
+{
+  "result": "continue",
+  "matched_rule": null,
+  "reason": "当前站队场景需要用户回应西游孙悟空的提问，用户尚未完成回应，事件未完成，未达到章节完成条件",
+  "next_chapter_id": null,
+  "guide_summary": "暂无",
+  "guide_facts": [
+    "暂无"
+  ]
+}
+`;
+
+// 构建章节判定输入快照
+async function buildChapterJudgeSnapshot(chapter, progress, latestMessageContent, recentDialogue) {
+  const phases = progress.phases || [];
+  const phaseIdx = Math.max(0, progress.currentPhase || 0);
+  const eventIdx = Math.max(0, progress.currentEvent || 0);
+  const phase = phases[phaseIdx] || {};
+  const events = phase.events || [];
+  const curEv = events[eventIdx] || {};
+  const nextEv = events[eventIdx + 1] || null;
+  const isUserNode = /用户发言/.test(curEv.name || '');
+
+  const nextEventInfo = nextEv ? {
+    index: eventIdx + 2,
+    kind: /用户发言/.test(nextEv.name || '') ? 'user' : 'scene',
+    label: nextEv.name || '',
+    summary: nextEv.name || '',
+    transition_hint: '',
+  } : null;
+
+  // 读取全局背景
+  const edit = getEdit();
+  const worldGlobalBackground = (edit.globalBackground || '').slice(0, 500);
+
+  return {
+    chapter: {
+      title: chapter?.title || '未命名章节',
+      completion_condition: chapter?.successCondition || null,
+      ending_rules: null,
+      content: (chapter?.content || '').slice(0, 500),
+    },
+    world_intro: (edit.intro || '').slice(0, 300),
+    world_global_background: worldGlobalBackground,
+    current_event: {
+      index: eventIdx + 1,
+      kind: isUserNode ? 'user' : 'scene',
+      flow: 'chapter_content',
+      status: curEv.state || 'active',
+      summary: (phase.name || chapter?.title || '') + (curEv.name ? ' > ' + curEv.name : ''),
+      facts: [phase.name || '', curEv.name || ''].filter(Boolean),
+    },
+    next_event: nextEventInfo,
+    runtime_state: {
+      completed_events: [],
+      message_content: (latestMessageContent || '').replace(/<[^>]+>/g, '').slice(0, 200),
+      event_type: 'on_message',
+    },
+    recent_dialogue: recentDialogue,
+  };
+}
+
+// 调用 LLM 判断章节结局（对齐官方 evaluateChapterOutcomeByAi）
+async function evaluateChapterOutcomeByAi(chapter, progress, latestMessageContent) {
+  if (!chapter) return null;
+  const cond = chapter.successCondition;
+  if (!cond || !String(cond).trim()) return null; // 无条件 = 不判
+
+  try {
+    // recent_dialogue（最近 10 条）
+    let recentDialogue = [];
+    try {
+      const cnt = await tavo.message.count();
+      if (cnt > 0) {
+        const msgs = tavo.message.find([Math.max(0, cnt - 10), cnt]) || [];
+        recentDialogue = msgs.map(m => ({
+          role: m.characterName || (m.role === 'user' ? '用户' : '旁白'),
+          role_type: m.role === 'user' ? 'player' : (m.characterName ? 'npc' : 'narrator'),
+          content: String(m.content || '').replace(/<[^>]+>/g, '').slice(0, 160),
+        }));
+      }
+    } catch (e) {}
+
+    const snapshot = await buildChapterJudgeSnapshot(chapter, progress, latestMessageContent, recentDialogue);
+    const userPrompt = JSON.stringify(snapshot, null, 2);
+    const llmMode = (window.tf_llm && window.tf_llm.callDirect) ? '接管' : 'tavo原生';
+
+    const rawText = llmMode === '接管'
+      ? await window.tf_llm.callDirect(PROMPT_STORY_CHAPTER + '\n\n' + userPrompt, { maxCompletionTokens: 400 })
+      : await tavo.generate(PROMPT_STORY_CHAPTER + '\n\n' + userPrompt, { context: false, settings: { maxCompletionTokens: 400 } });
+
+    const cleaned = (rawText || '').trim()
+      .replace(/<thinking>[\s\S]*?<\/thinking>/gi, '')
+      .replace(/<think>[\s\S]*?<\/think>/gi, '')
+      .replace(/<[^>]+>/g, '');
+    const fence = cleaned.match(/```(?:json)?\s*([\s\S]*?)```/);
+    const jsonText = fence ? fence[1].trim() : cleaned;
+    const obj = JSON.parse(jsonText);
+    console.log('[tf_story][chapter_judge] LLM 结果: result=' + obj.result + ' reason=' + (obj.reason || '').slice(0, 80));
+    return {
+      result: obj.result || 'continue',
+      matched_rule: obj.matched_rule || null,
+      reason: obj.reason || '',
+      next_chapter_id: obj.next_chapter_id || null,
+      guide_summary: obj.guide_summary || '',
+      guide_facts: Array.isArray(obj.guide_facts) ? obj.guide_facts : [],
+    };
+  } catch (e) {
+    console.warn('[tf_story][chapter_judge] LLM 调用失败，回退到启发式:', e.message);
+    return null;
+  }
+}
+
+// =========================================================================
 // 桥接：面板 -> entry（sidebar 事件做通道）
 // =========================================================================
 
-tavo.plugin.onSidebarAction('tf-story-save-edit', async () => {
+_safeOnSide('tf-story-save-edit', async () => {
   const edit = getEdit();
   if (!edit) { tavo.utils.toast('无编辑数据'); return; }
   tavo.utils.toast('章节列表已保存（' + (edit.chapters || []).length + ' 章）');
 });
 
-tavo.plugin.onSidebarAction('tf-story-publish-edit', async () => {
+_safeOnSide('tf-story-publish-edit', async () => {
   const edit = getEdit();
   if (!edit) { tavo.utils.toast('无编辑数据'); return; }
   const r = await syncEditToWorldbook(edit);
   tavo.utils.toast(r.ok ? ('已发布（' + r.count + ' 条常量）') : ('发布失败：' + r.msg));
 });
 
-tavo.plugin.onSidebarAction('tf-story-apply-mode', async () => {
+_safeOnSide('tf-story-apply-mode', async () => {
   await applyOrchestrationMode();
   tavo.utils.toast('编排模式已按配置应用');
 });
 
 // 进入自由模式（剧情完结后）
-tavo.plugin.onSidebarAction('tf-story-free-mode', async () => {
+_safeOnSide('tf-story-free-mode', async () => {
   const p = getProgress();
   p.sessionFreeMode = true;
   p.updatedAt = Date.now();
@@ -1044,7 +1517,7 @@ tavo.plugin.onSidebarAction('tf-story-free-mode', async () => {
 });
 
 // 退出自由模式（回到正常判定）
-tavo.plugin.onSidebarAction('tf-story-exit-free-mode', async () => {
+_safeOnSide('tf-story-exit-free-mode', async () => {
   const p = getProgress();
   p.sessionFreeMode = false;
   p.updatedAt = Date.now();
@@ -1053,7 +1526,7 @@ tavo.plugin.onSidebarAction('tf-story-exit-free-mode', async () => {
 });
 
 // 重置故事进度
-tavo.plugin.onSidebarAction('tf-story-reset', async () => {
+_safeOnSide('tf-story-reset', async () => {
   const p = defaultProgress();
   setProgress(p);
   tavo.utils.toast('故事进度已重置');

@@ -268,6 +268,7 @@ async function findCharacterId(name) {
 // 入参：roles + recent_dialogue + current_event + turn_state
 // 出参：{speaker, role_type, motive, event_summary, event_facts, ...}
 // ============================================================
+// 返回 { prompt, evDigest, nextEvInfo } 让调用方同时拿到 prompt 和事件元数据
 async function buildOrchestrationPrompt(userInput) {
   const n = getLineCount();
   const edit = readChatVar('tf_story.edit') || {};
@@ -277,13 +278,12 @@ async function buildOrchestrationPrompt(userInput) {
   const chapter = chapters[chapterIdx];
   const chapterTitle = chapter?.title || '（无）';
 
-  // roles: 角色名 + 角色类型（不对齐角色卡数据，减少 token）
+  // roles: 角色名 + 角色类型（wildcard_roles 独立传入）
   let roles = [];
   try {
     const chat = await tavo.chat.current();
     roles = (chat?.characters || []).map(c => {
       let roleType = 'npc';
-      // 从 tf_sprites 拿 roleType
       try {
         const sprites = readChatVar('tf_sprites') || {};
         const entry = (sprites.byName || {})[c.name] || {};
@@ -291,9 +291,7 @@ async function buildOrchestrationPrompt(userInput) {
       } catch (e) {}
       return { name: c.name, role_type: roleType };
     });
-    // 加万能角色
-    roles.push({ name: '某女子', role_type: 'general' });
-    roles.push({ name: '某男子', role_type: 'general' });
+    // 旁白作为内置角色加入（不在 wildcard_roles 中）
     roles.push({ name: '旁白', role_type: 'narrator' });
   } catch (e) { roles = [{ name: '旁白', role_type: 'narrator' }]; }
 
@@ -327,17 +325,23 @@ async function buildOrchestrationPrompt(userInput) {
   const curEv = events[eventIdx] || {};
   const nextEv = events[eventIdx + 1] || null;
   const isUserNode = /用户发言|用户/.test(curEv.name || '');
+  // eventDigest.window: 章节内容中该事件前后的文字上下文（简化为前2行+后1行）
+  const contentLines = (chapter?.content || '').split('\n').filter(l => l.trim());
+  const eventLineIdx = contentLines.findIndex(l => (curEv.name && l.includes(curEv.name)) || l.includes(phase.name || ''));
+  const winBefore = contentLines.slice(Math.max(0, eventLineIdx - 2), eventLineIdx).join(' ').trim().slice(0, 200);
+  const winAfter = contentLines.slice(eventLineIdx + 1, eventLineIdx + 2).join(' ').trim().slice(0, 100);
   const evDigest = {
     index: eventIdx + 1,
     kind: isUserNode ? 'user' : 'scene',
     state: curEv.state || 'active',
-    summary: (phase.title || '') + (curEv.name ? ' > ' + curEv.name : ''),
+    summary: (phase.name || chapterTitle) + (curEv.name ? ' > ' + curEv.name : ''),
     facts: [
       phase.name || chapterTitle,
       curEv.name || '',
     ].filter(Boolean),
+    window: [winBefore, winAfter].filter(Boolean).join(' | '),
   };
-  const nextEvInfo = nextEv ? { index: eventIdx + 2, name: nextEv.name } : null;
+  const nextEvInfo = nextEv ? { index: eventIdx + 2, name: nextEv.name, kind: /用户发言|用户/.test(nextEv.name || '') ? 'user' : 'scene' } : null;
 
   // turn_state
   const lastMsg = recentDialogue[recentDialogue.length - 1];
@@ -351,36 +355,69 @@ async function buildOrchestrationPrompt(userInput) {
 
   const freeMode = (readChatVar('tf_progress') || {}).sessionFreeMode;
 
-  return `你是剧情编排师（极简版）。
+  // 世界知识（常驻条目）
+  const worldKb = await getWorldbookInject();
 
-**NPC优先原则**：你的首要任务是安排NPC或万能角色发言来推动剧情。只有在没有合适的NPC和万能角色可以发言，或者需要描述环境、时间流逝，心理活动时，才安排旁白。
-**旁白特殊情况**：用户@旁白、触发世界书、说明技能效果、观察效果时，要编排旁白。
-**@角色名规则**：用户说了 "@{角色名} xxx" → 必须编排该角色说话。必须先回应用户再推进。
+  // wildcard_roles（万能角色）
+  const wildcardRoles = [
+    { name: '某女子', role_type: 'general' },
+    { name: '某男子', role_type: 'general' },
+  ];
 
-roles（在场角色）:
-${roles.map(r => `- ${r.name}（${r.role_type}）`).join('\n')}
+  const snapshotJson = {
+    world: {
+      name: '故事世界',
+      worldGlobalBackground: (edit.globalBackground || '').slice(0, 500),
+    },
+    chapter: {
+      title: chapter?.title || '未命名章节',
+      directive: (chapter?.background || '').slice(0, 300),
+      opening: (chapter?.openingLine || '').slice(0, 200),
+    },
+    roles: roles.map(r => ({ name: r.name, role_type: r.role_type })),
+    wildcard_roles: wildcardRoles.map(w => ({ name: w.name, role_type: w.role_type })),
+    current_event: {
+      index: evDigest.index,
+      kind: evDigest.kind,
+      state: evDigest.state,
+      summary: evDigest.summary || eventSummary,
+      facts: evDigest.facts.length ? evDigest.facts : eventFacts,
+      window: evDigest.window || '',
+    },
+    turn_state: {
+      can_player_speak: canPlayerSpeak,
+      last_speaker: lastSpeaker,
+      allowed_speakers: allowedSpeakers,
+    },
+    recent_dialogue: recentDialogue.slice(-n),
+    latest_player_message: userInput_clean,
+    ...(freeMode ? { free_mode: true } : {}),
+  };
 
-recent_dialogue（最近 ${recentDialogue.length} 条台词）:
-${recentDialogue.map(r => `- ${r.speaker}：${r.content}`).join('\n') || '（无）'}
+  const promptParts = [
+    `你是剧情编排师（对齐 Toonflow story-orchestrator-compact）。`,
+    `返回严格 JSON（不要前缀注释、不要代码块、不要 markdown 围栏）。`,
+    ``,
+    `# JSON 输入快照`,
+    JSON.stringify(snapshotJson, null, 2),
+    ``,
+    `# 编排规则`,
+    `**NPC优先原则**：首要任务是安排 NPC 或万能角色发言来推动剧情。只有在没有合适的 NPC/万能角色发言，或者需要描述环境、时间流逝、心理活动时，才用旁白。`,
+    `**旁白特殊情况**：用户@旁白、触发世界书、说明技能效果、观察效果时，要编排旁白。`,
+    `**@角色名规则**：用户说了 "@{角色名} xxx" → 必须编排该角色说话，先回应用户再推进。`,
+    `**等待用户**：如果当前事件是「用户发言」节点，或最后一句话是问用户事情，设置 await_user=true，等待用户输入。`,
+    `**. 跳过**：用户输入 "." 代表剧情自动推进，直接编排下一个 NPC。`,
+    worldKb,
+  ].filter(Boolean);
 
-current_event:
-- summary: "${evDigest.summary || eventSummary}"
-- event_index: ${evDigest.index}
-- event_kind: ${evDigest.kind}
-- event_state: ${evDigest.state}
-- facts: [${(evDigest.facts.length ? evDigest.facts : eventFacts).map(f => '"' + f + '"').join(', ')}]
-${nextEvInfo ? '- next_event: "' + nextEvInfo.name + '"' : ''}
-${freeMode ? '- flow: "free_runtime"' : ''}
-
-turn_state:
-- can_player_speak: ${canPlayerSpeak}
-- last_speaker: "${lastSpeaker}"
-- allowed_speakers: [${allowedSpeakers.map(s => '"' + s + '"').join(', ')}]
-
-${userInput_clean ? 'userInput: "' + userInput_clean + '"' : ''}
-
-直接输出 JSON，不要前缀注释和后缀。
+  const outputSchema = `直接输出 JSON，不要任何其他文字：
 {"speaker":"角色名","role_type":"npc/narrator/general","motive":"一句话动机","await_user":false,"trigger_memory_agent":false,"event_adjust_mode":"keep","event_status":"active","event_summary":"当前事件一句话","event_facts":["关键事实1","关键事实2"]}`;
+
+  return {
+    prompt: promptParts.join('\n') + '\n\n' + outputSchema,
+    evDigest,
+    nextEvInfo,
+  };
 }
 
 // ============================================================
@@ -388,24 +425,111 @@ ${userInput_clean ? 'userInput: "' + userInput_clean + '"' : ''}
 // 入参：speaker + role_type + motive + event_summary
 // 出参：台词正文
 // ============================================================
-async function buildSpeakerPrompt(speaker, roleType, motive, eventSummary) {
+
+// 读取在场角色动态参数卡（来自 memory_manager tmm_story，对齐 speaker 插件的 buildCastState）
+async function buildSpeakerCastState() {
+  try {
+    let story = readChatVar('tmm_story') || readChatVar('tmm_story_static');
+    let characters = (story && Array.isArray(story.characters)) ? story.characters : null;
+    if (!characters) {
+      const chat = await tavo.chat.current();
+      characters = await Promise.all((chat?.characters || []).map(async (c) => {
+        let full = null;
+        try { if (tavo.character && tavo.character.get) full = await tavo.character.get(c.id); } catch (e) {}
+        const d = (full && full.data) ? full.data : (full || c || {});
+        return { name: c.name || d.name || '未命名', roleType: d.roleType || c.roleType || 'npc', card: d || {} };
+      }));
+    }
+    if (!characters || !characters.length) return '';
+    const ROLE_LABEL = { player: '用户', npc: '一般角色', narrator: '旁白', system: '系统角色', general: '万能角色' };
+    let block = '';
+    for (const ch of characters) {
+      const c = ch.card || {};
+      const label = ROLE_LABEL[ch.roleType] || ch.roleType || 'npc';
+      const parts = [ch.name + '(' + label + ')'];
+      if (c.level != null && c.level !== '') parts.push('Lv.' + c.level);
+      if (c.level_desc) parts.push(c.level_desc);
+      if (c.hp != null && c.hp !== '') parts.push('HP' + c.hp);
+      if (c.mp != null && c.mp !== '') parts.push('MP' + c.mp);
+      if (c.role_key_information) parts.push('当前:' + String(c.role_key_information).slice(0, 48));
+      block += '- ' + parts.join(' | ') + '\n';
+    }
+    return block;
+  } catch (e) { return ''; }
+}
+
+// 构造角色发言提示词里的当前事件段（对齐 official buildSpeakerCurrentEventLines）
+function buildSpeakerCurrentEventLines(curEv, chapterTitle, chapterIdx) {
+  const lines = [
+    `index: ${curEv.index || 1}`,
+    `kind: ${curEv.kind || 'scene'}`,
+    curEv.state ? `status: ${curEv.state}` : '',
+    `summary: ${curEv.summary || chapterTitle}`,
+    curEv.facts && curEv.facts.length ? `facts: ${curEv.facts.join('；')}` : '',
+    curEv.window ? `window: ${curEv.window}` : '',
+  ].filter(Boolean);
+  return lines.join('\n');
+}
+
+// 构造角色发言提示词里的下一事件段（对齐 official buildSpeakerNextEventLines）
+function buildSpeakerNextEventLines(nextEv) {
+  if (!nextEv) return '';
+  const lines = [
+    `index: ${nextEv.index}`,
+    `kind: ${nextEv.kind || 'scene'}`,
+    nextEv.name ? `summary: ${nextEv.name}` : '',
+  ].filter(Boolean);
+  return lines.join('\n');
+}
+
+async function buildSpeakerPrompt(speaker, roleType, motive, eventSummary, evDigest, nextEvInfo) {
+  const edit = readChatVar('tf_story.edit') || {};
+  const chapters = edit.chapters || [];
+  const chapterIdx = (readChatVar('tf_progress') || {}).currentChapterIndex || 0;
+  const chapter = chapters[chapterIdx] || {};
   const freeMode = (readChatVar('tf_progress') || {}).sessionFreeMode;
+
+  // 世界知识（常驻）
+  const worldKb = await getWorldbookInject();
+
+  // 角色动态参数卡
+  const castState = await buildSpeakerCastState();
+
+  // 阶段信息
+  const phases = (readChatVar('tf_progress') || {}).phases || [];
+  const phaseIdx = Math.max(0, (readChatVar('tf_progress') || {}).currentPhase || 0);
+  const phase = phases[phaseIdx] || {};
+  const phaseGoal = phase.name || '';
+
   const speakerType = {
     npc: '一般角色', narrator: '旁白', player: '用户', system: '系统角色', general: '万能角色',
   }[roleType] || roleType;
-  return `你是角色发言器。根据当前事件和本轮动机，生成符合角色的台词或旁白。
 
-# 入参
-- 说话人: ${speaker}（${speakerType}）
-- 本轮动机: ${motive}
-- 当前事件: ${eventSummary}${freeMode ? '\n- 当前为自由模式，可根据用户提问自由回应' : ''}
+  const lines = [
+    `你是角色发言器（对齐 Toonflow story_speaker）。`,
+    ``,
+    `# 在场角色动态状态（来自记忆管理器，必须严格按此状态发言）`,
+    castState || '（无角色动态状态）',
+    ``,
+    `# 当前事件（仅可使用本事件内容，不得提前使用后续章节）`,
+    buildSpeakerCurrentEventLines(evDigest, chapter.title || '无章节', chapterIdx),
+    nextEvInfo ? `\n# 下一事件（仅供参考，不要让角色泄漏）\n` + buildSpeakerNextEventLines(nextEvInfo) : '',
+    ``,
+    `# 入参`,
+    `- 说话人: ${speaker}（${speakerType}）`,
+    `- 本轮动机: ${motive}`,
+    freeMode ? `- 当前为自由模式，可根据用户提问自由回应，不必强制推进剧情` : '',
+    ``,
+    `# 输出规则`,
+    `1. 直接说台词，不要前缀 "@角色名："`,
+    `2. 只推进当前这一小步，默认 40~80 字，最多 2 句`,
+    `3. 动作描写放小括号，台词放括号外；小括号内只能放动作、神态、气氛描写`,
+    `4. 不能换说话人，不能代替用户说话，不能泄漏章节提纲或思考过程`,
+    `5. 禁止输出 JSON、禁止代码块`,
+    worldKb,
+  ].filter(Boolean).join('\n');
 
-# 输出规则
-1. 直接说台词，不要前缀 "@角色名："
-2. 只推进当前这一小步，默认 40~80 字，最多 2 句
-3. 动作描写放小括号，台词放括号外；小括号内只能放动作、神态、气氛描写
-4. 不能换说话人，不能代替用户说话，不能泄漏章节提纲或思考过程
-5. 禁止输出 JSON、禁止代码块`;
+  return lines;
 }
 
 // 编排主流程：handler 同步 cancel → 后台 append 用户消息 + 生成 + append 角色消息
@@ -481,9 +605,9 @@ tavo.plugin.on('input:beforeSend', async (event) => {
       await tavo.message.append({ role: 'user', content: userText, hidden: false });
       console.log('[' + ts() + '] 🎭 [mcs] 用户消息已 append');
 
-      // 2. 阶段一：编排器 → {speaker, role_type, motive, event_summary}
-      const orchPrompt = await buildOrchestrationPrompt(userText);
-      console.log('[' + ts() + '] 🎭 [mcs] 阶段一 prompt len=' + orchPrompt.length);
+      // 2. 阶段一：编排器 → {speaker, role_type, motive, event_summary, evDigest, nextEvInfo}
+      const { prompt: orchPrompt, evDigest, nextEvInfo } = await buildOrchestrationPrompt(userText);
+      console.log('[' + ts() + '] 🎭 [mcs] 阶段一 prompt len=' + orchPrompt.length + ' evDigest=' + JSON.stringify(evDigest || {}).slice(0,100));
       // 打印当前章节/事件/进度（对齐 toonflow 编排调试信息）
       try {
         const p = readChatVar('tf_progress') || {};
@@ -531,6 +655,11 @@ tavo.plugin.on('input:beforeSend', async (event) => {
 
       // 解析编排 JSON（严格对齐 toonflow 输出字段）
       let speaker = '旁白', roleType = 'narrator', motive = '', eventSummary = '';
+      let awaitUser = false;
+      let triggerMemoryAgent = false;
+      let eventAdjustMode = 'keep';
+      let eventStatus = 'active';
+      let eventFacts = [];
       try {
         const fence = cleaned.match(/```(?:json)?\s*([\s\S]*?)```/);
         const jsonText = fence ? fence[1].trim() : cleaned;
@@ -539,18 +668,29 @@ tavo.plugin.on('input:beforeSend', async (event) => {
         roleType = obj.role_type || 'narrator';
         motive = obj.motive || '';
         eventSummary = obj.event_summary || '';
-        console.log('[' + ts() + '] 🎭 [mcs] 阶段一解析 → speaker=' + speaker + ' role_type=' + roleType + ' motive=' + motive + ' event_summary=' + eventSummary);
+        awaitUser = !!(obj.await_user || obj.awaitUser);
+        triggerMemoryAgent = !!(obj.trigger_memory_agent || obj.triggerMemoryAgent);
+        eventAdjustMode = obj.event_adjust_mode || 'keep';
+        eventStatus = obj.event_status || obj.eventStatus || 'active';
+        eventFacts = Array.isArray(obj.event_facts) ? obj.event_facts : [];
+        console.log('[' + ts() + '] 🎭 [mcs] 阶段一解析 → speaker=' + speaker + ' role_type=' + roleType
+          + ' motive=' + motive + ' await_user=' + awaitUser + ' trigger_memory_agent=' + triggerMemoryAgent
+          + ' event_adjust_mode=' + eventAdjustMode + ' event_status=' + eventStatus);
       } catch (e) {
-        // fallback：正则抽第一个 "speaker":"xxx"（从 cleaned 文本中找）
+        // fallback：正则抽字段
         const m = cleaned.match(/"speaker"\s*:\s*"([^"]+)"/);
         if (m) speaker = m[1];
         const mt = orchText.match(/"motive"\s*:\s*"([^"]+)"/);
         if (mt) motive = mt[1];
+        const mau = orchText.match(/"await_user"\s*:\s*(true|false)/i);
+        if (mau) awaitUser = mau[1].toLowerCase() === 'true';
+        const mtma = orchText.match(/"trigger_memory_agent"\s*:\s*(true|false)/i);
+        if (mtma) triggerMemoryAgent = mtma[1].toLowerCase() === 'true';
         console.warn('[' + ts() + '] 🎭 [mcs] 阶段一解析失败 fallback: speaker=' + speaker, e.message);
       }
 
-      // 3. 阶段二：发言器 → 台词正文
-      const speakerPrompt = await buildSpeakerPrompt(speaker, roleType, motive, eventSummary);
+      // 3. 阶段二：发言器 → 台词正文（传入 evDigest + nextEvInfo 对齐官方入参）
+      const speakerPrompt = await buildSpeakerPrompt(speaker, roleType, motive, eventSummary, evDigest, nextEvInfo);
       console.log('[' + ts() + '] 🎭 [mcs] 阶段二 prompt len=' + speakerPrompt.length);
 
       const speakerLLMMode = (window.tf_llm && window.tf_llm.callDirect) ? '接管' : 'tavo原生';
@@ -587,6 +727,14 @@ tavo.plugin.on('input:beforeSend', async (event) => {
         }
       } catch(e) {}
 
+      // 4a. await_user 处理（对齐 Toonflow awaitUser 语义）：停止生成，等待用户输入
+      if (awaitUser) {
+        console.log('[' + ts() + '] ⏸ [mcs] await_user=true → 停止生成，等待用户输入');
+        try { tavo.set(ORCH_FLAG, false, 'chat'); } catch (e) {}
+        return; // 不 append 消息，不继续生成
+      }
+
+      // 4b. append 角色消息
       if (thinking) {
         const esc = thinking.replace(/<\/div>/gi, '&lt;/div&gt;');
         const block = '<div style="cursor:pointer;color:#888;font-size:0.85em" onclick="var d=this.getElementsByTagName(\'div\')[0];d.style.display=d.style.display==\'none\'?\'block\':\'none\'">💭 思考（点击展开）<div style="display:none;padding:8px 0;color:#666">' + esc + '</div></div>';
@@ -595,6 +743,20 @@ tavo.plugin.on('input:beforeSend', async (event) => {
         await tavo.message.append({ role: 'assistant', characterId: charId || undefined, characterName: speaker, content: content, hidden: false });
       }
       console.log('[' + ts() + '] ✅ [mcs] 角色消息已 append → speaker=' + speaker + ' charId=' + charId + ' content=' + content.slice(0, 50));
+
+      // 4c. trigger_memory_agent 处理（后台异步刷新记忆，对齐 Toonflow triggerMemoryAgent=true 语义）
+      if (triggerMemoryAgent) {
+        console.log('[' + ts() + '] 🔄 [mcs] trigger_memory_agent=true → 触发记忆刷新');
+        try {
+          if (window.tmmIntent && typeof window.tmmIntent.refresh === 'function') {
+            window.tmmIntent.refresh().catch(e => console.warn('[' + ts() + '] [mcs] tmmIntent.refresh failed', e));
+          } else {
+            console.warn('[' + ts() + '] [mcs] window.tmmIntent.refresh 不可用，跳过记忆刷新');
+          }
+        } catch (e) {
+          console.warn('[' + ts() + '] [mcs] trigger_memory_agent 处理失败', e);
+        }
+      }
 
     } catch (e) {
       console.error('[' + ts() + '] ❌ [mcs] 后台编排异常:', e);
