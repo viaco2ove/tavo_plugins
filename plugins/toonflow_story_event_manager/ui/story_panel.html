@@ -1774,5 +1774,9 @@
     // overlay 内的 .tf-modal-close 按钮也要能关
     if (overlay && overlay.contains(e.target) && e.target.classList.contains('tf-modal-close')) close();
   });
+  // 暴露面板刷新函数（供 mcs/event_manager 触发刷新）
+  window._tfPanel_refresh = function(reason) {
+    try { loadStory().then(renderBody); } catch(e) {}
+  };
 })();
 </script>
