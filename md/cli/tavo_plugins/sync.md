@@ -179,7 +179,7 @@ python -m tavo_plugins sync --story-json "story.json"
 - `--force`： 代表强力模式
 
 注意：
-- 有--duplicate-delete 第一步先把当前故事对应的（同名角色，同名角色头像,同名角色立绘，同名角色音色文件，章节内容：章节和章节结束条件,章节内容：开场白，对应的世界书 etc）都删了。 
+- 有--duplicate-delete 第一步先把当前故事对应的（同名角色，同名角色的头像,同名角色的立绘，同名角色的音色文件，章节内容：章节和章节结束条件,章节内容：开场白，对应的世界书 etc）都删了。 
 - 有-clean-cache 的先把"story.json" story_sync_cache 指定的缓存文件删了
 
 ```bash
