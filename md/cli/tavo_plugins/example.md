@@ -32,3 +32,9 @@ python -m tavo_plugins plugins --install-all
 
 ### 重新安装部分插件
 tavo plugins --install "toonflow_story_debug_eruda,toonflow_story_event_manager"
+
+## 上传到插件hub
+- 重新打包 并 删除hub原有插件 后上传发布所有插件（先删再发布）
+python -m tavo_plugins plugins --hub --upload --duplicate-delete --all --force
+- 先全部插件+0.0.1 后重新打包 并上传发布所有插件（先升级再发布）
+python -m tavo_plugins plugins --hub --upload  --upver --all --force
