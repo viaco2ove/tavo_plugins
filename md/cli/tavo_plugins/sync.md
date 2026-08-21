@@ -176,6 +176,7 @@ python -m tavo_plugins sync --story-json "story.json"
 - `--all`：完整同步（含世界书）
 - `--duplicate-delete`：删除同名重复（角色 + 世界书条目）
 - `--clean-cache`：开始前清空 `story_sync_cache`
+- `--force`： 代表强力模式
 
  有--duplicate-delete 第一步把与当前故事同名的角色卡和世界书都删了。 有-clean-cache 的把"story.json" story_sync_cache
 
