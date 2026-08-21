@@ -178,7 +178,7 @@ python -m tavo_plugins sync --story-json "story.json"
 - `--clean-cache`：开始前清空 `story_sync_cache`
 - `--force`： 代表强力模式
 
- 有--duplicate-delete 第一步把与当前故事同名的角色卡和世界书都删了。 有-clean-cache 的把"story.json" story_sync_cache
+ 有--duplicate-delete 第一步先把当前故事同名的角色卡和世界书都删了。 有-clean-cache 的先把"story.json" story_sync_cache 指定的缓存文件删了
 
 ```bash
 # 完整清理 + 同步
