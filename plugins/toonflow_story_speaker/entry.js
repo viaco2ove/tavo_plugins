@@ -223,7 +223,7 @@ async function tf_speaker(type, data) {
       console.warn('[tf_speaker][opening] 写入开场白失败', e);
     }
   }else if ('append_message_steam' == type ){
-    // 流式 输出台词：speaker 自己调用 LLM 生成台词（不依赖 mcs 二次生成）
+    // 流式输出台词：speaker 自己调用 LLM 生成台词（不依赖 mcs 二次生成）
     console.log("[tf_speaker][steam] 收到流式台词委托 speaker=" + (data&&data.speaker) + " motive=" + (data&&data.motive));
     try {
       // 1. 查找角色
@@ -245,24 +245,26 @@ async function tf_speaker(type, data) {
       };
       steamCharEntry = steamFindChar(steamRole) || steamChars.find(function(c){ return c.name === '旁白'; }) || null;
 
-      // 2. 先 append 占位（空内容，会立即被 update 填充）
+      // 2. 生成唯一 div id
+      var msg_div_id = 'tf_steam_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+      // 3. 先 append 占位（带唯一 id 的 div，用于后续流式填充）
       var steamAppendOpts = {
         role: 'assistant',
         characterId: steamCharEntry ? steamCharEntry.id : undefined,
         characterName: steamRole,
-        content: '',
+        content: '<div id="'+msg_div_id+'"><span class="tf_steam_cursor">|</span></div>',
         hidden: false,
       };
       var steamMsg = null;
       try {
         steamMsg = await tavo.message.append(steamAppendOpts);
-        console.log("[tf_speaker][steam] 已 append 占位 msgId=" + (steamMsg && steamMsg.id));
+        console.log("[tf_speaker][steam] 已 append 占位 msgId=" + (steamMsg && steamMsg.id) + " divId=" + msg_div_id);
       } catch(e) {
         console.warn("[tf_speaker][steam] append 占位失败", e);
         throw e;
       }
 
-      // 3. speaker 自己生成台词（对齐 Toonflow story_speaker）
+      // 4. speaker 自己生成台词（对齐 Toonflow story_speaker）
       var speakerPrompt = await buildSpeakerPrompt(steamRole, steamRoleType, steamMotive, steamEventSummary, steamEvDigest, steamNextEvInfo);
       console.log("[tf_speaker][steam] speaker prompt len=" + speakerPrompt.length);
       var llmPath = (window.tf_llm && window.tf_llm.callDirect) ? '接管' : 'tavo原生';
@@ -275,60 +277,63 @@ async function tf_speaker(type, data) {
         console.error("[tf_speaker][steam] LLM 调用失败", e);
         throw e;
       }
-      // 4. 流式输出：每 80ms 增量 update
+      // 5. 清理 LLM 输出
       speechText = (speechText || '').replace(/<thinking>[\s\S]*?<\/thinking>/gi, '').replace(/^["']|["']$/g, '').trim();
-      var msgId = steamMsg && steamMsg.id;
-      var chunkSize = 8; // 每次输出字符数
-      var renderedText = '';
+
+      // 6. 流式输出：直接操作 DOM，每 50ms 填充一个字符
       var steamCharIdx = 0;
-      var steamInterval = setInterval(async function() {
+      var chunkSize = 2; // 每次填充字符数（打字机效果）
+      var steamInterval = setInterval(function() {
         if (steamCharIdx >= speechText.length) {
           clearInterval(steamInterval);
-          // 完成后考虑 thinking 折叠块
+          // 流式完成：移除光标
+          var targetDiv = document.getElementById(msg_div_id);
+          if (targetDiv) {
+            var cursor = targetDiv.querySelector('.tf_steam_cursor');
+            if (cursor) cursor.remove();
+          }
+          // 完成后添加 thinking 折叠块
           try {
             if (steamThinking) {
               var esc = steamThinking.replace(/<\/div>/gi, '&lt;/div&gt;');
               var block = '<div style="cursor:pointer;color:#888;font-size:0.85em" onclick="var d=this.getElementsByTagName(\'div\')[0];d.style.display=d.style.display==\'none\'?\'block\':\'none\'">💭 思考（点击展开）<div style="display:none;padding:8px 0;color:#666">' + esc + '</div></div>';
-              await tavo.message.update(msgId, { content: block + speechText });
+              if (targetDiv) targetDiv.insertAdjacentHTML('beforebegin', block);
             }
           } catch(e) {}
           console.log("[tf_speaker][steam] 流式输出完成 len=" + speechText.length);
+          // 7. 流式完成后 - 调用 voice 插件生成 + 播放语音
+          if (steamCharEntry && steamCharEntry.id && speechText && window.tf_voice) {
+            try {
+              var vcfg = window.tf_voice.getConfig ? window.tf_voice.getConfig() : null;
+              if (vcfg && vcfg.auto_play !== false) {
+                if (typeof window.tf_voice.playFor === 'function') {
+                  window.tf_voice.playFor(steamCharEntry.id, speechText);
+                } else if (typeof window.tf_voice.speak === 'function') {
+                  window.tf_voice.speak(steamCharEntry.id, speechText);
+                }
+              }
+            } catch(e) { console.warn('[tf_speaker][steam] TTS 触发失败', e); }
+          }
+          // 8. await_user 处理
+          if (steamAwaitUser === true) {
+            console.log('[tf_speaker][steam] awaitUser=true → 停止编排，等待用户');
+            try { tavo.set(ORCH_FLAG, false, 'chat'); } catch(e) {}
+            return;
+          }
+          // 9. 触发下一轮 NPC 编排
+          if (window.tf_story_emit) window.tf_story_emit('auto_orchestrate', {});
           return;
         }
-        renderedText += speechText.slice(steamCharIdx, steamCharIdx + chunkSize);
+        // 直接填充到 div
+        var renderedText = speechText.slice(0, steamCharIdx + chunkSize);
         steamCharIdx += chunkSize;
-        try {
-          await tavo.message.update(msgId, { content: renderedText });
-        } catch(e) {}
-      }, 80);
+        var targetDiv = document.getElementById(msg_div_id);
+        if (targetDiv) {
+          targetDiv.innerHTML = renderedText + '<span class="tf_steam_cursor">|</span>';
+        }
+      }, 50);
 
-// 5. 流式完成 - 调用 voice 插件生成 + 播放语音
-      console.log('[tf_speaker][steam] 流式输出完成 charId=' + (steamCharEntry ? steamCharEntry.id : 'null') + ' text=' + speechText.slice(0,40));
-      // 触发 TTS 播放（如果 voice 插件可用）
-      if (steamCharEntry && steamCharEntry.id && speechText && window.tf_voice && window.tf_voice.cacheVoiceId) {
-        try {
-          // 把消息 id 写入 tf_voice，让 voice 主动检测
-          var vcfg = window.tf_voice.getConfig ? window.tf_voice.getConfig() : null;
-          if (vcfg && vcfg.auto_play !== false) {
-            // 直接调 voice 的播放入口（如果有暴露）
-            if (typeof window.tf_voice.playFor === 'function') {
-              window.tf_voice.playFor(steamCharEntry.id, speechText);
-            } else if (typeof window.tf_voice.speak === 'function') {
-              window.tf_voice.speak(steamCharEntry.id, speechText);
-            } else {
-              console.log('[tf_speaker][steam] voice 插件未暴露 play 接口，将由 message:added 事件自动播放');
-            }
-          }
-        } catch(e) { console.warn('[tf_speaker][steam] TTS 触发失败', e); }
-      }
-      // 6. await_user 处理（不触发下一轮编排）
-      if (steamAwaitUser === true) {
-        console.log('[tf_speaker][steam] awaitUser=true → 停止编排，等待用户');
-        try { tavo.set('tf_orch.active', false, 'chat'); } catch(e) {}
-        return;
-      }
-      // 7. 触发下一轮 NPC 编排（流式完成后才触发）
-      if (window.tf_story_emit) window.tf_story_emit('auto_orchestrate', {});
+      // 注意：流式进行中不要在这里写 TTS/编排逻辑，等 setInterval 内部完成
     } catch(e) {
       console.error("[tf_speaker][steam] 流式输出异常", e);
     }
@@ -342,20 +347,21 @@ async function tf_speaker(type, data) {
   }
 
 
-  try {
-    //先生成语音！然后播放
-    // 4a. await_user 处理（对齐 Toonflow awaitUser 语义）：停止生成，等待用户输入
-    if (data.awaitUser!=null &&data.awaitUser== true) {
-      console.log('[' + ts() + '] ⏸ [mcs] await_user=true → 停止生成，等待用户输入');
-      try { tavo.set(ORCH_FLAG, false, 'chat'); } catch (e) {}
-      return; // 不 append 消息，不继续生成
+  // 4. append_message 类型的后处理（append_message_steam 在 setInterval 内部已处理）
+  if (type === 'append_message') {
+    try {
+      // await_user 处理
+      if (data && data.awaitUser === true) {
+        console.log('[' + ts() + '] ⏸ [speaker] await_user=true → 停止生成，等待用户输入');
+        try { tavo.set(ORCH_FLAG, false, 'chat'); } catch (e) {}
+        return;
+      }
+      // 触发下一轮编排
+      if (window.tf_story_emit) window.tf_story_emit('auto_orchestrate', {});
+    } catch (e) {
+      console.warn('[tf_speaker] auto_orchestrate失败', e);
     }
-    // 语音播放后触发下一轮 NPC 编排（不等用户）
-    if (window.tf_story_emit) window.tf_story_emit('auto_orchestrate', {});
-  } catch (e) {
-    console.warn('[tf_speaker] auto_orchestrate失败', e);
   }
-
 }
 
 
