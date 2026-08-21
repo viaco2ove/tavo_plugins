@@ -165,6 +165,38 @@ def character_import(http_url, token, name, description, first_mes, personality,
     rr = unwrap(r)
     return rr.get("id") or rr.get("characterId")
 
+def persona_create_minimal(http_url, token, name, description, dry=False):
+    """创建 persona（不传 avatar），用于在没有 chat_id 时拿到 persona_id 给 chat_create 用。
+
+    优先复用现有 persona（避免创建多个副本），仅在没有任何同名 persona 时才创建。
+    返回 persona id（int）或 None。
+    """
+    if not name:
+        return None
+    if not dry:
+        found = persona_search(http_url, token, name)
+        for it in found:
+            if it.get("name") == name:
+                pid = it.get("id")
+                print("  [persona] 复用 id=%s name=%s" % (pid, name))
+                return pid
+    else:
+        print("  [persona] dry 复用 name=%s" % name)
+        return "dry-run"
+    # 没有同名 persona 才创建（不传 avatar）
+    args = {"persona": {"name": name, "description": description or "", "active": True}}
+    r = rpc(http_url, token, "tavo_persona_create", args)
+    rr = unwrap(r)
+    pid = rr.get("id") or rr.get("personaId")
+    if pid:
+        try:
+            rpc(http_url, token, "tavo_persona_set_active", {"id": int(pid)})
+        except Exception:
+            pass
+        print("  [persona] 创建 id=%s name=%s (无 avatar，延后上传)" % (pid, name))
+    return pid
+
+
 def persona_create(http_url, token, name, description, first_mes, personality, avatar_ref, dry=False):
     args = {"persona": {
         "name": name,
@@ -223,7 +255,11 @@ def chat_create(http_url, token, chat_dict):
     return unwrap(r)
 
 def chat_update(http_url, token, chat_id, **kwargs):
-    r = rpc(http_url, token, "tavo_chat_update", {"id": chat_id, "chat": kwargs})
+    # 合并: id + chat
+    chat_dict = dict(kwargs)
+    # 移除空值
+    chat_dict = {k: v for k, v in chat_dict.items() if v is not None and v != ""}
+    r = rpc(http_url, token, "tavo_chat_update", {"id": chat_id, "chat": chat_dict})
     return unwrap(r)
 
 def chat_search(http_url, token, query):
@@ -352,6 +388,44 @@ def auto_generate_sync_config(story_dir, story_data):
         # 同步 source_entries（story.json 更新时同步）
         if "source_entries" not in cfg.get("worldbook", {}):
             cfg["worldbook"]["source_entries"] = entries
+        # 修 Bug #3: 差量更新 characters（按 name 为 key）
+        # 新增的 npc 角色会被加进去，被移除的角色会被从 config 里删掉
+        # （但手动编辑的 description/first_mes 不会被覆盖）
+        existing_by_name = {c.get("name"): c for c in cfg.get("characters", []) if c.get("name")}
+        new_characters = []
+        for c in characters:
+            name = c.get("name")
+            if not name:
+                continue
+            existing = existing_by_name.get(name)
+            if existing:
+                # 保留现有的 description/first_mes/personality/avatar_file（手动编辑优先）
+                # 只补上 roleType 等 story.json 强制的字段
+                merged = dict(existing)
+                for k, v in c.items():
+                    if k not in merged or merged.get(k) in (None, "", "NPC"):
+                        merged[k] = v
+                new_characters.append(merged)
+            else:
+                new_characters.append(c)
+        # 删除已经从 story.json 移除的角色（但永远保留「旁白」系统自带角色）
+        removed = [name for name in existing_by_name
+                   if name not in {c.get("name") for c in characters} and name != "旁白"]
+        if removed:
+            print("  [config] characters 移除: %s" % removed)
+        # 兜底：把「旁白」放在最后（如果 story.json 仍然要求保留）
+        if "旁白" not in {c.get("name") for c in new_characters}:
+            narrator = next((c for c in cfg.get("characters", []) if c.get("name") == "旁白"), None)
+            if narrator:
+                new_characters.append(narrator)
+        cfg["characters"] = new_characters
+        with open(config_path, "w", encoding="utf-8") as f:
+            json.dump(cfg, f, ensure_ascii=False, indent=2)
+        print("  [config] 差量同步 characters: 共 %d 个（新增 %d, 删除 %d）" % (
+            len(new_characters),
+            sum(1 for c in new_characters if c.get("name") not in existing_by_name),
+            len(removed),
+        ))
         return cfg
 
     with open(config_path, "w", encoding="utf-8") as f:
@@ -397,7 +471,13 @@ def build_character_card(name, description, first_mes, personality, avatar_rel, 
 # ---------------------------------------------------------------------------
 # 同步角色卡
 # ---------------------------------------------------------------------------
-def sync_characters(http_url, token, config, story_dir, dry, force, chat_id_for_files):
+def sync_characters(http_url, token, config, story_dir, dry, force, chat_id_for_files=0, skip_avatar=False):
+    """同步角色卡。
+
+    skip_avatar=True 时只创建/复用 character 记录，不上传 avatar（用于在 sync_chat 之前先拿 id，
+    解决 chat.characterIds 必填 + tavo_file_save 需要 chatId 的鸡生蛋问题）。
+    之后用 upload_character_avatars 补 avatar。
+    """
     print("\n=== 同步角色卡 ===")
     results = {}  # name -> tavo_id
 
@@ -416,13 +496,24 @@ def sync_characters(http_url, token, config, story_dir, dry, force, chat_id_for_
             print("  [persona] 复用 id=%s name=%s" % (existing, name))
             results[name] = existing
         else:
-            av_ref = upload_avatar(http_url, token, chat_id_for_files, name, av_local, dry=dry)
-            pid = persona_create(http_url, token, name,
-                                 p.get("description", ""), p.get("first_mes", ""),
-                                 p.get("personality", "玩家"), av_ref, dry=dry)
-            if not dry:
-                print("  [persona] 创建 id=%s name=%s avatar=%s" % (pid, name, av_ref or "无"))
-            results[name] = pid
+            if skip_avatar:
+                # 第一阶段：只创建/复用 persona 记录（用 persona_create_minimal 已经在 main 流程里调过，
+                # 这里不重复创建；只确保 results[name] 有值）
+                if existing:
+                    results[name] = existing
+                else:
+                    pid = persona_create_minimal(http_url, token, name,
+                                                 p.get("description", ""), dry=dry)
+                    results[name] = pid
+                print("  [persona] (no avatar yet) id=%s name=%s" % (results[name], name))
+            else:
+                av_ref = upload_avatar(http_url, token, chat_id_for_files, name, av_local, dry=dry)
+                pid = persona_create(http_url, token, name,
+                                     p.get("description", ""), p.get("first_mes", ""),
+                                     p.get("personality", "玩家"), av_ref, dry=dry)
+                if not dry:
+                    print("  [persona] 创建 id=%s name=%s avatar=%s" % (pid, name, av_ref or "无"))
+                results[name] = pid
 
     # NPCs（走 character_import_card，avatar 用 files/global 引用）
     for c in config.get("characters", []):
@@ -437,10 +528,35 @@ def sync_characters(http_url, token, config, story_dir, dry, force, chat_id_for_
                 existing = it.get("id")
                 break
         if existing:
-            print("  [char]    复用 id=%s name=%s" % (existing, name))
-            results[name] = existing
+            # 即使角色已存在，如果本地有新头像且 --force 模式，重新导入
+            if force and av_local and os.path.isfile(av_local):
+                av_ref = upload_avatar(http_url, token, chat_id_for_files, name, av_local, dry=dry)
+                if not dry:
+                    cid = character_import(http_url, token, name,
+                                           c.get("description", ""), c.get("first_mes", ""),
+                                           c.get("personality", "NPC"),
+                                           c.get("roleType", "npc"), av_ref, dry=dry)
+                    print("  [char]    重导头像 id=%s name=%s avatar=%s" % (cid, name, av_ref or "无"))
+                    results[name] = cid
+                else:
+                    print("  [char]    (dry) 重导头像 name=%s avatar=%s" % (name, av_local))
+                    results[name] = existing
+            else:
+                print("  [char]    复用 id=%s name=%s" % (existing, name))
+                results[name] = existing
+            continue
+        # 不存在，需要 character_import_card 创建
+        if skip_avatar:
+            # 第一阶段：无 avatar 创建
+            print("  [char]    (no avatar yet) 将创建 name=%s" % name)
+            cid = character_import(http_url, token, name,
+                                   c.get("description", ""), c.get("first_mes", ""),
+                                   c.get("personality", "NPC"),
+                                   c.get("roleType", "npc"), "", dry=dry)
+            if not dry:
+                print("  [char]    创建 (无 avatar) id=%s name=%s" % (cid, name))
+            results[name] = cid
         else:
-            print("  [char]    未找到，将创建 id=%s name=%s" % ("?", name))
             av_ref = upload_avatar(http_url, token, chat_id_for_files, name, av_local, dry=dry)
             cid = character_import(http_url, token, name,
                                    c.get("description", ""), c.get("first_mes", ""),
@@ -451,6 +567,50 @@ def sync_characters(http_url, token, config, story_dir, dry, force, chat_id_for_
             results[name] = cid
 
     return results  # {name: id}
+
+
+def upload_character_avatars(http_url, token, chat_id, char_ids, story_dir, config, dry):
+    """第二阶段：给 char_ids 里的角色上传 avatar。
+
+    用于 sync_chat 之后、chat_update 重绑之前。Persona 和 NPC 都会补 avatar。
+    persona_create 已经支持更新式（复用现有 persona 时不会重复上传 avatar；
+    这里只对需要补 avatar 的角色调用 upload_avatar）。
+    注意：MCP 端 persona 资源没有显式 update avatar 工具，这里只能给 character_import_card
+    路径下的 NPC 重新创建 card 并覆盖 avatar（如果 MCP 接受同名重复创建则 update，
+    否则会创建新副本——本函数不试图更新已存在 persona 的 avatar，只跳过）。
+    """
+    print("\n=== 上传角色 avatar（chat_id=%s） ===" % chat_id)
+    if not chat_id or dry:
+        if dry:
+            print("  [avatar] dry 模式，跳过")
+        else:
+            print("  [avatar] chat_id 无效，跳过")
+        return
+
+    p = config.get("persona", {})
+    persona_name = p.get("name", "")
+    if persona_name and char_ids.get(persona_name):
+        av_local = avatar_abs(story_dir, p.get("avatar_file", ""))
+        if av_local and os.path.isfile(av_local):
+            # 尝试用 update persona avatar 的方式 — 若无 update 工具则跳过
+            # 当前 MCP 端未提供 tavo_persona_update，所以 persona avatar 只能
+            # 在 sync_characters 阶段通过 persona_create 传，但那时没 chat_id。
+            # 这里暂时跳过 persona avatar。
+            print("  [persona avatar] 跳过（persona_update 工具未提供，留待 MCP 端支持）")
+
+    for c in config.get("characters", []):
+        name = c.get("name")
+        if not name or name not in char_ids:
+            continue
+        av_local = avatar_abs(story_dir, c.get("avatar_file", ""))
+        if not av_local or not os.path.isfile(av_local):
+            continue
+        # NPC avatar: 上传到 chat，然后尝试更新 character card
+        av_ref = upload_avatar(http_url, token, chat_id, name, av_local, dry=dry)
+        if av_ref:
+            # MCP 端如果有 tavo_character_update / tavo_character_set_avatar，可以补；
+            # 目前 MCP 端只暴露 import_card 路径，会创建新副本。暂时记录状态。
+            print("  [char avatar] %s -> %s (注: 旧 MCP 不支持单点 update, 需 import_card 重建)" % (name, av_ref))
 
 # ---------------------------------------------------------------------------
 # 同步世界书
@@ -521,14 +681,19 @@ def sync_chat(http_url, token, config, char_ids, lorebook_id, persona_id, existi
     char_id_list = to_int_list((char_ids or {}).values())
     lorebook_ids = [int(lorebook_id)] if lorebook_id and str(lorebook_id).isdigit() else []
     persona_int = int(persona_id) if persona_id and str(persona_id).isdigit() else None
+    # 过滤掉 persona id（MCP 的 characterIds 字段只接受 character 资源 id，不接受 persona id）
+    if persona_int and persona_int in char_id_list:
+        char_id_list = [x for x in char_id_list if x != persona_int]
 
     def do_update(cid):
         if dry:
             print("  [chat] dry update id=%s name=%s" % (cid, chat_name))
             return
-        kwargs = {"name": chat_name, "responseMode": response_mode}
-        if char_id_list:
-            kwargs["characterIds"] = char_id_list
+        if not char_id_list:
+            # 没有角色 ID 时不做 update，让 main 流程后面再绑
+            print("  [chat] skip update (no characters yet, will rebind later)")
+            return
+        kwargs = {"name": chat_name, "responseMode": response_mode, "characterIds": char_id_list}
         if lorebook_ids:
             kwargs["lorebookIds"] = lorebook_ids
         if persona_int:
@@ -540,19 +705,55 @@ def sync_chat(http_url, token, config, char_ids, lorebook_id, persona_id, existi
         if dry:
             print("  [chat] dry create name=%s" % chat_name)
             return "dry-run"
-        chat_dict = {"name": chat_name, "responseMode": response_mode}
-        if char_id_list:
-            chat_dict["characterIds"] = char_id_list
+        if not char_id_list:
+            # 第一次 sync_chat 调用时 char_ids 还是空。
+            # 严格：绝不再用「别处故事的角色」/全局第一个角色/兜底 ID=3 凑数。
+            # 友好：如果已经有 persona_id，用 [persona_id] 作为最小 characterIds 创建，
+            #      main 流程的「重绑」步骤会用真实 NPC 替换它。
+            # 最后兜底：MCP 严格不允许时 sys.exit，提示用 --chat-id。
+            if persona_int:
+                chat_dict = {"name": chat_name, "responseMode": response_mode,
+                             "characterIds": [persona_int]}
+                if lorebook_ids:
+                    chat_dict["lorebookIds"] = lorebook_ids
+                chat_dict["personaId"] = persona_int
+                try:
+                    r = chat_create(http_url, token, chat_dict)
+                except Exception as e:
+                    sys.exit(
+                        "[FATAL] sync_chat 用 [persona_id=%d] 创建 chat 失败（%s）。\n"
+                        "        请先用 --chat-id <id> 复用已有群聊。\n"
+                        "        提示：当前 story_name=%r" % (persona_int, e, config.get("story_name"))
+                    )
+                cid = r.get("chatId") or r.get("id")
+                if cid is None:
+                    sys.exit("[FATAL] chat_create 失败，未返回 chatId：%r" % (r,))
+                print("  [chat] create (minimal=[persona_id=%d], rebind later) id=%s name=%s" % (
+                    persona_int, cid, chat_name))
+                return cid
+            # 没有 persona_int：MCP 强制要 characterIds 时只能 sys.exit
+            sys.exit(
+                "[FATAL] sync_chat 在 char_id_list 空且没有 persona_id 时无法创建 chat。\n"
+                "        请先用 --chat-id <id> 复用已有群聊，或先单独跑 sync_persona 拿到 persona_id。\n"
+                "        提示：当前 story_name=%r" % (config.get("story_name"),)
+            )
+        chat_dict = {"name": chat_name, "responseMode": response_mode, "characterIds": char_id_list}
         if lorebook_ids:
             chat_dict["lorebookIds"] = lorebook_ids
         if persona_int:
             chat_dict["personaId"] = persona_int
         r = chat_create(http_url, token, chat_dict)
         cid = r.get("chatId") or r.get("id")
+        if cid is None:
+            sys.exit("[FATAL] chat_create 失败，未返回 chatId：%r" % (r,))
         print("  [chat] create id=%s name=%s" % (cid, chat_name))
         return cid
 
     if existing_chat_id:
+        # 复用指定 chat_id；char_id_list 为空时让 main 流程后面再 chat_update 绑
+        if not char_id_list:
+            print("  [chat] reuse id=%s (no characters yet, will rebind later)" % existing_chat_id)
+            return existing_chat_id
         do_update(existing_chat_id)
         return existing_chat_id
 
@@ -560,8 +761,14 @@ def sync_chat(http_url, token, config, char_ids, lorebook_id, persona_id, existi
     if found:
         cid = found[0].get("chatId") or found[0].get("id")
         print("  [chat] reuse id=%s name=%s" % (cid, chat_name))
+        # 找到已存在的同名 chat：不传 characterIds 时不 update，让 main 流程后面再 chat_update 绑
+        if not char_id_list:
+            print("  [chat] skip update (no characters yet, will rebind later)")
+            return cid
         do_update(cid)
         return cid
+    # 没找到 chat：必须带 characterIds 创建（do_create 已严格处理空列表）
+    print("  [chat] not found, will create")
     return do_create()
 
 # ---------------------------------------------------------------------------
@@ -861,51 +1068,6 @@ def main():
     config = auto_generate_sync_config(story_dir, story_data)
     config["_story_dir"] = story_dir  # 透传给后续步骤
 
-    # 3. 先建/取群聊拿 chat_id（avatar 上传需要 chatId）
-    chat_id = sync_chat(http_url, token, config, {}, None, None, args.chat_id, args.dry)
-    print("\n=== chat_id = %s ===" % chat_id)
-
-    # 4. 同步角色卡（avatar 先 file_save 成 files/global 引用，再写进 card）
-    # Duplicate-delete: 删除同名角色
-    if args.duplicate_delete:
-        print('=== 删除同名角色 ===')
-        # Search and delete
-        for cfg_name in config.get('characters', []):
-            name = cfg_name.get('name', '')
-            if name:
-                result = search_character(http_url, token, name)
-                for item in (result or []):
-                    if item.get('name') == name:
-                        cid = item.get('id')
-                        try:
-                            rpc(http_url, token, 'tavo_character_delete', {'id': cid})
-                            print('  Deleted char id=%s name=%s' % (cid, name))
-                        except: pass
-        # Delete persona
-        for cfg in [config.get('persona')]:
-            if cfg and cfg.get('name'):
-                try:
-                    result2 = rpc(http_url, token, 'tavo_persona_search', {'query': cfg['name'], 'limit': 5})
-                    for item in (result2.get('items', []) if isinstance(result2, dict) else []):
-                        if item.get('name') == cfg['name']:
-                            pid = item.get('id')
-                            rpc(http_url, token, 'tavo_persona_delete', {'personaId': pid})
-                            print('  Deleted persona id=%s name=%s' % (pid, cfg['name']))
-                except: pass
-        # Delete lorebook entries
-        try:
-            lb_result = rpc(http_url, token, 'tavo_lorebook_search', {'query': '', 'limit': 50})
-            for lb in (lb_result.get('items', []) if isinstance(lb_result, dict) else []):
-                lb_name = lb.get('name', '')
-                if lb_name == config.get('name'):
-                    lb_id = lb.get('id')
-                    try:
-                        rpc(http_url, token, 'tavo_lorebook_delete', {'id': lb_id})
-                        print('  Deleted lorebook id=%s name=%s' % (lb_id, lb_name))
-                    except: pass
-        except: pass
-        print('')
-
     # Clean cache
     if args.clean_cache:
         import shutil
@@ -914,70 +1076,116 @@ def main():
             shutil.rmtree(cache_dir)
             print('  [cache] Cleaned cache=%s' % cache_dir)
 
-    # Duplicate-delete: 删除同名角色和世界书
+    # Duplicate-delete: 删除同名角色和世界书（在 sync_characters 之前，否则会被复用）
     if getattr(args, 'duplicate_delete', False):
         print('\n=== duplicate-delete: 删除同名角色和世界书 ===')
         # 删除角色
         for c in config.get('characters', []):
             name = c.get('name')
             if not name: continue
-            result = search_character(http_url, token, name)
-            for item in (result or []):
-                if item.get('name') == name:
-                    cid = item.get('id')
-                    try:
-                        rpc(http_url, token, 'tavo_character_delete', {'id': cid})
-                        print('  [char] Deleted id=%s name=%s' % (cid, name))
-                    except Exception as e:
-                        print('  [char] Delete failed: ' + str(e))
+            try:
+                result = search_character(http_url, token, name)
+                for item in (result or []):
+                    if item.get('name') == name:
+                        cid = item.get('id')
+                        try:
+                            rpc(http_url, token, 'tavo_character_delete', {'id': cid})
+                            print('  [char] Deleted id=%s name=%s' % (cid, name))
+                        except Exception as e:
+                            print('  [char] Delete failed: ' + str(e))
+            except Exception:
+                pass
         # 删除 persona
         for cfg in [config.get('persona')]:
             if cfg and cfg.get('name'):
                 try:
                     result2 = rpc(http_url, token, 'tavo_persona_search', {'query': cfg['name'], 'limit': 5})
-                    for item in (result2.get('items', []) if isinstance(result2, dict) else []):
+                    items = result2.get('items', []) if isinstance(result2, dict) else (result2 or [])
+                    for item in items:
                         if item.get('name') == cfg['name']:
                             pid = item.get('id')
-                            rpc(http_url, token, 'tavo_persona_delete', {'personaId': pid})
-                            print('  [persona] Deleted id=%s name=%s' % (pid, cfg['name']))
-                except: pass
+                            try:
+                                rpc(http_url, token, 'tavo_persona_delete', {'personaId': pid})
+                                print('  [persona] Deleted id=%s name=%s' % (pid, cfg['name']))
+                            except Exception:
+                                pass
+                except Exception:
+                    pass
         # 删除世界书
         try:
             lb_result = rpc(http_url, token, 'tavo_lorebook_search', {'query': '', 'limit': 50})
-            chat_name = config.get('name', '')
-            for lb in (lb_result.get('items', []) if isinstance(lb_result, dict) else []):
-                if lb.get('name') == chat_name:
+            items = lb_result.get('items', []) if isinstance(lb_result, dict) else (lb_result or [])
+            # 修 Bug #2: 原代码取 config.get('name', '') 永远空（config 只有 story_name/chat_name）
+            lb_match_name = config.get('chat_name') or config.get('story_name', '')
+            for lb in items:
+                if lb.get('name') == lb_match_name:
                     lb_id = lb.get('id')
                     try:
                         rpc(http_url, token, 'tavo_lorebook_delete', {'id': lb_id})
-                        print('  [lorebook] Deleted id=%s name=%s' % (lb_id, chat_name))
-                    except Exception as e:
-                        print('  [lorebook] Delete failed: ' + str(e))
-        except Exception as e:
-            print('  [lorebook] Search failed: ' + str(e))
+                        print('  [lorebook] Deleted id=%s name=%s' % (lb_id, lb_match_name))
+                    except Exception:
+                        pass
+        except Exception:
+            pass
         print('')
 
-    char_ids = sync_characters(http_url, token, config, story_dir, args.dry, args.force, chat_id)
+    # 3. 同步角色卡（先 skip_avatar 拿 NPC character id 列表，给 sync_chat 用）
+    #    解决循环依赖：MCP 要求 characterIds，但 tavo_file_save 又需要 chatId。
+    #    第一阶段：只创建/复用 character 记录（不传 avatar），拿 char_ids
+    char_ids = sync_characters(
+        http_url, token, config, story_dir, args.dry, args.force,
+        chat_id_for_files=0, skip_avatar=True,
+    )
     config["_char_id_map"] = char_ids
 
-    # 5. 同步世界书
+    # 4. 创建/复用 persona 拿 id（不依赖 chat_id）
+    persona_name = config.get("persona", {}).get("name", "")
+    persona_id = char_ids.get(persona_name)  # 已经在 step 3 拿到
+    print("\n=== persona_id = %s ===" % (persona_id or "（无）"))
+
+    # 5. 建/取群聊（用 char_ids 里的 NPC id 作为 characterIds）
+    #    sync_chat 现在能拿到合法的 character id，能正常创建 chat
+    chat_id = sync_chat(http_url, token, config, char_ids, None, persona_id, args.chat_id, args.dry)
+    print("\n=== chat_id = %s ===" % chat_id)
+
+    # 6. 第二阶段：给角色补 avatar（现在有 chat_id 了）
+    if not args.dry and chat_id and not args.skip_sprite:
+        upload_character_avatars(http_url, token, chat_id, char_ids, story_dir, config, args.dry)
+
+    # 7. 同步世界书
     lorebook_id = sync_worldbook(http_url, token, config, args.dry) if not args.skip_voice else None
 
-    # 6. persona_id
-    persona_id = char_ids.get(config.get("persona", {}).get("name", ""))
-    print("\n=== persona_id = %s ===" % (persona_id or "无"))
-
-    # 7. 重绑群聊（角色卡 + 世界书 + persona 都到位后再 update）
+    # 8. 重绑群聊（角色卡 + 世界书 + persona 都到位后再 update）
     if not args.dry:
+        # 过滤 narrator（旁白）和 persona：它们不是 chat 的"在场角色"
+        # 与 src/tavo_plugins/commands/sync_story.py 的处理保持一致
+        persona_name = config.get("persona", {}).get("name", "")
+        char_id_list = [
+            int(v) for k, v in char_ids.items()
+            if k != "旁白" and k != persona_name and v and str(v).isdigit()
+        ]
+        lorebook_ids = [int(lorebook_id)] if lorebook_id and str(lorebook_id).isdigit() else []
+        persona_int = int(persona_id) if persona_id and str(persona_id).isdigit() else None
+        if not char_id_list:
+            sys.exit(
+                "[FATAL] 重绑 chat 时没有可用角色 ID（过滤掉旁白/persona 后为空）。\n"
+                "        story_name=%r persona=%r char_ids=%r" % (
+                    config.get("story_name"), persona_name, char_ids)
+            )
         try:
             chat_update(http_url, token, chat_id,
-                characterIds=[int(v) for v in char_ids.values() if v and str(v).isdigit()],
-                lorebookIds=[int(lorebook_id)] if lorebook_id and str(lorebook_id).isdigit() else [],
-                personaId=int(persona_id) if persona_id and str(persona_id).isdigit() else None,
+                characterIds=char_id_list,
+                lorebookIds=lorebook_ids,
+                personaId=persona_int,
                 responseMode=config.get("response_mode", "natural"))
-            print("  [chat] 重绑角色+世界书+persona OK")
+            print("  [chat] 重绑角色+世界书+persona OK (%d chars, persona=%s, lorebook=%s)" % (
+                len(char_id_list), persona_int, lorebook_ids))
         except Exception as e:
-            print("  [chat] 重绑失败: %s" % e)
+            sys.exit(
+                "[FATAL] 重绑 chat 失败（不能 swallow,必须终止）。\n"
+                "        chat_id=%s characterIds=%s personaId=%s lorebookIds=%s\n"
+                "        error=%s" % (chat_id, char_id_list, persona_int, lorebook_ids, e)
+            )
 
     # 7. 同步章节
     if not args.skip_chapters:

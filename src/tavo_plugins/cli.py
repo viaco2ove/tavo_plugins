@@ -369,15 +369,26 @@ def sync_cmd(story_dir, story_json, reuse_ids, duplicate_delete, clean_cache, sk
     if story_json:
         config_dir = None
         config_file = None
+        story_mode_args = []
         try:
             with open(story_json, "r", encoding="utf-8") as f:
                 cfg = _json.load(f)
-            # Read story_sync_file from story.json
             config_file = cfg.get("story_sync_file")
             if config_file:
                 config_dir = os.path.dirname(os.path.abspath(config_file))
                 if not story_dir:
                     story_dir = config_dir
+            # Parse story_sync_mode: "--all --force --duplicate-delete --clean-cache"
+            # 修 Bug #4: 同时接受 "-clean-cache" 单横线（容错老配置）
+            mode_str = cfg.get("story_sync_mode", "")
+            if mode_str:
+                story_mode_args = []
+                for a in mode_str.split():
+                    if a.startswith("--"):
+                        story_mode_args.append(a)
+                    elif a.startswith("-") and len(a) > 1 and a[1] != "-":
+                        # "-clean-cache" → "--clean-cache"
+                        story_mode_args.append("-" + a)
         except Exception as e:
             click.echo("[ERR] failed to read story.json: " + str(e))
             return
@@ -393,28 +404,128 @@ def sync_cmd(story_dir, story_json, reuse_ids, duplicate_delete, clean_cache, sk
         args.append(".cache/story")
     if skip_plugins:
         args.append("--skip-plugins")
-    if duplicate_delete:
+    if duplicate_delete or "--duplicate-delete" in story_mode_args:
         args.append("--duplicate-delete")
-    if clean_cache:
+    if clean_cache or "--clean-cache" in story_mode_args:
         args.append("--clean-cache")
-    if force or all_flag:
+    if force or full or "--force" in story_mode_args or "--all" in story_mode_args:
         args.append("--force")
+    for a in story_mode_args:
+        if a == '--all':
+            continue
+        if a not in args:
+            args.append(a)
     result = subprocess.run(args, env={**os.environ, "PYTHONIOENCODING": "utf-8"})
     sys.exit(result.returncode)
-    if story_dir:
-        args.append(story_dir)
-    else:
-        args.append(".cache/story")  # default
-    if skip_plugins:
-        args.append("--skip-plugins")
-    if duplicate_delete:
-        args.append("--duplicate-delete")
-    if clean_cache:
-        args.append("--clean-cache")
-    if force or all_flag:
-        args.append("--force")
-    result = subprocess.run(args, env={**os.environ, "PYTHONIOENCODING": "utf-8"})
-    sys.exit(result.returncode)
+
+
+@main.command(name="characters")
+@click.argument("query", required=False, default="")
+@click.option("--delete", "-d", type=int, help="按 ID 删除单个角色")
+@click.option("--delete-all", is_flag=True, help="删除全部角色（需确认）")
+@click.pass_context
+def characters(ctx, query, delete, delete_all):
+    """列出、搜索或删除角色卡
+
+    不带参数：列出所有角色
+    --delete ID：删除指定 ID 的角色
+    --delete-all：删除全部角色（带确认提示）"""
+    client = resolve_client(ctx.obj["env_path"])
+
+    def search_chars(q):
+        return client.get("tavo_character_search", {"query": q, "limit": 100})
+
+    def confirm(prompt):
+        return click.confirm(prompt)
+
+    if delete is not None:
+        if not confirm(f"确认删除角色 ID={delete}？此操作不可撤销"):
+            click.echo("已取消")
+            return
+        r = client.call("tavo_character_delete", {"id": delete})
+        ok = r.get("ok", False) or r.get("content", [{}])[0].get("text", "") == "true"
+        if ok:
+            click.secho(f"[OK] 已删除角色 ID={delete}", fg="green")
+        else:
+            click.secho(f"[ERR] 删除失败: {r}", fg="red")
+        return
+
+    if delete_all:
+        # 先列出所有
+        result = search_chars("")
+        items = result if isinstance(result, list) else result.get("items", [])
+        if not items:
+            click.echo("没有角色")
+            return
+        click.secho(f"将删除以下 {len(items)} 个角色：", fg="yellow")
+        for it in items:
+            click.echo(f"  [{it.get('id')}] {it.get('name')}")
+        if not confirm("确认删除全部？此操作不可撤销"):
+            click.echo("已取消")
+            return
+        ok_count = 0
+        for it in items:
+            cid = it.get("id")
+            if cid:
+                try:
+                    client.call("tavo_character_delete", {"id": cid})
+                    click.echo(f"  [OK] 删除 ID={cid}")
+                    ok_count += 1
+                except Exception as e:
+                    click.secho(f"  [ERR] ID={cid}: {e}", fg="red")
+        click.secho(f"[OK] 共删除 {ok_count}/{len(items)} 个角色", fg="green")
+        return
+
+    # 列出/搜索
+    result = search_chars(query)
+    items = result if isinstance(result, list) else result.get("items", [])
+    if not items:
+        click.echo("没有找到角色")
+        return
+    click.secho(f"找到 {len(items)} 个角色：", bold=True)
+    for it in items:
+        cid = it.get("id")
+        name = it.get("name", "")
+        kind = it.get("kind", "character")
+        if kind == "persona":
+            click.echo(f"  [P{cid}] {name} (persona)")
+        else:
+            click.echo(f"  [{cid}] {name}")
+
+
+@main.command(name="personas")
+@click.argument("query", required=False, default="")
+@click.option("--delete", "-d", type=int, help="按 ID 删除 persona")
+@click.pass_context
+def personas(ctx, query, delete):
+    """列出、搜索或删除 persona
+
+    不带参数：列出所有 persona
+    --delete ID：删除指定 ID 的 persona"""
+    client = resolve_client(ctx.obj["env_path"])
+
+    if delete is not None:
+        if not click.confirm(f"确认删除 persona ID={delete}？此操作不可撤销"):
+            click.echo("已取消")
+            return
+        r = client.call("tavo_persona_delete", {"id": delete})
+        ok = r.get("ok", False) or r.get("content", [{}])[0].get("text", "") == "true"
+        if ok:
+            click.secho(f"[OK] 已删除 persona ID={delete}", fg="green")
+        else:
+            click.secho(f"[ERR] 删除失败: {r}", fg="red")
+        return
+
+    result = client.get("tavo_persona_search", {"query": query, "limit": 100})
+    items = result if isinstance(result, list) else result.get("items", [])
+    if not items:
+        click.echo("没有找到 persona")
+        return
+    click.secho(f"找到 {len(items)} 个 persona：", bold=True)
+    for it in items:
+        pid = it.get("id")
+        name = it.get("name", "")
+        click.echo(f"  [{pid}] {name}")
 
 
 if __name__ == "__main__":
