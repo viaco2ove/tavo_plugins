@@ -3,7 +3,7 @@
 // 其他插件通过 tf_llm.generate() 调用（不再直接调 tavo.generate()）
 
 const NS = 'tf_llm';
-const DEFAULTS = { enabled: true, apiUrl: '', apiKey: '', apiMode: '', model: "", reasoningEffort: 'minimal', temperature: 0.3, topP: 0.5, topK: null, maxTokens: 1500, memoryLength: 20, stream: true };
+const DEFAULTS = { enabled: true, apiUrl: '', apiKey: '', apiMode: '', model: "", reasoningEffort: 'none', temperature: 0.3, topP: 0.5, topK: null, maxTokens: 1500, memoryLength: 20, stream: true };
 
 // 支持直接 fetch 的适配器 URL 前缀（命中则完全接管）
 const ADAPTER_URLS = [
@@ -68,7 +68,7 @@ function readPluginConfig() {
     apiKey: cfg('apiKey', ''),
     apiMode: cfg('apiMode', ''),
     model: cfg('model', ''),
-    reasoningEffort: cfg('reasoningEffort', 'minimal'),
+    reasoningEffort: cfg('reasoningEffort', 'none'),
     temperature: parseFloat(cfg('temperature', 0.3)),
     topP: parseFloat(cfg('topP', 0.5)),
     topK: cfg('topK', null),
@@ -212,7 +212,7 @@ function isAdapterUrl(url) {
 //   响应: responses格式 → chat/completions格式（统一出口）
 async function callMiniMax(messages, cfg) {
   const model = cfg.model || 'MiniMax-M3';
-  const reasoningEffort = cfg.reasoningEffort || 'minimal';
+  const reasoningEffort = cfg.reasoningEffort || 'none';
 
   // 解析 messages：提取 system → instructions，user → input
   const systemMsg = (messages || []).find((m) => m.role === 'system');
