@@ -142,6 +142,21 @@ window.tf_voice = {
 
   getPlatform: () => cfg('voice_platform', 'xiaomimimo'),
 
+  // 手动触发某个角色的语音播放（供 speaker 等插件调用）
+  playFor: async (charId, text) => {
+    if (!charId || !text) return;
+    const segments = text.replace(/<[^>]+>/g, '').trim().split(/(?<=[。！？.?!])/).filter(s => s.trim());
+    if (!segments.length) return;
+    try {
+      await playTtsForSegments(charId, segments);
+      return true;
+    } catch (e) {
+      vw('playFor failed: ' + e.message);
+      window.tf_voice.invalidateVoiceId(charId);
+      return false;
+    }
+  },
+
   // 面板/其他插件写配置（跨 iframe 通过变量中转）
   setConfig: (partial) => {
     const old = readVoiceCfgVar() || {};

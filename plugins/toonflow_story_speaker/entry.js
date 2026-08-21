@@ -10,6 +10,12 @@
 const NS = 'tf_speaker';
 const ORCH_FLAG = 'tf_orch.active';
 
+// 时间戳函数（用于日志）
+function ts() {
+  const d = new Date();
+  return d.toISOString().slice(11, 23).replace('T', ' ');
+}
+
 const ROLE_LABEL = {
   player: '用户', npc: '一般角色', narrator: '旁白',
   system: '系统角色', general: '万能角色',
@@ -244,7 +250,7 @@ async function tf_speaker(type, data) {
         role: 'assistant',
         characterId: steamCharEntry ? steamCharEntry.id : undefined,
         characterName: steamRole,
-        content: '...',
+        content: '',
         hidden: false,
       };
       var steamMsg = null;
@@ -296,15 +302,32 @@ async function tf_speaker(type, data) {
         } catch(e) {}
       }, 80);
 
-// 5. 流式完成
-      console.log('[tf_speaker][steam] 流式输出完成 charId=' + (steamCharEntry ? steamCharEntry.id : 'null'));
+// 5. 流式完成 - 调用 voice 插件生成 + 播放语音
+      console.log('[tf_speaker][steam] 流式输出完成 charId=' + (steamCharEntry ? steamCharEntry.id : 'null') + ' text=' + speechText.slice(0,40));
+      // 触发 TTS 播放（如果 voice 插件可用）
+      if (steamCharEntry && steamCharEntry.id && speechText && window.tf_voice && window.tf_voice.cacheVoiceId) {
+        try {
+          // 把消息 id 写入 tf_voice，让 voice 主动检测
+          var vcfg = window.tf_voice.getConfig ? window.tf_voice.getConfig() : null;
+          if (vcfg && vcfg.auto_play !== false) {
+            // 直接调 voice 的播放入口（如果有暴露）
+            if (typeof window.tf_voice.playFor === 'function') {
+              window.tf_voice.playFor(steamCharEntry.id, speechText);
+            } else if (typeof window.tf_voice.speak === 'function') {
+              window.tf_voice.speak(steamCharEntry.id, speechText);
+            } else {
+              console.log('[tf_speaker][steam] voice 插件未暴露 play 接口，将由 message:added 事件自动播放');
+            }
+          }
+        } catch(e) { console.warn('[tf_speaker][steam] TTS 触发失败', e); }
+      }
       // 6. await_user 处理（不触发下一轮编排）
       if (steamAwaitUser === true) {
         console.log('[tf_speaker][steam] awaitUser=true → 停止编排，等待用户');
         try { tavo.set('tf_orch.active', false, 'chat'); } catch(e) {}
         return;
       }
-      // 7. 触发下一轮 NPC 编排
+      // 7. 触发下一轮 NPC 编排（流式完成后才触发）
       if (window.tf_story_emit) window.tf_story_emit('auto_orchestrate', {});
     } catch(e) {
       console.error("[tf_speaker][steam] 流式输出异常", e);

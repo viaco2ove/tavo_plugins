@@ -49,7 +49,107 @@ function getConfig() {
   };
 }
 
-// 读取世界书条目并做关键词匹配注入
+// ============================================================
+// 世界书延时状态管理（粘性、冷却、延迟）
+// 状态持久化到 tavo 变量，重启后自动恢复
+// ============================================================
+
+// 读取世界书延时状态
+function getWorldbookState() {
+  try {
+    let v = tavo.get('mcs_wb_state', 'chat');
+    let guard = 0;
+    while (v && typeof v === 'object' && v.found !== undefined && 'value' in v && guard < 5) { v = v.value; guard++; }
+    return v || { activeEntries: {}, messageCount: 0 };
+  } catch (e) { return { activeEntries: {}, messageCount: 0 }; }
+}
+
+// 写入世界书延时状态
+function setWorldbookState(state) {
+  try { tavo.set('mcs_wb_state', state, 'chat'); } catch (e) {}
+}
+
+// 初始化消息计数（boot 时调用一次）
+function initMessageCount() {
+  tavo.message.count().then(c => {
+    const state = getWorldbookState();
+    state.messageCount = c;
+    setWorldbookState(state);
+    console.log('[wb_delay] 初始化消息计数=' + c);
+  }).catch(() => {});
+}
+
+// 更新消息计数 + 减少粘性计时 + 检查冷却到期
+function onMessageAdded() {
+  const state = getWorldbookState();
+  state.messageCount = (state.messageCount || 0) + 1;
+
+  // 粘性到期检查
+  const now = state.messageCount;
+  for (const id in state.activeEntries) {
+    const entry = state.activeEntries[id];
+    if (entry.stickyUntil && now > entry.stickyUntil) {
+      console.log('[wb_delay] 粘性到期删除条目: ' + id);
+      delete state.activeEntries[id];
+    }
+  }
+
+  // 冷却到期检查
+  for (const id in state.cooldownEntries) {
+    const entry = state.cooldownEntries[id];
+    if (entry.cooldownUntil && now > entry.cooldownUntil) {
+      console.log('[wb_delay] 冷却到期恢复条目: ' + id);
+      if (!state.activeEntries[id]) state.activeEntries[id] = {};
+      delete state.cooldownEntries[id];
+    }
+  }
+
+  setWorldbookState(state);
+}
+
+// 检查条目是否可以激活（延迟 + 冷却）
+function canActivateEntry(entryId, delay, cooldown, currentCount) {
+  const state = getWorldbookState();
+  const now = currentCount;
+
+  // 1. 延迟检查
+  if (delay > 0 && now < delay) {
+    console.log('[wb_delay] 延迟未到: entry=' + entryId + ' delay=' + delay + ' current=' + now);
+    return false;
+  }
+
+  // 2. 冷却检查
+  const cooldownEntry = state.cooldownEntries && state.cooldownEntries[entryId];
+  if (cooldownEntry && cooldownEntry.cooldownUntil && now < cooldownEntry.cooldownUntil) {
+    console.log('[wb_delay] 冷却中: entry=' + entryId + ' until=' + cooldownEntry.cooldownUntil + ' current=' + now);
+    return false;
+  }
+
+  return true;
+}
+
+// 激活条目（设置粘性 + 冷却）
+function activateEntry(entryId, sticky, cooldown, currentCount) {
+  const state = getWorldbookState();
+  if (!state.activeEntries) state.activeEntries = {};
+  if (!state.cooldownEntries) state.cooldownEntries = {};
+
+  // 设置粘性
+  if (sticky > 0) {
+    state.activeEntries[entryId] = { stickyUntil: currentCount + sticky };
+    console.log('[wb_delay] 激活条目: ' + entryId + ' 粘性=' + sticky + ' until=' + (currentCount + sticky));
+  }
+
+  // 设置冷却
+  if (cooldown > 0) {
+    state.cooldownEntries[entryId] = { cooldownUntil: currentCount + cooldown };
+    console.log('[wb_delay] 条目进入冷却: ' + entryId + ' 冷却=' + cooldown + ' until=' + (currentCount + cooldown));
+  }
+
+  setWorldbookState(state);
+}
+
+// 读取世界书条目并做关键词匹配注入（支持延时作用）
 // @param {string} [messageText] - 用于匹配世界书关键词的文本（事件摘要等）
 // @returns {Promise<string>} - 匹配到的条目内容
 async function getWorldbookInject(messageText) {
@@ -70,31 +170,67 @@ async function getWorldbookInject(messageText) {
     const entries = allEntries.filter(e => e.enabled !== false && e.strategy === 'constant');
     if (!entries.length) return '';
 
-    // 如果提供了 messageText，尝试做关键词匹配
-    if (messageText) {
-      const matchedEntries = [];
-      const lowerText = messageText.toLowerCase();
-      for (const entry of entries) {
-        const keywords = (entry.keywords || []).map(k => k.toLowerCase());
-        // 如果条目有关键词，至少匹配一个；否则直接注入（无关键词条目）
-        if (keywords.length === 0 || keywords.some(k => lowerText.includes(k))) {
-          matchedEntries.push(entry);
-        }
+    const state = getWorldbookState();
+    const currentCount = state.messageCount || 0;
+    const lowerText = (messageText || '').toLowerCase();
+    const injectedEntries = [];
+    const newlyActivated = [];
+
+    for (const entry of entries) {
+      const entryId = entry.id || entry.name || Math.abs(hashCode(entry.name || ''));
+      const delay = Math.max(0, parseInt(entry.delay || 0, 10));
+      const sticky = Math.max(0, parseInt(entry.sticky || 0, 10));
+      const cooldown = Math.max(0, parseInt(entry.cooldown || 0, 10));
+
+      // 检查粘性状态：已激活的直接注入
+      if (state.activeEntries && state.activeEntries[entryId]) {
+        injectedEntries.push(entry);
+        continue;
       }
-      if (!matchedEntries.length) return '';
-      const lines = matchedEntries.map(e => '## ' + (e.name || '知识') + '\n' + (e.content || ''));
-      console.log('[worldbook] 注入 ' + matchedEntries.length + ' 个条目（基于关键词匹配）');
-      return '\n\n【世界知识】\n' + lines.join('\n\n');
+
+      // 检查延时（延迟未到则跳过）
+      if (!canActivateEntry(entryId, delay, cooldown, currentCount)) {
+        continue;
+      }
+
+      // 检查关键词匹配：无关键词直接注入，有关键词必须匹配
+      const keywords = (entry.keywords || []).map(k => k.toLowerCase());
+      if (keywords.length > 0 && !keywords.some(k => lowerText.includes(k))) {
+        continue; // 有关键词但未命中
+      }
+
+      // 符合条件，注入
+      injectedEntries.push(entry);
+
+      // 激活延时效果（粘性+冷却）
+      if (sticky > 0 || cooldown > 0) {
+        newlyActivated.push({ entryId, sticky, cooldown });
+        activateEntry(entryId, sticky, cooldown, currentCount);
+      }
     }
 
-    // 无 messageText 或无匹配，回退到直接注入所有 constant 条目
-    const lines = entries.map(e => '## ' + (e.name || '知识') + '\n' + (e.content || ''));
-    console.log('[worldbook] 注入 ' + entries.length + ' 个 constant 条目（无匹配条件）');
+    if (!injectedEntries.length) return '';
+
+    const lines = injectedEntries.map(e => '## ' + (e.name || '知识') + '\n' + (e.content || ''));
+    console.log('[worldbook] 注入 ' + injectedEntries.length + ' 个条目'
+      + (newlyActivated.length ? '（新激活: ' + newlyActivated.map(a => a.entryId).join(',') + '）' : '（粘性延续）'));
     return '\n\n【世界知识】\n' + lines.join('\n\n');
   } catch (e) {
     console.warn('[worldbook] 获取世界书注入失败', e);
     return '';
   }
+}
+
+// 简单字符串 hash（用于生成 entryId）
+function hashCode(str) {
+  if (!str) return 0;
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    const char = str.charCodeAt(i);
+    hash = ((hash << 5) - hash) + char;
+    hash = hash & hash; // Convert to 32bit integer
+  }
+  return hash;
 }
 
 // 群聊编排设置（来自 event_manager 维护的 tf_story.edit.orchestration）
@@ -212,6 +348,8 @@ tavo.plugin.on('chat:opened', async () => {
     console.log('[' + ts() + '] [mcs] skip: orchestration=system');
     return;
   }  console.log('[' + ts() + '] [mcs] chat:opened waiting for boot...');
+  // 初始化世界书延时状态的消息计数
+  initMessageCount();
   // 等 story_event_manager 的 boot 序列完成（最多 30 秒）
   const booted = await waitForBoot(30000);
   console.log('[' + ts() + '] [mcs] boot waited result=' + booted + ' responseMode=' + cfg.responseMode);
@@ -248,8 +386,11 @@ tavo.plugin.on('chat:opened', function() {
 });
 
 
-
 tavo.plugin.on('message:added', async () => {
+  // 1. 世界书延时状态更新
+  onMessageAdded();
+
+  // 2. 自由模式切换检测
   const cfg = getConfig();
   if (!cfg.enabled) return;
   if (getOrchestration() === 'system') return; // 跟随系统：不接管群聊
@@ -737,6 +878,9 @@ async function buildSpeakerPrompt(speaker, roleType, motive, eventSummary, evDig
 
   return lines;
 }
+
+// 暴露 buildSpeakerPrompt 给 speaker 插件（跨插件调用）
+window.buildSpeakerPrompt = buildSpeakerPrompt;
 
 // 读取 tf_story boot 状态（event_manager 维护）
 function readTfBoot() {
