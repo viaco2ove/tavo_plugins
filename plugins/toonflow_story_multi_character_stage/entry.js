@@ -49,18 +49,52 @@ function getConfig() {
   };
 }
 
-// 读取世界书 constant 条目（对齐 Toonflow selectWorldBookForInjection 的 constant 逻辑）
-// constant 条目直接注入；keyword 条目不注入（由模型根据上下文自行决定是否提用）
-async function getWorldbookInject() {
+// 读取世界书条目并做关键词匹配注入
+// @param {string} [messageText] - 用于匹配世界书关键词的文本（事件摘要等）
+// @returns {Promise<string>} - 匹配到的条目内容
+async function getWorldbookInject(messageText) {
   try {
     const chat = await tavo.chat.current();
     if (!chat || !chat.lorebooks?.length) return '';
-    const lb = await tavo.lorebook.get(chat.lorebooks[0].id);
-    const entries = (lb?.entries || []).filter(e => e.enabled !== false && e.strategy === 'constant');
+
+    const lorebookIds = chat.lorebooks.map(lb => lb.id);
+    const allEntries = [];
+    for (const id of lorebookIds) {
+      const lb = await tavo.lorebook.get(id);
+      if (lb) {
+        allEntries.push(...lb.entries);
+      }
+    }
+
+    // 只注入 constant 策略的条目（和 UI 面板保持一致）
+    const entries = allEntries.filter(e => e.enabled !== false && e.strategy === 'constant');
     if (!entries.length) return '';
+
+    // 如果提供了 messageText，尝试做关键词匹配
+    if (messageText) {
+      const matchedEntries = [];
+      const lowerText = messageText.toLowerCase();
+      for (const entry of entries) {
+        const keywords = (entry.keywords || []).map(k => k.toLowerCase());
+        // 如果条目有关键词，至少匹配一个；否则直接注入（无关键词条目）
+        if (keywords.length === 0 || keywords.some(k => lowerText.includes(k))) {
+          matchedEntries.push(entry);
+        }
+      }
+      if (!matchedEntries.length) return '';
+      const lines = matchedEntries.map(e => '## ' + (e.name || '知识') + '\n' + (e.content || ''));
+      console.log('[worldbook] 注入 ' + matchedEntries.length + ' 个条目（基于关键词匹配）');
+      return '\n\n【世界知识】\n' + lines.join('\n\n');
+    }
+
+    // 无 messageText 或无匹配，回退到直接注入所有 constant 条目
     const lines = entries.map(e => '## ' + (e.name || '知识') + '\n' + (e.content || ''));
+    console.log('[worldbook] 注入 ' + entries.length + ' 个 constant 条目（无匹配条件）');
     return '\n\n【世界知识】\n' + lines.join('\n\n');
-  } catch (e) { return ''; }
+  } catch (e) {
+    console.warn('[worldbook] 获取世界书注入失败', e);
+    return '';
+  }
 }
 
 // 群聊编排设置（来自 event_manager 维护的 tf_story.edit.orchestration）
@@ -652,15 +686,17 @@ function buildSpeakerNextEventLines(nextEv) {
   return lines.join('\n');
 }
 
-async function buildSpeakerPrompt(speaker, roleType, motive, eventSummary, evDigest, nextEvInfo) {
+async function buildSpeakerPrompt(speaker, roleType, motive, eventSummary, evDigest, nextEvInfo, worldKb) {
   const edit = readChatVar('tf_story.edit') || {};
   const chapters = edit.chapters || [];
   const chapterIdx = (readChatVar('tf_progress') || {}).currentChapterIndex || 0;
   const chapter = chapters[chapterIdx] || {};
   const freeMode = (readChatVar('tf_progress') || {}).sessionFreeMode;
 
-  // 世界知识（常驻）
-  const worldKb = await getWorldbookInject();
+  // 世界知识：如果未传入，则基于 eventSummary 做关键词匹配获取
+  if (!worldKb) {
+    worldKb = await getWorldbookInject(eventSummary);
+  }
 
   // 角色动态参数卡
   const castState = await buildSpeakerCastState();
@@ -1150,3 +1186,5 @@ tavo.plugin.onSidebarAction('mcs-area', async () => {
     console.warn('[' + ts() + '] [mcs] area failed', e);
   }
 });
+
+// ============================================================
