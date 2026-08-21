@@ -720,6 +720,7 @@ tavo.plugin.on('input:beforeSend', async (event) => {
 
   (function clearInputNow() {
     try {
+      tavo.input.set('')
       const candidates = document.querySelectorAll('textarea, [contenteditable="true"], input[type="text"]');
       let cleared = false;
       candidates.forEach(el => {

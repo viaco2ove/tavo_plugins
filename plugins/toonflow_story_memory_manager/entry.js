@@ -1049,6 +1049,7 @@ _safeOn('input:beforeSend', async (event) => {
   // 0) 立即同步清空输入框（优先于任何 async 操作，防止用户看到"发送中"还有文字）
   (function clearInputNow() {
     try {
+      tavo.input.set('')
       const candidates = document.querySelectorAll('textarea, [contenteditable="true"], input[type="text"]');
       let cleared = false;
       candidates.forEach(el => {
