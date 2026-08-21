@@ -1,0 +1,7 @@
+{
+  "plugin.name": "Toonflow-群聊-角色语音",
+  "plugin.description": "克隆音色语音插件：管理角色音色文件上传/绑定，支持 xiaomimimo / aliyun 克隆音色平台，对齐 Toonflow-game voice 业务。",
+  "settings.voice_platform": "语音平台",
+  "settings.voice_platform_apikey": "语音平台 API Key",
+  "settings.auto_play": "自动播放角色语音"
+}

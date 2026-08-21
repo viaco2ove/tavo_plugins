@@ -87,9 +87,11 @@ function getVoiceFiles() {
 window.tf_voice = {
   // 取角色 voiceId（有缓存直接返回，无则 null）
   getVoiceId: (charId) => {
+    vl('[API] getVoiceId charId=' + charId);
     const cache = getVoiceCache();
     const e = cache.byCharId[charId];
     const platform = cfg('voice_platform', 'xiaomimimo');
+    vl('[API] getVoiceId cache=' + JSON.stringify(e) + ' platform=' + platform);
     if (e && e.platform === platform && e.voiceId) return e.voiceId;
     return null;
   },
@@ -144,14 +146,20 @@ window.tf_voice = {
 
   // 手动触发某个角色的语音播放（供 speaker 等插件调用）
   playFor: async (charId, text) => {
-    if (!charId || !text) return;
+    vl('[API] playFor called charId=' + charId + ' text_len=' + (text ? text.length : 0));
+    if (!charId || !text) {
+      vl('[API] playFor skipped: missing charId or text');
+      return;
+    }
     const segments = text.replace(/<[^>]+>/g, '').trim().split(/(?<=[。！？.?!])/).filter(s => s.trim());
+    vl('[API] playFor segments count=' + segments.length);
     if (!segments.length) return;
     try {
       await playTtsForSegments(charId, segments);
+      vl('[API] playFor success');
       return true;
     } catch (e) {
-      vw('playFor failed: ' + e.message);
+      vw('[API] playFor failed: ' + e.message);
       window.tf_voice.invalidateVoiceId(charId);
       return false;
     }
@@ -280,19 +288,30 @@ const _pendingStreamMessages = new Map();
 
 // 核心 TTS 播放函数（供 message:added 和 sentence-event 回调共用）
 async function playTtsForSegments(charId, segments) {
+  vl('[TTS] playTtsForSegments START charId=' + charId + ' segments=' + segments.length);
   const platform = cfg('voice_platform', 'xiaomimimo');
   const apiKey = cfg('voice_platform_apikey', '');
+  vl('[TTS] platform=' + platform + ' apiKey=' + (apiKey ? 'configured' : 'MISSING!'));
   if (!apiKey) { vw('未配置 API Key，跳过语音'); return; }
 
   let voiceId = window.tf_voice.getVoiceId(charId);
+  vl('[TTS] voiceId from cache=' + (voiceId || 'null'));
   if (!voiceId) {
     const vf = window.tf_voice.getVoiceFile(charId);
+    vl('[TTS] voiceFile=' + JSON.stringify(vf));
     if (!vf || !vf.file) { vw('角色 ' + charId + ' 无音色文件，跳过'); return; }
     const audioUrl = tavo.file.url(vf.file, 'chat');
-    voiceId = (platform === 'aliyun')
-      ? await aliyunEnrollVoice(apiKey, audioUrl, 'tf_' + charId)
-      : await xiaomiCloneVoice(apiKey, audioUrl);
-    window.tf_voice.cacheVoiceId(charId, voiceId);
+    vl('[TTS] audioUrl=' + audioUrl);
+    try {
+      voiceId = (platform === 'aliyun')
+        ? await aliyunEnrollVoice(apiKey, audioUrl, 'tf_' + charId)
+        : await xiaomiCloneVoice(apiKey, audioUrl);
+      vl('[TTS] cloned voiceId=' + voiceId);
+      window.tf_voice.cacheVoiceId(charId, voiceId);
+    } catch(e) {
+      vw('[TTS] clone failed: ' + e.message);
+      throw e;
+    }
   }
 
   for (let i = 0; i < segments.length; i++) {
@@ -514,8 +533,12 @@ tavo.plugin.on('chat:opened', async () => {
   vl('chat:opened, platform=' + cfg('voice_platform', 'xiaomimimo'));
 });
 
-vl('插件已加载');
-
+// ---------- 插件启动日志 ----------
+vl('========================================');
+vl('插件已加载 (voice_platform=' + cfg('voice_platform', 'xiaomimimo') + ')');
+vl('auto_play=' + cfg('auto_play', true));
+vl('apiKey configured=' + (cfg('voice_platform_apikey', '') ? 'yes' : 'NO!'));
+vl('========================================');
 console.log('[toonflow_story_voice] plugin entry loaded');
 // 平台配置变化 -> 清空缓存
 try {

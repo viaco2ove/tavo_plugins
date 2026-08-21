@@ -7,7 +7,7 @@
 python -m tavo_plugins sync ".cache/story/谁让这个山大王修仙的" --reuse-ids ".cache/story/谁让这个山大王修仙的/char_ids.json" --skip-plugins
 ## story.json 控制的故事同步：
 ```
-python -m tavo_plugins sync --story-json "story.json" --duplicate-delete --clean-cache --skip-plugins
+python -m tavo_plugins sync --story-json "story.json"
 ```
 story.json 说明
 {

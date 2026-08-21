@@ -65,6 +65,14 @@
       0%, 100% { opacity: 1; }
       50% { opacity: 0; }
     }
+
+    /* 隐藏 Flutter 渲染的按钮（我们的插件自己处理业务） */
+    .tav-action-bar-button-regenerate,
+    .tav-action-bar-button-continue,
+    .tav-action-bar-button-inspire,
+    .tav-action-bar-button-tts {
+      display: none !important;
+    }
   `;
   document.head.appendChild(style);
 })();
@@ -369,17 +377,27 @@ async function tf_speaker(type, data) {
           } catch(e) {}
           console.log("[tf_speaker][steam] 流式输出完成 len=" + speechText.length);
           // 8. 流式完成后 - 调用 voice 插件生成 + 播放语音
+          console.log('[tf_speaker][steam] 检查 voice 插件: charEntry=' + (steamCharEntry ? steamCharEntry.id : 'null') + ' tf_voice=' + (window.tf_voice ? 'exists' : 'MISSING') + ' playFor=' + (window.tf_voice && typeof window.tf_voice.playFor));
           if (steamCharEntry && steamCharEntry.id && speechText && window.tf_voice) {
             try {
               var vcfg = window.tf_voice.getConfig ? window.tf_voice.getConfig() : null;
+              console.log('[tf_speaker][steam] voice config:', JSON.stringify(vcfg));
               if (vcfg && vcfg.auto_play !== false) {
                 if (typeof window.tf_voice.playFor === 'function') {
+                  console.log('[tf_speaker][steam] 调用 tf_voice.playFor(' + steamCharEntry.id + ', ...)');
                   window.tf_voice.playFor(steamCharEntry.id, speechText);
                 } else if (typeof window.tf_voice.speak === 'function') {
+                  console.log('[tf_speaker][steam] 调用 tf_voice.speak(' + steamCharEntry.id + ', ...)');
                   window.tf_voice.speak(steamCharEntry.id, speechText);
+                } else {
+                  console.warn('[tf_speaker][steam] voice.playFor 不可用');
                 }
+              } else {
+                console.log('[tf_speaker][steam] auto_play=false，跳过语音');
               }
             } catch(e) { console.warn('[tf_speaker][steam] TTS 触发失败', e); }
+          } else {
+            console.warn('[tf_speaker][steam] voice 跳过: charEntry=' + (steamCharEntry ? steamCharEntry.id : 'null') + ' text=' + (speechText ? speechText.length : 0));
           }
           // 8. await_user 处理
           if (steamAwaitUser === true) {

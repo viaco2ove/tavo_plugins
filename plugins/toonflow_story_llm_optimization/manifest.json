@@ -1,70 +1,100 @@
 {
+  "specVersion": 2,
   "id": "com.toonflow.llm-optimization",
-  "name": "Toonflow-群聊-LLM优化器",
+  "name": {
+    "$t": "plugin.name"
+  },
   "version": "1.1.0",
-  "description": "完全接管 LLM 接口调用：对齐 toonflow-game，支持 MiniMax/SiliconFlow/DashScope 等适配器直接 fetch",
+  "description": {
+    "$t": "plugin.description"
+  },
   "author": "viaco",
   "minAppVersion": "1.0.0",
   "entry": "entry.js",
   "permissions": ["generate", "variable", "chat"],
-  "htmlFragments": [
-    {
-      "path": "ui/llm_panel.html",
-      "position": "/chat/body/end"
+  "localization": {
+    "defaultLocale": "zh-CN",
+    "resources": {
+      "en": "locales/en.json",
+      "zh-CN": "locales/zh-CN.json"
     }
-  ],
-  "settings": [
-    {
-      "key": "apiKey",
-      "type": "string",
-      "label": "API Key",
-      "default": ""
-    },
-    {
-      "key": "apiUrl",
-      "type": "string",
-      "label": "API 地址（如 https://api.minimaxi.com）",
-      "default": ""
-    },
-    {
-      "key": "model",
-      "type": "string",
-      "label": "模型名",
-      "default": ""
-    },
-    {
-      "key": "reasoningEffort",
-      "type": "select",
-      "label": "思考程度",
-      "options": ["none", "minimal", "low", "medium", "high"],
-      "default": "minimal"
-    },
-    {
-      "key": "temperature",
-      "type": "slider",
-      "label": "Temperature",
-      "default": 0.3,
-      "min": 0,
-      "max": 2,
-      "step": 0.1
-    },
-    {
-      "key": "topP",
-      "type": "slider",
-      "label": "Top-P",
-      "default": 0.5,
-      "min": 0,
-      "max": 1,
-      "step": 0.05
-    },
-    {
-      "key": "maxTokens",
-      "type": "slider",
-      "label": "回复令牌限制",
-      "default": 1500,
-      "min": 100,
-      "max": 4000,
-      "step": 100
+  },
+  "contributes": {
+    "settings": {
+      "schema": [
+        {
+          "key": "apiKey",
+          "type": "text",
+          "label": {
+            "$t": "settings.apiKey"
+          },
+          "default": ""
+        },
+        {
+          "key": "apiUrl",
+          "type": "text",
+          "label": {
+            "$t": "settings.apiUrl"
+          },
+          "default": ""
+        },
+        {
+          "key": "model",
+          "type": "text",
+          "label": {
+            "$t": "settings.model"
+          },
+          "default": ""
+        },
+        {
+          "key": "reasoningEffort",
+          "type": "select",
+          "label": {
+            "$t": "settings.reasoningEffort"
+          },
+          "options": [
+            {"value": "none", "label": "none"},
+            {"value": "minimal", "label": "minimal"},
+            {"value": "low", "label": "low"},
+            {"value": "medium", "label": "medium"},
+            {"value": "high", "label": "high"}
+          ],
+          "default": "minimal"
+        },
+        {
+          "key": "temperature",
+          "type": "slider",
+          "label": {
+            "$t": "settings.temperature"
+          },
+          "default": 0.3,
+          "min": 0,
+          "max": 2,
+          "step": 0.1
+        },
+        {
+          "key": "topP",
+          "type": "slider",
+          "label": {
+            "$t": "settings.topP"
+          },
+          "default": 0.5,
+          "min": 0,
+          "max": 1,
+          "step": 0.05
+        },
+        {
+          "key": "maxTokens",
+          "type": "slider",
+          "label": {
+            "$t": "settings.maxTokens"
+          },
+          "default": 1500,
+          "min": 100,
+          "max": 4000,
+          "step": 100
+        }
+      ]
     }
-  ]
+  }
 }

@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""tavo CLI 入口"""
+"""tavo CLI"""
 import os
 import sys
 import click
@@ -13,7 +13,6 @@ from tavo_plugins.lib.mcp_client import McpClient
 
 
 def resolve_client(env_path=None):
-    """从 .env 解析 MCP 连接，返回 McpClient"""
     if env_path is None:
         for base in [os.getcwd(), os.path.dirname(CLI_ROOT)]:
             p = os.path.join(base, ".env")
@@ -24,35 +23,205 @@ def resolve_client(env_path=None):
     try:
         client.call("tavo_plugin_search", {"query": "", "limit": 1})
     except Exception as e:
-        click.secho(f"[ERR] MCP 连接失败: {e}", fg="red", err=True)
+        click.secho("[ERR] MCP failed: " + str(e), fg="red", err=True)
         sys.exit(1)
     return client
 
 
 @click.group()
-@click.option("--env", "-e", type=click.Path(exists=True), help=".env 文件路径")
+@click.option("--env", "-e", type=click.Path(exists=True), help=".env path")
 @click.pass_context
 def main(ctx, env):
-    """Tavo 插件管理 & 故事同步 CLI"""
     ctx.ensure_object(dict)
     ctx.obj["env_path"] = env
 
 
 @main.command()
-@click.option("--install-all", is_flag=True, help="批量安装 plugins/ 下所有插件")
-@click.option("--install", "-i", help="安装指定的插件目录（逗号分隔）")
-@click.option("--plugins-dir", default="plugins", show_default=True, help="插件目录根")
-@click.option("--tpg-dir", default="plugins_tpg", show_default=True, help="tpg 文件输出目录（默认 plugins_tpg/）")
-@click.option("--no-tpg", is_flag=True, help="不生成 tpg 文件")
-@click.option("--enable/--no-enable", default=True, help="安装后启用")
+@click.option("--install-all", is_flag=True, help="Install all plugins in plugins/")
+@click.option("--install", "-i", help="Install specified plugins (comma-separated)")
+@click.option("--plugins-dir", default="plugins", help="Plugin root")
+@click.option("--tpg-dir", default="plugins_tpg", help="TPG output dir")
+@click.option("--no-tpg", is_flag=True, help="Don't save tpg files")
+@click.option("--enable/--no-enable", default=True, help="Enable after install")
+@click.option("--hub", is_flag=True, help="Upload to hub")
+@click.option("--upload", is_flag=True, help="Upload mode")
+@click.option("--duplicate-delete", is_flag=True, help="Delete existing before upload")
+@click.option("--upver", is_flag=True, help="Bump version before upload")
+@click.option("--all", "all_plugins", is_flag=True, help="Process all plugins")
+@click.option("--force", is_flag=True, help="Force")
 @click.pass_context
-def plugins(ctx, install_all, install, plugins_dir, tpg_dir, no_tpg, enable):
-    """列出 / 安装插件
+def plugins(ctx, install_all, install, plugins_dir, tpg_dir, no_tpg, enable, hub, upload, duplicate_delete, upver, all_plugins, force):
+    """List / install plugins / upload to hub"""
 
-    不带参数：列出已安装插件
-    --install-all：批量安装 plugins/ 下所有插件
-    --install "plugin1,plugin2"：安装指定的插件目录
-    """
+    # Hub upload mode
+    if hub and upload:
+        import zipfile, io, base64, subprocess
+
+        def run_py(args, timeout=60):
+            env = {**os.environ}
+            env["PYTHONIOENCODING"] = "utf-8"
+            try:
+                r = subprocess.run(
+                    [sys.executable] + args,
+                    capture_output=True, timeout=timeout, env=env
+                )
+                return r.returncode, r.stdout.decode("utf-8", errors="replace"), r.stderr.decode("utf-8", errors="replace")
+            except subprocess.TimeoutExpired:
+                return -1, "", "timeout"
+            except Exception as e:
+                return -1, "", str(e)
+
+        hub_script = os.path.join(CLI_ROOT, "..", "script", "tavo_pluginhub", "pluginhub.py")
+        plugin_dirs = sorted(p for p in os.listdir(plugins_dir)
+                            if os.path.isdir(os.path.join(plugins_dir, p))
+                            and not p.startswith("."))
+        if not plugin_dirs:
+            click.echo("No plugins found")
+            return
+
+        # Bump versions
+        if upver:
+            click.echo("Bumping versions...")
+            for tname in plugin_dirs:
+                mp = os.path.join(plugins_dir, tname, "manifest.json")
+                if not os.path.isfile(mp):
+                    continue
+                with open(mp, encoding="utf-8") as f:
+                    m = _json.load(f)
+                ver = m.get("version", "0.0.0")
+                parts = ver.split(".")
+                if len(parts) == 3:
+                    parts[2] = str(int(parts[2]) + 1)
+                    new_ver = ".".join(parts)
+                else:
+                    new_ver = "0.0.1"
+                m["version"] = new_ver
+                with open(mp, "w", encoding="utf-8") as f:
+                    _json.dump(m, f, ensure_ascii=False, indent=2)
+                click.echo("  " + tname + ": " + ver + " -> " + new_ver)
+
+        # Get hub plugin list
+        click.echo("Getting hub plugin list...")
+        hub_map = {}
+        try:
+            code, stdout, stderr = run_py([hub_script, "list"])
+            if code == 0:
+                for line in stdout.split("\n"):
+                    parts = line.split()
+                    if len(parts) >= 5:
+                        hub_id = parts[0]
+                        pkg_id = parts[1]
+                        hub_map[pkg_id] = hub_id
+                click.echo("Found " + str(len(hub_map)) + " plugins on hub")
+        except Exception as e:
+            click.echo("Failed to get hub list: " + str(e))
+            hub_map = {}
+
+        skip_dirs = {".git", "__pycache__", "node_modules"}
+
+        for tname in plugin_dirs:
+            pdir = os.path.join(plugins_dir, tname)
+            mp = os.path.join(pdir, "manifest.json")
+            if not os.path.isfile(mp):
+                click.echo("[SKIP] " + tname + ": no manifest.json")
+                continue
+            with open(mp, encoding="utf-8") as f:
+                manifest = _json.load(f)
+            plugin_id = manifest.get("id")
+            version = manifest.get("version", "0.0.0")
+            if not plugin_id:
+                click.echo("[SKIP] " + tname + ": no id")
+                continue
+
+            # Build zip
+            buf = io.BytesIO()
+            with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+                for base, dirs, files in os.walk(pdir):
+                    dirs[:] = [d for d in dirs if d not in skip_dirs]
+                    for fn in files:
+                        if fn.endswith(".pyc") or fn == ".DS_Store":
+                            continue
+                        fp = os.path.join(base, fn)
+                        rel = os.path.relpath(fp, pdir).replace(os.sep, "/")
+                        z.write(fp, rel)
+            tpg_data = buf.getvalue()
+
+            # Save tpg
+            if not no_tpg:
+                os.makedirs(tpg_dir, exist_ok=True)
+                tpg_path = os.path.join(tpg_dir, tname + "-" + version + ".tpg")
+                with open(tpg_path, "wb") as f:
+                    f.write(tpg_data)
+                click.echo("  [TPG] saved: " + tpg_path)
+
+            # Get hub_id
+            hub_id = hub_map.get(plugin_id)
+
+            if hub_id and duplicate_delete:
+                click.echo("  [DEL] deleting " + tname + " (" + hub_id + ")...")
+                try:
+                    run_py([hub_script, "delete", hub_id, "--yes"])
+                except Exception as e:
+                    click.echo("  [WARN] delete failed: " + str(e))
+
+            # Upload
+            click.echo("  [UP] uploading " + tname + " v" + version + "...")
+            tmp_tpg = os.path.join(plugins_dir, tname + ".tpg")
+            with open(tmp_tpg, "wb") as f:
+                f.write(tpg_data)
+
+            action = "update" if hub_id else "publish"
+            cmd_args = [action, hub_id, tmp_tpg] if hub_id else [action, tmp_tpg]
+            code, stdout, stderr = run_py([hub_script] + cmd_args)
+            os.remove(tmp_tpg)
+
+            if code == 0:
+                click.echo("[OK] " + tname + " v" + version + " " + action + "ed")
+            else:
+                err_msg = (stderr or stdout).encode("ascii", "replace").decode("ascii")
+                if "already exists" in err_msg:
+                    # Auto bump version and retry
+                    ver = manifest.get("version", "0.0.0")
+                    parts = ver.split(".")
+                    if len(parts) == 3:
+                        parts[2] = str(int(parts[2]) + 1)
+                        new_ver = ".".join(parts)
+                    else:
+                        new_ver = "0.0.1"
+                    manifest["version"] = new_ver
+                    with open(mp, "w", encoding="utf-8") as f:
+                        _json.dump(manifest, f, ensure_ascii=False, indent=2)
+                    # Rebuild
+                    buf = io.BytesIO()
+                    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+                        for base, dirs, files in os.walk(pdir):
+                            dirs[:] = [d for d in dirs if d not in skip_dirs]
+                            for fn in files:
+                                if fn.endswith(".pyc") or fn == ".DS_Store":
+                                    continue
+                                fp = os.path.join(base, fn)
+                                rel = os.path.relpath(fp, pdir).replace(os.sep, "/")
+                                z.write(fp, rel)
+                    tpg_data = buf.getvalue()
+                    tmp_tpg2 = os.path.join(plugins_dir, tname + "_v2.tpg")
+                    with open(tmp_tpg2, "wb") as f:
+                        f.write(tpg_data)
+                    if hub_id:
+                        code2, out2, err2 = run_py([hub_script, "update", hub_id, tmp_tpg2])
+                    else:
+                        code2, out2, err2 = run_py([hub_script, "publish", tmp_tpg2])
+                    os.remove(tmp_tpg2)
+                    if code2 == 0:
+                        click.echo("[OK] " + tname + " v" + new_ver + " (auto-bumped) " + action + "ed")
+                    else:
+                        click.echo("[FAIL] " + tname + ": " + (err2 or out2))
+                else:
+                    click.echo("[FAIL] " + tname + ": " + err_msg)
+
+        click.echo("--- Done ---")
+        return
+
+    # Install mode
     if install_all or install:
         import zipfile, io, base64
 
@@ -63,7 +232,7 @@ def plugins(ctx, install_all, install, plugins_dir, tpg_dir, no_tpg, enable):
         else:
             targets = [n.strip() for n in install.split(",") if n.strip()]
         if not targets:
-            click.secho("没有找到插件", fg="yellow")
+            click.echo("No plugins found")
             return
 
         ok_count = 0; fail_count = 0
@@ -71,12 +240,12 @@ def plugins(ctx, install_all, install, plugins_dir, tpg_dir, no_tpg, enable):
             pdir = os.path.join(plugins_dir, tname)
             mp = os.path.join(pdir, "manifest.json")
             if not os.path.isfile(mp):
-                click.secho(f"[SKIP] {tname}: 无 manifest.json", fg="yellow")
+                click.echo("[SKIP] " + tname + ": no manifest.json")
                 continue
             with open(mp, encoding="utf-8") as f:
                 plugin_id = _json.load(f).get("id")
             if not plugin_id:
-                click.secho(f"[SKIP] {tname}: 无 id", fg="yellow")
+                click.echo("[SKIP] " + tname + ": no id")
                 continue
             buf = io.BytesIO()
             skip = {".git", "__pycache__", "node_modules"}
@@ -91,7 +260,6 @@ def plugins(ctx, install_all, install, plugins_dir, tpg_dir, no_tpg, enable):
                         z.write(fp, rel)
             zip_b64 = base64.b64encode(buf.getvalue()).decode("ascii")
 
-            # 始终保存 tpg 到 plugins_tpg/<name>-<ver>.tpg（除非 --no-tpg）
             if not no_tpg:
                 os.makedirs(tpg_dir, exist_ok=True)
                 version = "0.0.0"
@@ -100,37 +268,35 @@ def plugins(ctx, install_all, install, plugins_dir, tpg_dir, no_tpg, enable):
                         version = _json.load(mf).get("version", "0.0.0")
                 except Exception:
                     pass
-                tpg_path = os.path.join(tpg_dir, f"{tname}-{version}.tpg")
+                tpg_path = os.path.join(tpg_dir, tname + "-" + version + ".tpg")
                 with open(tpg_path, "wb") as f:
                     f.write(base64.b64decode(zip_b64))
-                click.echo(f"  [TPG] 已保存: {tpg_path}")
+                click.echo("  [TPG] saved: " + tpg_path)
             try:
                 r = client.plugin_install(plugin_id, zip_b64)
-                # unwrap MCP 返回（content[0].text）
                 rr = r.get("content", [{}])[0].get("text", "{}")
-                import json as __json
                 try:
-                    rd = __json.loads(rr)
+                    rd = _json.loads(rr)
                 except Exception:
                     rd = {}
                 ok = rd.get("ok", False)
                 if ok in (True, "true"):
                     if enable:
                         client.plugin_set_enabled(plugin_id, True)
-                    click.secho(f"[OK] {tname} ({plugin_id}) v{rd.get('version','?')}", fg="green")
+                    click.secho("[OK] " + tname + " (" + plugin_id + ") v" + rd.get("version", "?"), fg="green")
                     ok_count += 1
                 else:
-                    click.secho(f"[ERR] {tname}: {rd or r}", fg="red")
+                    click.secho("[ERR] " + tname + ": " + str(rd or r), fg="red")
                     fail_count += 1
             except Exception as e:
-                click.secho(f"[ERR] {tname}: {e}", fg="red")
+                click.secho("[ERR] " + tname + ": " + str(e), fg="red")
                 fail_count += 1
-        click.echo(f"--- 完成：{ok_count} 成功 / {fail_count} 失败 ---")
+        click.echo("--- Done: " + str(ok_count) + " ok / " + str(fail_count) + " failed ---")
         return
 
-    # 默认：列出已安装
+    # List installed
     client = resolve_client(ctx.obj["env_path"])
-    click.secho("已安装插件:", bold=True)
+    click.secho("Installed plugins:", bold=True)
     result = client.plugin_list()
     items = result.get("items", []) if isinstance(result, dict) else result
     for p in items:
@@ -138,30 +304,28 @@ def plugins(ctx, install_all, install, plugins_dir, tpg_dir, no_tpg, enable):
         name = p.get("name", "")
         ver = p.get("version", "")
         enabled = p.get("enabled", False)
-        click.echo(f"  [{'+' if enabled else '-'}] {name} v{ver} ({pid})")
+        click.echo("  [" + ("+" if enabled else "-") + "] " + name + " v" + ver + " (" + pid + ")")
 
 
 @main.command()
 @click.argument("plugin_dir", type=click.Path(exists=True))
-@click.option("--enable/--no-enable", default=True, help="安装后启用")
+@click.option("--enable/--no-enable", default=True, help="Enable after install")
 @click.pass_context
 def install(ctx, plugin_dir, enable):
-    """安装插件（传入插件目录）"""
-    import zipfile
-    import io
-    import base64
+    """Install plugin from directory"""
+    import zipfile, io, base64
 
     client = resolve_client(ctx.obj["env_path"])
     manifest_path = os.path.join(plugin_dir, "manifest.json")
     if not os.path.isfile(manifest_path):
-        click.secho("[ERR] 未找到 manifest.json", fg="red")
+        click.secho("[ERR] manifest.json not found", fg="red")
         return
 
     with open(manifest_path, encoding="utf-8") as f:
         manifest = _json.load(f)
     plugin_id = manifest.get("id")
     if not plugin_id:
-        click.secho("[ERR] manifest.json 缺少 id 字段", fg="red")
+        click.secho("[ERR] manifest.json missing id", fg="red")
         return
 
     buf = io.BytesIO()
@@ -177,214 +341,61 @@ def install(ctx, plugin_dir, enable):
                 z.write(fp, rel)
     zip_b64 = base64.b64encode(buf.getvalue()).decode("ascii")
 
-    click.echo(f"安装 {plugin_id} ...")
+    click.echo("Installing " + plugin_id + " ...")
     r = client.plugin_install(plugin_id, zip_b64)
     ok = r.get("ok", False)
     if ok in (True, "true"):
-        click.secho(f"[OK] 安装成功 v{r.get('version','?')}", fg="green")
+        click.secho("[OK] Installed v" + r.get("version", "?"), fg="green")
         if enable:
             client.plugin_set_enabled(plugin_id, True)
-            click.echo("  已启用")
+            click.echo("  Enabled")
     else:
-        click.secho(f"[ERR] 安装失败: {r}", fg="red")
+        click.secho("[ERR] Install failed: " + str(r), fg="red")
 
 
-@main.command()
+@main.command(name="sync")
 @click.argument("story_dir", required=False, type=click.Path(exists=True))
-@click.option("--story-json", type=click.Path(exists=True),
-              help="从 story.json 控制同步（支持 --all / --force / --duplicate-delete / --clean-cache）")
-@click.option("--force", "-f", is_flag=True, help="强制重新导入角色卡")
-@click.option("--all", "sync_all", is_flag=True, help="完整同步（含世界书）")
-@click.option("--duplicate-delete", is_flag=True, help="同名去重")
-@click.option("--clean-cache", is_flag=True, help="清空 sync_cache 后同步")
-@click.option("--skip-sprite", is_flag=True, help="跳过立绘同步")
-@click.option("--skip-chapters", is_flag=True, help="跳过章节同步")
-@click.option("--skip-plugins", is_flag=True, help="跳过插件安装")
-@click.option("--chat-id", type=int, help="指定已有群聊 ID")
-@click.option("--reuse-ids", type=click.Path(exists=True), help="角色ID映射 JSON 文件")
-@click.pass_context
-def sync(ctx, story_dir, story_json, force, sync_all, duplicate_delete, clean_cache,
-         skip_sprite, skip_chapters, skip_plugins, chat_id, reuse_ids):
-    """同步故事到 Tavo（角色+立绘+章节+插件+世界书）
-
-    两种模式：
-    - story_dir: 直接传故事目录路径（向后兼容）
-    - --story-json: 从 story.json 读取完整配置
-    """
-    from tavo_plugins.commands.sync_story import sync_story
-    from tavo_plugins.commands.sync_story_json import sync_from_story_json
-
-    # 模式 1: --story-json
-    if story_json:
-        client = resolve_client(ctx.obj["env_path"])
-        click.echo(f"[SYNC] 从 story.json 同步: {story_json}")
-        sync_from_story_json(
-            client, story_json,
-            force=force or sync_all,
-            duplicate_delete=duplicate_delete,
-            clean_cache=clean_cache,
-            skip_sprite=skip_sprite,
-            skip_chapters=skip_chapters,
-            skip_plugins=skip_plugins,
-            chat_id=chat_id,
-            echo=click.echo,
-        )
+@click.option("--story-json", type=click.Path(exists=True), help="story.json path")
+@click.option("--reuse-ids", help="Reuse character IDs from file")
+@click.option("--duplicate-delete", is_flag=True, help="Delete duplicates before sync")
+@click.option("--clean-cache", is_flag=True, help="Clean cache before sync")
+@click.option("--skip-plugins", is_flag=True, help="Skip plugins")
+@click.option("--all", is_flag=True, help="Full sync (characters, avatars, sprites, chapters, worldbooks)")
+@click.option("--force", is_flag=True, help="Force")
+def sync_cmd(story_dir, story_json, reuse_ids, duplicate_delete, clean_cache, skip_plugins, all_flag, force):
+    """Sync story to Tavo"""
+    import subprocess
+    sync_script = os.path.join(CLI_ROOT, "..", "script", "tavo_mcp_use", "story_sync", "story_sync_all.py")
+    if not os.path.exists(sync_script):
+        click.echo("[ERR] story_sync_all.py not found")
         return
-
-    # 模式 2: story_dir（向后兼容）
-    if not story_dir:
-        click.secho("[ERR] 必须传 STORY_DIR 或 --story-json", fg="red")
-        return
-
-    reuse_map = None
-    if reuse_ids:
-        with open(reuse_ids, encoding="utf-8") as f:
-            reuse_map = _json.load(f)
-        click.echo(f"  reuse IDs from: {reuse_ids}")
-
-    client = resolve_client(ctx.obj["env_path"])
-    click.echo(f"[SYNC] 开始同步: {story_dir}")
-    if force:
-        click.secho("  [WARN] force 模式: 重新导入所有角色", fg="yellow")
-    sync_story(client, story_dir, force=force or sync_all,
-               skip_sprite=skip_sprite, skip_chapters=skip_chapters,
-               skip_plugins=skip_plugins, chat_id=chat_id,
-               reuse_ids=reuse_map, echo=click.echo)
-
-
-@main.command()
-@click.option("--scope", "-s", default="chat", type=click.Choice(["chat", "global"]),
-              help="变量作用域")
-@click.argument("name")
-@click.argument("value", required=False)
-@click.pass_context
-def var(ctx, scope, name, value):
-    """读取或写入变量"""
-    client = resolve_client(ctx.obj["env_path"])
-
-    if value is None:
-        r = client.variable_get(chat_id=1, name=name, scope=scope)
-        if isinstance(r, dict) and r.get("found"):
-            click.echo(_json.dumps(r.get("value"), ensure_ascii=False, indent=2))
-        else:
-            click.secho(f"变量 {name} 不存在", fg="yellow")
+    # If story_json given, use it (let story_sync read it)
+    args = [sys.executable, sync_script]
+    if story_dir:
+        args.append(story_dir)
     else:
-        try:
-            val = _json.loads(value)
-        except Exception:
-            val = value
-        client.variable_set(chat_id=1, name=name, value=val, scope=scope)
-        click.secho(f"[OK] 已写入 {name}", fg="green")
-
-
-@main.command()
-@click.argument("query", required=False, default="")
-@click.option("--delete", "-d", type=int, help="按 ID 删除单个角色")
-@click.option("--delete-all", is_flag=True, help="删除全部角色（需确认）")
-@click.pass_context
-def characters(ctx, query, delete, delete_all):
-    """列出、搜索或删除角色卡
-
-    不带参数：列出所有角色
-    --delete ID：删除指定 ID 的角色
-    --delete-all：删除全部角色（带确认提示）"""
-    client = resolve_client(ctx.obj["env_path"])
-
-    def search_chars(q):
-        return client.get("tavo_character_search", {"query": q, "limit": 100})
-
-    def confirm(prompt):
-        return click.confirm(prompt)
-
-    if delete is not None:
-        if not confirm(f"确认删除角色 ID={delete}？此操作不可撤销"):
-            click.echo("已取消")
-            return
-        r = client.call("tavo_character_delete", {"id": delete})
-        ok = r.get("ok", False) or r.get("content", [{}])[0].get("text", "") == "true"
-        if ok:
-            click.secho(f"[OK] 已删除角色 ID={delete}", fg="green")
-        else:
-            click.secho(f"[ERR] 删除失败: {r}", fg="red")
-        return
-
-    if delete_all:
-        # 先列出所有
-        result = search_chars("")
-        items = result if isinstance(result, list) else result.get("items", [])
-        if not items:
-            click.echo("没有角色")
-            return
-        click.secho(f"将删除以下 {len(items)} 个角色：", fg="yellow")
-        for it in items:
-            click.echo(f"  [{it.get('id')}] {it.get('name')}")
-        if not confirm("确认删除全部？此操作不可撤销"):
-            click.echo("已取消")
-            return
-        ok_count = 0
-        for it in items:
-            cid = it.get("id")
-            if cid:
-                try:
-                    client.call("tavo_character_delete", {"id": cid})
-                    click.echo(f"  [OK] 删除 ID={cid}")
-                    ok_count += 1
-                except Exception as e:
-                    click.secho(f"  [ERR] ID={cid}: {e}", fg="red")
-        click.secho(f"[OK] 共删除 {ok_count}/{len(items)} 个角色", fg="green")
-        return
-
-    # 列出/搜索
-    result = search_chars(query)
-    items = result if isinstance(result, list) else result.get("items", [])
-    if not items:
-        click.echo("没有找到角色")
-        return
-    click.secho(f"找到 {len(items)} 个角色：", bold=True)
-    for it in items:
-        cid = it.get("id")
-        name = it.get("name", "")
-        kind = it.get("kind", "character")
-        if kind == "persona":
-            click.echo(f"  [P{id}] {name} (persona)")
-        else:
-            click.echo(f"  [{cid}] {name}")
-
-
-@main.command()
-@click.argument("query", required=False, default="")
-@click.option("--delete", "-d", type=int, help="按 ID 删除 persona")
-@click.pass_context
-def personas(ctx, query, delete):
-    """列出、搜索或删除 persona
-
-    不带参数：列出所有 persona
-    --delete ID：删除指定 ID 的 persona"""
-    client = resolve_client(ctx.obj["env_path"])
-
-    if delete is not None:
-        if not click.confirm(f"确认删除 persona ID={delete}？此操作不可撤销"):
-            click.echo("已取消")
-            return
-        r = client.call("tavo_persona_delete", {"id": delete})
-        ok = r.get("ok", False) or r.get("content", [{}])[0].get("text", "") == "true"
-        if ok:
-            click.secho(f"[OK] 已删除 persona ID={delete}", fg="green")
-        else:
-            click.secho(f"[ERR] 删除失败: {r}", fg="red")
-        return
-
-    result = client.get("tavo_persona_search", {"query": query, "limit": 100})
-    items = result if isinstance(result, list) else result.get("items", [])
-    if not items:
-        click.echo("没有找到 persona")
-        return
-    click.secho(f"找到 {len(items)} 个 persona：", bold=True)
-    for it in items:
-        pid = it.get("id")
-        name = it.get("name", "")
-        click.echo(f"  [P{pid}] {name}")
+        args.append(".cache/story")
+    if skip_plugins:
+        args.append("--skip-plugins")
+    if all_flag or force:
+        args.append("--force")
+    if duplicate_delete:
+        args.append("--force")
+    if clean_cache:
+        args.append("--check")
+    result = subprocess.run(args, env={**os.environ, "PYTHONIOENCODING": "utf-8"})
+    sys.exit(result.returncode)
+    if story_dir:
+        args.append(story_dir)
+    else:
+        args.append(".cache/story")  # default
+    if skip_plugins:
+        args.append("--skip-plugins")
+    if force or all_flag:
+        args.append("--force")
+    result = subprocess.run(args, env={**os.environ, "PYTHONIOENCODING": "utf-8"})
+    sys.exit(result.returncode)
 
 
 if __name__ == "__main__":
-    main(obj={})
+    main()

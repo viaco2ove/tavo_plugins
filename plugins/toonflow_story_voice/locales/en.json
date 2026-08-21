@@ -1,0 +1,7 @@
+{
+  "plugin.name": "Toonflow - Character Voice",
+  "plugin.description": "Clone voice plugin for group chat character voice generation and playback.",
+  "settings.voice_platform": "Voice Platform",
+  "settings.voice_platform_apikey": "Voice Platform API Key",
+  "settings.auto_play": "Auto Play Character Voice"
+}

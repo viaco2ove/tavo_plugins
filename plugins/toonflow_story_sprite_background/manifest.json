@@ -18,7 +18,6 @@
       "zh-CN": "locales/zh-CN.json"
     }
   },
-  "cover": "cover.png",
   "permissions": [
     "file",
     "variable",

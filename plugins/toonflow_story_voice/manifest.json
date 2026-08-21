@@ -1,36 +1,71 @@
 {
+  "specVersion": 2,
   "id": "com.toonflow.story-voice",
-  "name": "Toonflow-群聊-角色语音",
-  "version": "0.1.0",
-  "description": "克隆音色语音插件：管理角色音色文件上传/绑定，支持 xiaomimimo / aliyun 克隆音色平台，对齐 Toonflow-game voice 业务。",
-  "author": "toonflow",
+  "name": {
+    "$t": "plugin.name"
+  },
+  "version": "0.1.3",
+  "description": {
+    "$t": "plugin.description"
+  },
+  "author": "viaco",
   "minAppVersion": "1.0.0",
-  "permissions": ["file", "variable", "message", "chat", "tts"],
-  "htmlFragments": [
-    {
-      "path": "ui/voice_panel.html",
-      "position": "/chat/body/end"
-    }
+  "permissions": [
+    "file",
+    "variable",
+    "message",
+    "chat",
+    "tts"
   ],
-  "settings": [
-    {
-      "key": "voice_platform",
-      "type": "select",
-      "label": "语音平台",
-      "options": ["xiaomimimo", "aliyun", "tavo"],
-      "default": "xiaomimimo"
-    },
-    {
-      "key": "voice_platform_apikey",
-      "type": "string",
-      "label": "语音平台 API Key",
-      "default": ""
-    },
-    {
-      "key": "auto_play",
-      "type": "boolean",
-      "label": "自动播放角色语音",
-      "default": true
+  "localization": {
+    "defaultLocale": "zh-CN",
+    "resources": {
+      "en": "locales/en.json",
+      "zh-CN": "locales/zh-CN.json"
     }
-  ]
+  },
+  "contributes": {
+    "settings": {
+      "schema": [
+        {
+          "key": "voice_platform",
+          "type": "select",
+          "label": {
+            "$t": "settings.voice_platform"
+          },
+          "options": [
+            {
+              "value": "xiaomimimo",
+              "label": "xiaomimimo"
+            },
+            {
+              "value": "aliyun",
+              "label": "aliyun"
+            },
+            {
+              "value": "tavo",
+              "label": "tavo"
+            }
+          ],
+          "default": "xiaomimimo"
+        },
+        {
+          "key": "voice_platform_apikey",
+          "type": "text",
+          "label": {
+            "$t": "settings.voice_platform_apikey"
+          },
+          "default": ""
+        },
+        {
+          "key": "auto_play",
+          "type": "switch",
+          "label": {
+            "$t": "settings.auto_play"
+          },
+          "default": true
+        }
+      ]
+    }
+  }
 }

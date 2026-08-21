@@ -1,0 +1,23 @@
+{
+  "story_name": "未命名",
+  "chat_name": "未命名！",
+  "response_mode": "scenario",
+  "bind_persona": true,
+  "persona": {
+    "name": "纯小白",
+    "description": "",
+    "first_mes": "",
+    "personality": "玩家",
+    "avatar_file": ""
+  },
+  "characters": [],
+  "worldbook": {
+    "name": "未命名",
+    "intro": ""
+  },
+  "chapters": {
+    "dir": "chapters",
+    "enabled_first_only": true
+  },
+  "_chapters_cache": []
+}

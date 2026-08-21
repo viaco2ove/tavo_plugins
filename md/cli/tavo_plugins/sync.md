@@ -166,7 +166,6 @@ python -m tavo_plugins sync --story-json "story.json"
 
 ```bash
 # 完整清理 + 同步
-python -m tavo_plugins sync --story-json "story.json" \
-  --duplicate-delete --clean-cache --skip-plugins
+python -m tavo_plugins sync --story-json "story.json"
 ```
 

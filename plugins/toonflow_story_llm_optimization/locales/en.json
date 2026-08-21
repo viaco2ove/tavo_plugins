@@ -1,9 +1,11 @@
 {
-  "plugin.name": "Toonflow LLM Optimizer",
-  "plugin.description": "Centralizes all LLM calls with reasoningEffort control and Toonflow-aligned JSON response parsing.",
-  "settings.info": "LLM call parameters (aligned with Toonflow reasoningEffort)",
-  "settings.enabled": "Enable LLM Optimization",
+  "plugin.name": "Toonflow - LLM Optimizer",
+  "plugin.description": "LLM optimization plugin for group chat.",
+  "settings.apiKey": "API Key",
+  "settings.apiUrl": "API URL",
+  "settings.model": "Model",
   "settings.reasoningEffort": "Reasoning Effort",
   "settings.temperature": "Temperature",
-  "settings.topP": "TopP"
+  "settings.topP": "Top-P",
+  "settings.maxTokens": "Max Tokens"
 }
