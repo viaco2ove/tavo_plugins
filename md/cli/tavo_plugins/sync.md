@@ -148,8 +148,20 @@ python -m tavo_plugins sync ".cache/story/谁让这个山大王修仙的" \
 
 `story.json` 是 Toonflow-game 的源格式，包含 `player_role` / `npc_roles` / `chapter_covers` / `intro` / `global_bg` / `card_scenario` 等字段。
 
-```bash
+{
+  "story_sync_mode": "--all --force --duplicate-delete",
+  "story_sync_file": ".cache/story/谁让这个山大王修仙的/story_sync_config.json",
+  "story_sync_cache":".cache/story/谁让这个山大王修仙的/story_cache"
+}
+
+## story.json 控制的故事同步：
+### 同步故事（从 story.json 读取配置）
+```
 python -m tavo_plugins sync --story-json "story.json"
+```
+### # 同步并强制覆盖
+```
+ python -m tavo_plugins sync --story-json "story.json" --force --skip-plugins
 ```
 
 `story.json` 模式自动生成 / 复用 `story_sync_config.json`：
@@ -159,7 +171,7 @@ python -m tavo_plugins sync --story-json "story.json"
 - 世界书从 `worldbook/worldbook.json`（SillyTavern 格式，含 keys/probability/order）读取
 - `chapter_covers` 的背景图自动上传
 
-`--story-json` 模式支持的额外选项：
+`--story-json` 模式支持的额外选项 "story.json"内的 story_sync_mode：
 - `--all`：完整同步（含世界书）
 - `--duplicate-delete`：删除同名重复（角色 + 世界书条目）
 - `--clean-cache`：开始前清空 `story_sync_cache`

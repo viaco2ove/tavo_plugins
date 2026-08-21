@@ -360,16 +360,32 @@ def install(ctx, plugin_dir, enable):
 @click.option("--duplicate-delete", is_flag=True, help="Delete duplicates before sync")
 @click.option("--clean-cache", is_flag=True, help="Clean cache before sync")
 @click.option("--skip-plugins", is_flag=True, help="Skip plugins")
-@click.option("--all", is_flag=True, help="Full sync (characters, avatars, sprites, chapters, worldbooks)")
-@click.option("--force", is_flag=True, help="Force")
-def sync_cmd(story_dir, story_json, reuse_ids, duplicate_delete, clean_cache, skip_plugins, all_flag, force):
+@click.option("--full", is_flag=True, help="Full sync (characters, avatars, sprites, chapters, worldbooks)")
+@click.option("--force", "-F", is_flag=True, help="Force")
+def sync_cmd(story_dir, story_json, reuse_ids, duplicate_delete, clean_cache, skip_plugins, full, force):
     """Sync story to Tavo"""
     import subprocess
+    # If --story-json given, read it and use config
+    if story_json:
+        config_dir = None
+        config_file = None
+        try:
+            with open(story_json, "r", encoding="utf-8") as f:
+                cfg = _json.load(f)
+            # Read story_sync_file from story.json
+            config_file = cfg.get("story_sync_file")
+            if config_file:
+                config_dir = os.path.dirname(os.path.abspath(config_file))
+                if not story_dir:
+                    story_dir = config_dir
+        except Exception as e:
+            click.echo("[ERR] failed to read story.json: " + str(e))
+            return
+
     sync_script = os.path.join(CLI_ROOT, "..", "script", "tavo_mcp_use", "story_sync", "story_sync_all.py")
     if not os.path.exists(sync_script):
         click.echo("[ERR] story_sync_all.py not found")
         return
-    # If story_json given, use it (let story_sync read it)
     args = [sys.executable, sync_script]
     if story_dir:
         args.append(story_dir)
@@ -377,7 +393,7 @@ def sync_cmd(story_dir, story_json, reuse_ids, duplicate_delete, clean_cache, sk
         args.append(".cache/story")
     if skip_plugins:
         args.append("--skip-plugins")
-    if all_flag or force:
+    if force or full:
         args.append("--force")
     if duplicate_delete:
         args.append("--force")
