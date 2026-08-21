@@ -436,10 +436,11 @@ def sync_characters(http_url, token, config, story_dir, dry, force, chat_id_for_
             if it.get("name") == name:
                 existing = it.get("id")
                 break
-        if existing and not force:
+        if existing:
             print("  [char]    复用 id=%s name=%s" % (existing, name))
             results[name] = existing
         else:
+            print("  [char]    未找到，将创建 id=%s name=%s" % ("?", name))
             av_ref = upload_avatar(http_url, token, chat_id_for_files, name, av_local, dry=dry)
             cid = character_import(http_url, token, name,
                                    c.get("description", ""), c.get("first_mes", ""),
@@ -593,26 +594,30 @@ def sync_chapters(http_url, token, chat_id, config, story_dir, dry):
             fname, chapters[-1]["title"], enabled))
 
     if chapters and not dry:
-        # 读现有 tf_story.edit
+        # Clear global scope to avoid reading stale data
+        for var_name in ['tf_story.edit', 'tf_progress']:
+            try:
+                rpc(http_url, token, 'tavo_variable_set',
+                    {'scope': 'global', 'name': var_name, 'value': {}})
+            except:
+                pass
+        # Read existing from chat scope
         try:
-            existing = unwrap(rpc(http_url, token, "tavo_variable_get",
-                {"chatId": chat_id, "scope": "chat", "name": "tf_story.edit"}))
+            existing = unwrap(rpc(http_url, token, 'tavo_variable_get',
+                {'chatId': chat_id, 'scope': 'chat', 'name': 'tf_story.edit'}))
         except Exception:
             existing = {}
-        edit = dict(existing)
-        edit["chapters"] = chapters
-        edit["currentChapterIndex"] = 0
-        variable_set(http_url, token, chat_id, "tf_story.edit", edit)
-        print("  [chapter] 写入 tf_story.edit.chapters=%d 章" % len(chapters))
-
-        # tf_progress
-        progress = dict(existing.get("tf_progress", {}) if isinstance(existing, dict) else {})
-        progress["currentChapterIndex"] = 0
-        progress["currentEventIndex"] = 0
-        progress["completedChapters"] = []
-        variable_set(http_url, token, chat_id, "tf_progress", progress)
-        print("  [progress] 初始化 tf_progress")
+        edit = dict(existing) if isinstance(existing, dict) else {}
+        edit['chapters'] = chapters
+        edit['currentChapterIndex'] = 0
+        variable_set(http_url, token, chat_id, 'tf_story.edit', edit)
+        print('  [chapter] Write tf_story.edit.chapters=%d chapters' % len(chapters))
+        # Init tf_progress
+        progress = {'currentChapterIndex': 0, 'currentEvent': 0, 'completedChapters': [], 'phases': [], 'currentPhase': 0, 'currentEventIndex': 0}
+        variable_set(http_url, token, chat_id, 'tf_progress', progress)
+        print('  [progress] Init tf_progress')
     return chapters
+
 
 # ---------------------------------------------------------------------------
 # 同步立绘资源
