@@ -360,9 +360,13 @@ def install(ctx, plugin_dir, enable):
 @click.option("--duplicate-delete", is_flag=True, help="Delete duplicates before sync")
 @click.option("--clean-cache", is_flag=True, help="Clean cache before sync")
 @click.option("--skip-plugins", is_flag=True, help="Skip plugins")
+@click.option("--skip-sprite", is_flag=True, help="Skip sprite sync")
+@click.option("--skip-chapters", is_flag=True, help="Skip chapters sync")
 @click.option("--full", is_flag=True, help="Full sync (characters, avatars, sprites, chapters, worldbooks)")
 @click.option("--force", "-F", is_flag=True, help="Force")
-def sync_cmd(story_dir, story_json, reuse_ids, duplicate_delete, clean_cache, skip_plugins, full, force):
+@click.option("--chat-id", type=int, help="Specify existing chat ID, don't create new")
+def sync_cmd(story_dir, story_json, reuse_ids, duplicate_delete, clean_cache, skip_plugins,
+             skip_sprite, skip_chapters, full, force, chat_id):
     """Sync story to Tavo"""
     import subprocess
     # If --story-json given, read it and use config
@@ -404,6 +408,13 @@ def sync_cmd(story_dir, story_json, reuse_ids, duplicate_delete, clean_cache, sk
         args.append(".cache/story")
     if skip_plugins:
         args.append("--skip-plugins")
+    if skip_sprite:
+        args.append("--skip-sprite")
+    if skip_chapters:
+        args.append("--skip-chapters")
+    if chat_id is not None:
+        args.append("--chat-id")
+        args.append(str(chat_id))
     if duplicate_delete or "--duplicate-delete" in story_mode_args:
         args.append("--duplicate-delete")
     if clean_cache or "--clean-cache" in story_mode_args:

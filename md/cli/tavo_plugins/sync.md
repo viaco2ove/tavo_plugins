@@ -14,10 +14,10 @@ tavo sync ".cache/story/故事名"
 |------|------|
 | `STORY_DIR` | 故事目录路径（必填，与 `--story-json` 二选一） |
 | `--story-json FILE` | 从 story.json 控制同步（支持 `--all`/`--force`/`--duplicate-delete`/`--clean-cache`） |
-| `--force, -f` | 强制重新导入所有角色卡（跳过复用检查） |
-| `--all` | 完整同步（含世界书） |
+| `--force, -F` | 强制重新导入所有角色卡（跳过复用检查） |
+| `--full` | 完整同步（含世界书） |
 | `--duplicate-delete` | 同名去重（角色 + 世界书条目） |
-| `--clean-cache` | 开始同步前清空 `story_sync_cache` |
+| `--clean-cache` | 开始同步前清空 `story_cache` 目录 |
 | `--reuse-ids FILE` | 角色 ID 映射 JSON 文件（避免重复创建角色） |
 | `--skip-sprite` | 跳过立绘资源同步 |
 | `--skip-chapters` | 跳过章节同步 |
@@ -148,13 +148,15 @@ python -m tavo_plugins sync ".cache/story/谁让这个山大王修仙的" \
 
 `story.json` 是 Toonflow-game 的源格式，包含 `player_role` / `npc_roles` / `chapter_covers` / `intro` / `global_bg` / `card_scenario` 等字段。
 
+```json
 {
   "story_sync_mode": "--all --force --duplicate-delete",
   "story_sync_file": ".cache/story/谁让这个山大王修仙的/story_sync_config.json",
-  "story_sync_cache":".cache/story/谁让这个山大王修仙的/story_cache"
+  "story_sync_cache": ".cache/story/谁让这个山大王修仙的/story_cache"
 }
+```
 
-## story.json 控制的故事同步：
+## story.json 控制的故事同步
 ### 同步故事（从 story.json 读取配置，重新安装插件）
 ```
 python -m tavo_plugins sync --story-json "story.json"
@@ -185,8 +187,8 @@ python -m tavo_plugins sync --story-json "story.json"
   - `--force`： 代表强力模式
 
 注意：
-- 有--duplicate-delete 第一步先把当前故事对应的（同名角色，同名角色的头像,同名角色的立绘，同名角色的音色文件，章节内容：章节和章节结束条件,章节内容：开场白，对应的世界书 etc）都删了。 
-- 有-clean-cache 的先把"story.json" story_sync_cache 指定的缓存文件删了
+- 有--duplicate-delete 第一步先把当前故事对应的（同名角色，同名角色的头像,同名角色的立绘，同名角色的音色文件，章节内容：章节和章节结束条件,章节内容：开场白，对应的世界书 etc）都删了。
+- 有 --clean-cache 的先把 `story_cache` 目录删了
 
 ```bash
 # 完整清理 + 同步
