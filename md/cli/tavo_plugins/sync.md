@@ -172,11 +172,12 @@ python -m tavo_plugins sync --story-json "story.json"
 - 世界书从 `worldbook/worldbook.json`（SillyTavern 格式，含 keys/probability/order）读取
 - `chapter_covers` 的背景图自动上传
 
-`--story-json` 模式支持的额外选项 "story.json"内的 story_sync_mode：
-- `--all`：完整同步（含世界书）
-- `--duplicate-delete`：删除同名重复（角色，角色头像,角色立绘，角色音色文件，章节和章节结束条件,开场白，世界书 etc）
-- `--clean-cache`：开始前清空 `story_sync_cache`
-- `--force`： 代表强力模式
+`--story-json` 模式后面跟着 json 文件 如story.json
+"story.json"内的 story_sync_mode：
+  - `--all`：完整同步（含世界书）
+  - `--duplicate-delete`：删除同名重复（角色，角色头像,角色立绘，角色音色文件，章节和章节结束条件,开场白，世界书 etc）
+  - `--clean-cache`：开始前清空 `story_sync_cache`
+  - `--force`： 代表强力模式
 
 注意：
 - 有--duplicate-delete 第一步先把当前故事对应的（同名角色，同名角色的头像,同名角色的立绘，同名角色的音色文件，章节内容：章节和章节结束条件,章节内容：开场白，对应的世界书 etc）都删了。 
