@@ -151,6 +151,7 @@ tavo.plugin.on('chat:opened', function() {
   window.tf_story_on('opening', async function(data) {tf_speaker('opening',data);});
 
   window.tf_story_on('append_message', async function(data) {tf_speaker('append_message',data); });
+  window.tf_story_on('append_message_steam', async function(data) {tf_speaker('append_message_steam',data); });
 });
 async function tf_speaker(type, data) {
 
@@ -215,7 +216,101 @@ async function tf_speaker(type, data) {
     } catch (e) {
       console.warn('[tf_speaker][opening] 写入开场白失败', e);
     }
-  }else {
+  }else if ('append_message_steam' == type ){
+    // 流式 输出台词：speaker 自己调用 LLM 生成台词（不依赖 mcs 二次生成）
+    console.log("[tf_speaker][steam] 收到流式台词委托 speaker=" + (data&&data.speaker) + " motive=" + (data&&data.motive));
+    try {
+      // 1. 查找角色
+      var steamRole = (data && data.speaker) || '旁白';
+      var steamMotive = (data && data.motive) || '';
+      var steamEventSummary = (data && data.eventSummary) || '';
+      var steamRoleType = (data && data.roleType) || 'narrator';
+      var steamEvDigest = data && data.evDigest;
+      var steamNextEvInfo = data && data.nextEvInfo;
+      var steamAwaitUser = data && data.awaitUser;
+      var steamThinking = data && data.thinking;
+
+      var steamCharEntry = null;
+      var steamChat = await tavo.chat.current();
+      var steamChars = (steamChat && steamChat.characters) || [];
+      var steamFindChar = function(name) {
+        return steamChars.find(function(c){ return c.name === name; })
+          || (name === '旁白' || name === 'narrator' ? steamChars.find(function(c){ return c.name === '旁白'; }) : null);
+      };
+      steamCharEntry = steamFindChar(steamRole) || steamChars.find(function(c){ return c.name === '旁白'; }) || null;
+
+      // 2. 先 append 占位（空内容，会立即被 update 填充）
+      var steamAppendOpts = {
+        role: 'assistant',
+        characterId: steamCharEntry ? steamCharEntry.id : undefined,
+        characterName: steamRole,
+        content: '...',
+        hidden: false,
+      };
+      var steamMsg = null;
+      try {
+        steamMsg = await tavo.message.append(steamAppendOpts);
+        console.log("[tf_speaker][steam] 已 append 占位 msgId=" + (steamMsg && steamMsg.id));
+      } catch(e) {
+        console.warn("[tf_speaker][steam] append 占位失败", e);
+        throw e;
+      }
+
+      // 3. speaker 自己生成台词（对齐 Toonflow story_speaker）
+      var speakerPrompt = await buildSpeakerPrompt(steamRole, steamRoleType, steamMotive, steamEventSummary, steamEvDigest, steamNextEvInfo);
+      console.log("[tf_speaker][steam] speaker prompt len=" + speakerPrompt.length);
+      var llmPath = (window.tf_llm && window.tf_llm.callDirect) ? '接管' : 'tavo原生';
+      var speechText = '';
+      try {
+        speechText = llmPath === '接管'
+          ? await window.tf_llm.callDirect(speakerPrompt, { maxCompletionTokens: 1500 })
+          : await tavo.generate(speakerPrompt, { context: false, settings: { maxCompletionTokens: 1500 } });
+      } catch(e) {
+        console.error("[tf_speaker][steam] LLM 调用失败", e);
+        throw e;
+      }
+      // 4. 流式输出：每 80ms 增量 update
+      speechText = (speechText || '').replace(/<thinking>[\s\S]*?<\/thinking>/gi, '').replace(/^["']|["']$/g, '').trim();
+      var msgId = steamMsg && steamMsg.id;
+      var chunkSize = 8; // 每次输出字符数
+      var renderedText = '';
+      var steamCharIdx = 0;
+      var steamInterval = setInterval(async function() {
+        if (steamCharIdx >= speechText.length) {
+          clearInterval(steamInterval);
+          // 完成后考虑 thinking 折叠块
+          try {
+            if (steamThinking) {
+              var esc = steamThinking.replace(/<\/div>/gi, '&lt;/div&gt;');
+              var block = '<div style="cursor:pointer;color:#888;font-size:0.85em" onclick="var d=this.getElementsByTagName(\'div\')[0];d.style.display=d.style.display==\'none\'?\'block\':\'none\'">💭 思考（点击展开）<div style="display:none;padding:8px 0;color:#666">' + esc + '</div></div>';
+              await tavo.message.update(msgId, { content: block + speechText });
+            }
+          } catch(e) {}
+          console.log("[tf_speaker][steam] 流式输出完成 len=" + speechText.length);
+          return;
+        }
+        renderedText += speechText.slice(steamCharIdx, steamCharIdx + chunkSize);
+        steamCharIdx += chunkSize;
+        try {
+          await tavo.message.update(msgId, { content: renderedText });
+        } catch(e) {}
+      }, 80);
+
+// 5. 流式完成
+      console.log('[tf_speaker][steam] 流式输出完成 charId=' + (steamCharEntry ? steamCharEntry.id : 'null'));
+      // 6. await_user 处理（不触发下一轮编排）
+      if (steamAwaitUser === true) {
+        console.log('[tf_speaker][steam] awaitUser=true → 停止编排，等待用户');
+        try { tavo.set('tf_orch.active', false, 'chat'); } catch(e) {}
+        return;
+      }
+      // 7. 触发下一轮 NPC 编排
+      if (window.tf_story_emit) window.tf_story_emit('auto_orchestrate', {});
+    } catch(e) {
+      console.error("[tf_speaker][steam] 流式输出异常", e);
+    }
+  }
+  else {
     try {
       await tavo.message.append(data);
     } catch (e) {

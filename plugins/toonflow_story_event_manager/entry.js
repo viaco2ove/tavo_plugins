@@ -143,11 +143,10 @@ async function tfStoryJudge_checkChapterDoneLLM(messageContext) {
     const cond = chapter.successCondition;
     if (!cond) return { done: false, result: 'continue', reason: 'no_condition' };
     const recent = (await getAllMessagesText()) || '';
-    const prompt = '判断当前章节是否完成。
-章节：' + (chapter.title||'') + '
-完成条件：' + cond + '
-最近对话：' + recent.slice(-1500) + '
-返回 JSON: {"result":"continue"或"done","reason":"一句话"}';
+    const prompt = '判断当前章节是否完成。章节：'
+        + (chapter.title||'') + '完成条件：'
+        + cond + '最近对话：' + recent.slice(-1500)
+        + '返回 JSON: {"result":"continue"或"done","reason":"一句话"}';
     let raw;
     try {
       raw = (window.tf_llm && window.tf_llm.callDirect)
