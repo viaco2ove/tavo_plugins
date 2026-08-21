@@ -393,12 +393,12 @@ def sync_cmd(story_dir, story_json, reuse_ids, duplicate_delete, clean_cache, sk
         args.append(".cache/story")
     if skip_plugins:
         args.append("--skip-plugins")
-    if force or full:
-        args.append("--force")
     if duplicate_delete:
-        args.append("--force")
+        args.append("--duplicate-delete")
     if clean_cache:
-        args.append("--check")
+        args.append("--clean-cache")
+    if force or all_flag:
+        args.append("--force")
     result = subprocess.run(args, env={**os.environ, "PYTHONIOENCODING": "utf-8"})
     sys.exit(result.returncode)
     if story_dir:
@@ -407,6 +407,10 @@ def sync_cmd(story_dir, story_json, reuse_ids, duplicate_delete, clean_cache, sk
         args.append(".cache/story")  # default
     if skip_plugins:
         args.append("--skip-plugins")
+    if duplicate_delete:
+        args.append("--duplicate-delete")
+    if clean_cache:
+        args.append("--clean-cache")
     if force or all_flag:
         args.append("--force")
     result = subprocess.run(args, env={**os.environ, "PYTHONIOENCODING": "utf-8"})

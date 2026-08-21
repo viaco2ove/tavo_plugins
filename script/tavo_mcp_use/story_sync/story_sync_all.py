@@ -808,7 +808,9 @@ def main():
     p.add_argument("--skip-sprite", action="store_true", help="跳过立绘同步")
     p.add_argument("--skip-chapters", action="store_true", help="跳过章节同步")
     p.add_argument("--skip-plugins", action="store_true", help="跳过插件安装")
-    p.add_argument("--skip-voice", action="store_true", help="跳过世界书（历史名，实际跳 lorebook）")
+    p.add_argument("--skip-voice", action="store_true", help="跳过世界书（历史名，实际跳 lorebook）"
+    p.add_argument("--duplicate-delete", action="store_true", help="同步前删除同名角色和世界书"
+    p.add_argument("--clean-cache", action="store_true", help="同步前删除缓存"))
     # 连接/重绑
     p.add_argument("--chat-id", type=int, help="指定已有群聊 ID（跳过创建）")
     p.add_argument("--url", help="MCP URL（覆盖 .env）")
@@ -865,6 +867,96 @@ def main():
     print("\n=== chat_id = %s ===" % chat_id)
 
     # 4. 同步角色卡（avatar 先 file_save 成 files/global 引用，再写进 card）
+    # Duplicate-delete: 删除同名角色
+    if args.duplicate_delete:
+        print('=== 删除同名角色 ===')
+        # Search and delete
+        for cfg_name in config.get('characters', []):
+            name = cfg_name.get('name', '')
+            if name:
+                result = search_character(http_url, token, name)
+                for item in (result or []):
+                    if item.get('name') == name:
+                        cid = item.get('id')
+                        try:
+                            rpc(http_url, token, 'tavo_character_delete', {'characterId': cid})
+                            print('  Deleted char id=%s name=%s' % (cid, name))
+                        except: pass
+        # Delete persona
+        for cfg in [config.get('persona')]:
+            if cfg and cfg.get('name'):
+                result = search_persona(http_url, token, cfg['name'])
+                for item in (result or []):
+                    if item.get('name') == cfg['name']:
+                        try:
+                            rpc(http_url, token, 'tavo_persona_delete', {'personaId': item.get('id')})
+                            print('  Deleted persona name=%s' % cfg['name'])
+                        except: pass
+        # Delete lorebook entries
+        try:
+            lb_result = rpc(http_url, token, 'tavo_lorebook_search', {'query': '', 'limit': 50})
+            for lb in (lb_result.get('items', []) if isinstance(lb_result, dict) else []):
+                lb_name = lb.get('name', '')
+                if lb_name == config.get('name'):
+                    lb_id = lb.get('id')
+                    try:
+                        rpc(http_url, token, 'tavo_lorebook_delete', {'lorebookId': lb_id})
+                        print('  Deleted lorebook id=%s name=%s' % (lb_id, lb_name))
+                    except: pass
+        except: pass
+        print('')
+
+    # Clean cache
+    if args.clean_cache:
+        import shutil
+        cache_dir = os.path.join(story_dir, 'story_cache')
+        if os.path.exists(cache_dir):
+            shutil.rmtree(cache_dir)
+            print('  [cache] Cleaned cache=%s' % cache_dir)
+
+    # Duplicate-delete: 删除同名角色和世界书
+    if getattr(args, 'duplicate_delete', False):
+        print('\n=== duplicate-delete: 删除同名角色和世界书 ===')
+        # 删除角色
+        for c in config.get('characters', []):
+            name = c.get('name')
+            if not name: continue
+            result = search_character(http_url, token, name)
+            for item in (result or []):
+                if item.get('name') == name:
+                    cid = item.get('id')
+                    try:
+                        rpc(http_url, token, 'tavo_character_delete', {'characterId': cid})
+                        print('  [char] Deleted id=%s name=%s' % (cid, name))
+                    except Exception as e:
+                        print('  [char] Delete failed: ' + str(e))
+        # 删除 persona
+        for cfg in [config.get('persona')]:
+            if cfg and cfg.get('name'):
+                try:
+                    result2 = rpc(http_url, token, 'tavo_persona_search', {'query': cfg['name'], 'limit': 5})
+                    for item in (result2.get('items', []) if isinstance(result2, dict) else []):
+                        if item.get('name') == cfg['name']:
+                            pid = item.get('id')
+                            rpc(http_url, token, 'tavo_persona_delete', {'personaId': pid})
+                            print('  [persona] Deleted id=%s name=%s' % (pid, cfg['name']))
+                except: pass
+        # 删除世界书
+        try:
+            lb_result = rpc(http_url, token, 'tavo_lorebook_search', {'query': '', 'limit': 50})
+            chat_name = config.get('name', '')
+            for lb in (lb_result.get('items', []) if isinstance(lb_result, dict) else []):
+                if lb.get('name') == chat_name:
+                    lb_id = lb.get('id')
+                    try:
+                        rpc(http_url, token, 'tavo_lorebook_delete', {'lorebookId': lb_id})
+                        print('  [lorebook] Deleted id=%s name=%s' % (lb_id, chat_name))
+                    except Exception as e:
+                        print('  [lorebook] Delete failed: ' + str(e))
+        except Exception as e:
+            print('  [lorebook] Search failed: ' + str(e))
+        print('')
+
     char_ids = sync_characters(http_url, token, config, story_dir, args.dry, args.force, chat_id)
     config["_char_id_map"] = char_ids
 

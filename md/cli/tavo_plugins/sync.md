@@ -155,11 +155,11 @@ python -m tavo_plugins sync ".cache/story/谁让这个山大王修仙的" \
 }
 
 ## story.json 控制的故事同步：
-### 同步故事（从 story.json 读取配置）
+### 同步故事（从 story.json 读取配置） 重新安装插件
 ```
 python -m tavo_plugins sync --story-json "story.json"
 ```
-### # 同步并强制覆盖
+### # 同步并强制覆盖（从 story.json 读取配置） 不重新按照插件
 ```
  python -m tavo_plugins sync --story-json "story.json" --force --skip-plugins
 ```
