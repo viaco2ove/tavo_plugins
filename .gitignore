@@ -74,3 +74,6 @@ run.local.ps1
 *.wav
 /.agents/
 /plugins_tpg/
+/__pycache__
+*/__pycache__
+/script/tavo_mcp_use/__pycache__/
