@@ -808,10 +808,9 @@ def main():
     p.add_argument("--skip-sprite", action="store_true", help="跳过立绘同步")
     p.add_argument("--skip-chapters", action="store_true", help="跳过章节同步")
     p.add_argument("--skip-plugins", action="store_true", help="跳过插件安装")
-    p.add_argument("--skip-voice", action="store_true", help="跳过世界书（历史名，实际跳 lorebook）"
-    p.add_argument("--duplicate-delete", action="store_true", help="同步前删除同名角色和世界书"
-    p.add_argument("--clean-cache", action="store_true", help="同步前删除缓存"))
-    # 连接/重绑
+    p.add_argument("--skip-voice", action="store_true", help="skip voice")
+    p.add_argument("--duplicate-delete", action="store_true", help="delete duplicates")
+    p.add_argument("--clean-cache", action="store_true", help="clean cache")
     p.add_argument("--chat-id", type=int, help="指定已有群聊 ID（跳过创建）")
     p.add_argument("--url", help="MCP URL（覆盖 .env）")
     p.add_argument("--token", help="MCP Token（覆盖 .env）")
@@ -879,19 +878,20 @@ def main():
                     if item.get('name') == name:
                         cid = item.get('id')
                         try:
-                            rpc(http_url, token, 'tavo_character_delete', {'characterId': cid})
+                            rpc(http_url, token, 'tavo_character_delete', {'id': cid})
                             print('  Deleted char id=%s name=%s' % (cid, name))
                         except: pass
         # Delete persona
         for cfg in [config.get('persona')]:
             if cfg and cfg.get('name'):
-                result = search_persona(http_url, token, cfg['name'])
-                for item in (result or []):
-                    if item.get('name') == cfg['name']:
-                        try:
-                            rpc(http_url, token, 'tavo_persona_delete', {'personaId': item.get('id')})
-                            print('  Deleted persona name=%s' % cfg['name'])
-                        except: pass
+                try:
+                    result2 = rpc(http_url, token, 'tavo_persona_search', {'query': cfg['name'], 'limit': 5})
+                    for item in (result2.get('items', []) if isinstance(result2, dict) else []):
+                        if item.get('name') == cfg['name']:
+                            pid = item.get('id')
+                            rpc(http_url, token, 'tavo_persona_delete', {'personaId': pid})
+                            print('  Deleted persona id=%s name=%s' % (pid, cfg['name']))
+                except: pass
         # Delete lorebook entries
         try:
             lb_result = rpc(http_url, token, 'tavo_lorebook_search', {'query': '', 'limit': 50})
@@ -900,7 +900,7 @@ def main():
                 if lb_name == config.get('name'):
                     lb_id = lb.get('id')
                     try:
-                        rpc(http_url, token, 'tavo_lorebook_delete', {'lorebookId': lb_id})
+                        rpc(http_url, token, 'tavo_lorebook_delete', {'id': lb_id})
                         print('  Deleted lorebook id=%s name=%s' % (lb_id, lb_name))
                     except: pass
         except: pass
@@ -926,7 +926,7 @@ def main():
                 if item.get('name') == name:
                     cid = item.get('id')
                     try:
-                        rpc(http_url, token, 'tavo_character_delete', {'characterId': cid})
+                        rpc(http_url, token, 'tavo_character_delete', {'id': cid})
                         print('  [char] Deleted id=%s name=%s' % (cid, name))
                     except Exception as e:
                         print('  [char] Delete failed: ' + str(e))
@@ -949,7 +949,7 @@ def main():
                 if lb.get('name') == chat_name:
                     lb_id = lb.get('id')
                     try:
-                        rpc(http_url, token, 'tavo_lorebook_delete', {'lorebookId': lb_id})
+                        rpc(http_url, token, 'tavo_lorebook_delete', {'id': lb_id})
                         print('  [lorebook] Deleted id=%s name=%s' % (lb_id, chat_name))
                     except Exception as e:
                         print('  [lorebook] Delete failed: ' + str(e))

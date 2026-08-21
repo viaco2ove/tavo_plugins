@@ -26,6 +26,10 @@ story.json 说明
 story_sync_file 故事文件夹
 story_sync_cache 故事同步过程的缓存数据，如角色id 等。
 
+注意：
+- 有--duplicate-delete 第一步先把当前故事对应的（同名角色，同名角色头像,同名角色立绘，同名角色音色文件，章节内容：章节和章节结束条件,章节内容：开场白，对应的世界书 etc）都删了。 
+- 有-clean-cache 的先把"story.json" story_sync_cache 指定的缓存文件删了
+
 # 插件
 ## 已安装插件
 python -m tavo_plugins plugins
