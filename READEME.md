@@ -96,5 +96,13 @@ tavo install plugins/xxx     # 安装插件
 tavo sync .cache/story/xxx   # 同步故事
 tavo var tf_sprites          # 读写变量
 ```
+tavo vs  python -m tavo_plugins ：tavo 需要配置环境，  python -m tavo_plugins 不需要
 
 详见 [md/cli/tavo_plugins_help.md](md/cli/tavo_plugins_help.md)
+# cli实例
+## 同步故事
+python -m tavo_plugins sync ".cache/story/谁让这个山大王修仙的" --reuse-ids ".cache/story/谁让这个山大王修仙的/char_ids.json" --skip-plugins
+## story.json 控制的故事同步：
+```
+python -m tavo_plugins sync --story-json "story.json" --duplicate-delete --clean-cache --skip-plugins
+```

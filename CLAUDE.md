@@ -95,4 +95,12 @@ Detailed design specs are in `md/currdesign/toonflow_story_memory_manager/`:
 调用 “tavo” 命令 来维护 故事同步等功能
 [py_cli.md](md/cli/py_cli.md)
 
+tavo vs  python -m tavo_plugins ：tavo 需要配置环境，  python -m tavo_plugins 不需要
 例如：tavo characters              # 列出全部角色
+# cli实例
+## 同步故事
+python -m tavo_plugins sync ".cache/story/谁让这个山大王修仙的" --reuse-ids ".cache/story/谁让这个山大王修仙的/char_ids.json" --skip-plugins
+## story.json 控制的故事同步：
+```
+python -m tavo_plugins sync --story-json "story.json" --duplicate-delete --clean-cache --skip-plugins
+```
