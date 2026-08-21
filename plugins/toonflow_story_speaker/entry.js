@@ -7,6 +7,68 @@
 
 'use strict';
 
+// 注入等待效果 CSS（台词生成中蓝色，语音生成中黄色）
+(function() {
+  var style = document.createElement('style');
+  style.textContent = `
+    /* 蓝色等待动画 - 台词生成中 */
+    .tf-waiting-dots-blue {
+      color: #2196F3;
+      font-size: 14px;
+      animation: tf-blink-blue 1.5s ease-in-out infinite;
+    }
+    .tf-waiting-dots-blue::after {
+      content: '';
+      animation: tf-dots-blue 1.5s steps(4, end) infinite;
+    }
+    @keyframes tf-blink-blue {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.4; }
+    }
+    @keyframes tf-dots-blue {
+      0% { content: ''; }
+      25% { content: '.'; }
+      50% { content: '..'; }
+      75% { content: '...'; }
+      100% { content: ''; }
+    }
+
+    /* 黄色等待动画 - 语音生成和播放中 */
+    .tf-waiting-dots-yellow {
+      color: #FFC107;
+      font-size: 14px;
+      animation: tf-blink-yellow 1s ease-in-out infinite;
+    }
+    .tf-waiting-dots-yellow::after {
+      content: '';
+      animation: tf-dots-yellow 1s steps(4, end) infinite;
+    }
+    @keyframes tf-blink-yellow {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.3; }
+    }
+    @keyframes tf-dots-yellow {
+      0% { content: ''; }
+      25% { content: '.'; }
+      50% { content: '..'; }
+      75% { content: '...'; }
+      100% { content: ''; }
+    }
+
+    /* 打字机光标 */
+    .tf_steam_cursor {
+      display: inline-block;
+      color: #666;
+      animation: tf-cursor-blink 0.8s step-end infinite;
+    }
+    @keyframes tf-cursor-blink {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0; }
+    }
+  `;
+  document.head.appendChild(style);
+})();
+
 const NS = 'tf_speaker';
 const ORCH_FLAG = 'tf_orch.active';
 
@@ -247,12 +309,12 @@ async function tf_speaker(type, data) {
 
       // 2. 生成唯一 div id
       var msg_div_id = 'tf_steam_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
-      // 3. 先 append 占位（带唯一 id 的 div，用于后续流式填充）
+      // 3. 先 append 占位（蓝色 "..." 等待效果，表示台词生成中）
       var steamAppendOpts = {
         role: 'assistant',
         characterId: steamCharEntry ? steamCharEntry.id : undefined,
         characterName: steamRole,
-        content: '<div id="'+msg_div_id+'"><span class="tf_steam_cursor">|</span></div>',
+        content: '<div id="'+msg_div_id+'" class="tf-waiting"><span class="tf-waiting-dots-blue">台词生成中...</span></div>',
         hidden: false,
       };
       var steamMsg = null;
@@ -280,17 +342,22 @@ async function tf_speaker(type, data) {
       // 5. 清理 LLM 输出
       speechText = (speechText || '').replace(/<thinking>[\s\S]*?<\/thinking>/gi, '').replace(/^["']|["']$/g, '').trim();
 
-      // 6. 流式输出：直接操作 DOM，每 50ms 填充一个字符
+      // 6. 切换到黄色 "..." 等待效果，表示语音生成和播放中
+      var targetDiv = document.getElementById(msg_div_id);
+      if (targetDiv) {
+        targetDiv.innerHTML = '<span class="tf-waiting-dots-yellow">语音生成和播放中...</span>';
+      }
+
+      // 7. 流式输出：直接操作 DOM，每 50ms 填充一个字符
       var steamCharIdx = 0;
       var chunkSize = 2; // 每次填充字符数（打字机效果）
       var steamInterval = setInterval(function() {
         if (steamCharIdx >= speechText.length) {
           clearInterval(steamInterval);
-          // 流式完成：移除光标
+          // 流式完成：移除等待效果，替换为光标
           var targetDiv = document.getElementById(msg_div_id);
           if (targetDiv) {
-            var cursor = targetDiv.querySelector('.tf_steam_cursor');
-            if (cursor) cursor.remove();
+            targetDiv.innerHTML = '<span class="tf_steam_cursor">|</span>';
           }
           // 完成后添加 thinking 折叠块
           try {
@@ -301,7 +368,7 @@ async function tf_speaker(type, data) {
             }
           } catch(e) {}
           console.log("[tf_speaker][steam] 流式输出完成 len=" + speechText.length);
-          // 7. 流式完成后 - 调用 voice 插件生成 + 播放语音
+          // 8. 流式完成后 - 调用 voice 插件生成 + 播放语音
           if (steamCharEntry && steamCharEntry.id && speechText && window.tf_voice) {
             try {
               var vcfg = window.tf_voice.getConfig ? window.tf_voice.getConfig() : null;
@@ -338,7 +405,7 @@ async function tf_speaker(type, data) {
       console.error("[tf_speaker][steam] 流式输出异常", e);
     }
   }
-  else {
+  else if (type === 'append_message'){
     try {
       await tavo.message.append(data);
     } catch (e) {
@@ -346,21 +413,18 @@ async function tf_speaker(type, data) {
     }
   }
 
-
-  // 4. append_message 类型的后处理（append_message_steam 在 setInterval 内部已处理）
-  if (type === 'append_message') {
-    try {
-      // await_user 处理
-      if (data && data.awaitUser === true) {
-        console.log('[' + ts() + '] ⏸ [speaker] await_user=true → 停止生成，等待用户输入');
-        try { tavo.set(ORCH_FLAG, false, 'chat'); } catch (e) {}
-        return;
-      }
-      // 触发下一轮编排
-      if (window.tf_story_emit) window.tf_story_emit('auto_orchestrate', {});
-    } catch (e) {
-      console.warn('[tf_speaker] auto_orchestrate失败', e);
+  try {
+    console.log('[' + ts() + '] ⏸ [speaker] 准备生成语音');
+    // await_user 处理
+    if (data && data.awaitUser === true) {
+      console.log('[' + ts() + '] ⏸ [speaker] await_user=true → 停止生成，等待用户输入');
+      try { tavo.set(ORCH_FLAG, false, 'chat'); } catch (e) {}
+      return;
     }
+    // 触发下一轮编排
+    if (window.tf_story_emit) window.tf_story_emit('auto_orchestrate', {});
+  } catch (e) {
+    console.warn('[tf_speaker] auto_orchestrate失败', e);
   }
 }
 
