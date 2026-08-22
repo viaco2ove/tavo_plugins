@@ -81,6 +81,8 @@ def resolve(args):
 # MCP JSON-RPC
 # ---------------------------------------------------------------------------
 def rpc(http_url, token, method, arguments, timeout=120):
+    if method == "tavo_variable_set":
+        print(f"  [tavo_variable_set] args:{arguments.get('scope')} {arguments.get('name')}")
     payload = {"jsonrpc": "2.0", "id": 1, "method": "tools/call",
                 "params": {"name": method, "arguments": arguments}}
     data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -271,8 +273,11 @@ def chat_current(http_url, token, chat_id):
     return unwrap(r)
 
 def variable_set(http_url, token, chat_id, name, value, scope="chat"):
-    rpc(http_url, token, "tavo_variable_set",
-        {"scope": scope, "chatId": chat_id, "name": name, "value": value})
+    args = {"scope": scope, "name": name, "value": value}
+    print(f"  [tavo_variable_set] args:{args}")
+    if scope == "chat":
+        args["chatId"] = chat_id
+    rpc(http_url, token, "tavo_variable_set", args)
 
 def file_save(http_url, token, chat_id, name, local_path, scope="chat"):
     """上传本地文件 -> files/<scope>/<name>，返回引用路径（scope=chat 传 chatId）"""
@@ -827,7 +832,7 @@ def sync_chapters(http_url, token, chat_id, config, story_dir, dry):
         # 读取已有数据（可能已有 intro/globalBackground 等）
         try:
             existing_edit = unwrap(rpc(http_url, token, 'tavo_variable_get',
-                {'chatId': chat_id, 'scope': 'global', 'name': variable_key}))
+                {'scope': 'global', 'name': variable_key}))
         except Exception:
             existing_edit = {}
         # 解包 {found, value} 包装
@@ -847,8 +852,9 @@ def sync_chapters(http_url, token, chat_id, config, story_dir, dry):
             edit['lineCount'] = 20
 
         # 只写 global scope（chat scope 由 event_manager 的 writeVarDual 写入 tf_story）
+        print('  [tavo_variable_set] scope:%s variable_key:%s' % ('global', variable_key))
         rpc(http_url, token, 'tavo_variable_set', {
-            'scope': 'global', 'chatId': chat_id, 'name': variable_key, 'value': edit
+            'scope': 'global', 'name': variable_key, 'value': edit
         })
         print('  [chapter] Write %s (global only) chapters=%d intro=%d globalBg=%d' % (
             variable_key, len(chapters), len(edit.get('intro', '')), len(edit.get('globalBackground', ''))))
@@ -856,6 +862,7 @@ def sync_chapters(http_url, token, chat_id, config, story_dir, dry):
         # Init tf_progress（只写 global scope）
         progress_var = 'tf_progress_%s' % chat_id
         progress = {'currentChapterIndex': 0, 'currentEvent': 0, 'completedChapters': [], 'phases': [], 'currentPhase': 0, 'currentEventIndex': 0}
+        print('  [tavo_variable_set] scope:%s variable_key:%s' % ('global', progress_var))
         variable_set(http_url, token, chat_id, progress_var, progress, scope='global')
         print('  [progress] Init %s (global only)' % progress_var)
     return chapters
@@ -992,15 +999,18 @@ def sync_sprites(http_url, token, chat_id, config, story_dir, dry):
 
     if not dry and sprites_by_name:
         for scope in ['chat', 'global']:
+            print('  [tavo_variable_set] scope:%s variable_key:%s' % (scope, 'tf_sprites'))
             variable_set(http_url, token, chat_id, "tf_sprites",
                 {"byName": sprites_by_name, "byId": sprites_by_id}, scope=scope)
         print("  [tf_sprites] -> %d 角色 (chat+global)" % len(sprites_by_name))
     if not dry and chapter_bgs:
         chapter_bgs_var = 'tf_chapter_backgrounds_%s' % chat_id
+        print('  [tavo_variable_set] scope:%s variable_key:%s' % ('global', chapter_bgs_var))
         variable_set(http_url, token, chat_id, chapter_bgs_var, chapter_bgs, scope='global')
         print("  [%s] -> %d 章节 (global only)" % (chapter_bgs_var, len(chapter_bgs)))
     if not dry and fallback_bg:
         for scope in ['chat', 'global']:
+            print('  [tavo_variable_set] scope:%s variable_key:%s' % (scope, 'tf_sprite_fallback_bg'))
             variable_set(http_url, token, chat_id, "tf_sprite_fallback_bg", fallback_bg, scope=scope)
         print("  [tf_sprite_fallback_bg] -> %s (chat+global)" % fallback_bg)
 
@@ -1072,6 +1082,7 @@ def sync_voices(http_url, token, chat_id, config, story_dir, char_ids, dry):
 
     if character_voices and not dry:
         for scope in ['chat', 'global']:
+            print('  [tavo_variable_set] scope:%s variable_key:%s' % (scope, 'tf_character_voices'))
             variable_set(http_url, token, chat_id, "tf_character_voices", character_voices, scope=scope)
         print("  [voice] tf_character_voices: %d 个角色 (chat+global)" % len(character_voices))
 

@@ -64,6 +64,8 @@ def resolve(args_ns):
 
 
 def rpc(http_url, token, method, arguments, timeout=120):
+    if method == "tavo_variable_set":
+        print(f"  [tavo_variable_set] args:{arguments.get('scope')} {arguments.get('name')}")
     payload = {"jsonrpc": "2.0", "id": 1, "method": "tools/call",
                "params": {"name": method, "arguments": arguments}}
     data = json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -102,6 +104,8 @@ def file_save(http_url, token, chat_id, name, local_path, scope="chat"):
 
 def variable_set(http_url, token, chat_id, name, value, scope="chat"):
     # 双写：chat + global（防 tavo_chat_reset 清除）
+    print(f"  [tavo_variable_set] args:{scope} {name}")
+    print(f"  [tavo_variable_set] args:global  {name}")
     rpc(http_url, token, "tavo_variable_set",
         {"scope": scope, "chatId": chat_id, "name": name, "value": value})
     rpc(http_url, token, "tavo_variable_set",

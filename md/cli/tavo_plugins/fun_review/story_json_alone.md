@@ -10,6 +10,7 @@ python -m tavo_plugins sync --story-json "story.json" --force --skip-plugins
 故事信息绑定：
 "chat_name": "谁让这个山大王修仙的！"
 群聊绑定->故事数据.简介:intro, 故事数据.全局背景：global_bg,故事数据.card_scenario，故事数据.card_tags
+global scope ：tf_story_{chat_id}.edit.intro 和 intro.tf_story_{chat_id}.edit.globalBackground
 ## 绑定了怎么用：
 // Tavo 的 chat 变量经 tavo.get 返回的是包装对象 {target,name,found,value}，
 // 真实数据在 .value 里。所有读变量都必须解包，否则 v.chapters / v.level 等会是 undefined，
@@ -46,9 +47,19 @@ rpc(http_url, token, 'tavo_variable_set', {
     'scope': 'chat', 'chatId': chat_id, 'name': 'tf_story.edit', 'value': edit
 })
 ```
-但真正的真元数据global scope ：
+但真正的真元数据global scope ：tf_story_{chat_id}.edit.intro 和 intro.tf_story_{chat_id}.edit.globalBackground
 
+查阅：[变量列表.global.md](../../../currdesign/%E5%8F%98%E9%87%8F%E8%AE%BE%E8%AE%A1/%E5%8F%98%E9%87%8F%E5%88%97%E8%A1%A8.global.md)
+
+也就是要
+client.variable_set(chat_id, edit_var, edit, scope="global")
 
 # 故事章节数据绑定测试
 "chat_name": "谁让这个山大王修仙的！"
 章节数据绑定到故事：开场白，开场白发言人， 章节背景图片，章节内容，章节结束条件
+
+# 验证变量设置的日志
+```bash
+python -m tavo_plugins sync --story-json "story.json" --force --skip-plugins
+```
+输出的：[tavo_variable_set]

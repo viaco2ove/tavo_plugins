@@ -446,6 +446,7 @@ def _sync_sprites(client, chat_id, char_ids, story_dir, config, echo, sprite_ids
                     echo(f"  voice {name} -> {voice_path_tavo}")
     if voice_files:
         for scope in ["chat", "global"]:
+            echo(f"  [tavo_variable_set] scope:{scope} variable_key:tf_voice_files")
             client.variable_set(chat_id, "tf_voice_files", voice_files, scope=scope)
         echo(f"  [OK] tf_voice_files -> {len(voice_files)}")
 
@@ -553,11 +554,13 @@ def _sync_chapters(client, chat_id, story_dir, config, echo):
         echo(f"  [DEBUG] edit keys = {list(edit.keys())}")
 
         # 只写 global scope（chat scope 由 event_manager 的 writeVarDual 写入 tf_story）
+        echo(f"  [tavo_variable_set] scope:global variable_key:{edit_var}")
         client.variable_set(chat_id, edit_var, edit, scope="global")
         echo(f"  [SET] {edit_var} (scope=global) = {json.dumps(edit, ensure_ascii=False)[:200]}")
 
         # 写 tf_chapter_backgrounds（只写 global scope，chat scope 由 event_manager 写入）
         if chapter_bgs:
+            echo(f"  [tavo_variable_set] scope:global variable_key:{bg_var}")
             client.variable_set(chat_id, bg_var, chapter_bgs, scope="global")
             echo(f"  [SET] {bg_var} (scope=global) = {json.dumps(chapter_bgs, ensure_ascii=False)}")
         else:
@@ -570,6 +573,7 @@ def _sync_chapters(client, chat_id, story_dir, config, echo):
             "phases": [],
             "sessionFreeMode": False,
         }
+        echo(f"  [tavo_variable_set] scope:global variable_key:{progress_var}")
         client.variable_set(chat_id, progress_var, progress, scope="global")
         echo(f"  [SET] {progress_var} (scope=global) = {json.dumps(progress, ensure_ascii=False)}")
     else:

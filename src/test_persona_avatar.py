@@ -191,6 +191,7 @@ by_id[str(persona_id)] = {
 print(f"byName 数量: {len(by_name)}")
 print(f"纯小白: fg={sprite_ref_fg} bg={sprite_ref_bg}")
 
+print(f"  [tavo_variable_set] args:chat tf_sprites")
 # 写入 tf_sprites
 result6 = client.call("tavo_variable_set", {
     "scope": "chat",

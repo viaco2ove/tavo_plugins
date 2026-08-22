@@ -23,6 +23,8 @@ url = (env.get("tavo_mcp_url") or "").rstrip("/")
 token = env.get("tavo_mcp_toekn") or env.get("tavo_mcp_token")
 
 def rpc(method, args, timeout=60):
+    if method == "tavo_variable_set":
+        print(f"  [tavo_variable_set] args:{args.get('scope')} {args.get('name')}")
     payload = {"jsonrpc": "2.0", "id": 1, "method": "tools/call",
                "params": {"name": method, "arguments": args}}
     data = json.dumps(payload).encode("utf-8")

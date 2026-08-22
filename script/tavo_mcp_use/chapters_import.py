@@ -67,6 +67,8 @@ def resolve_auth(args):
 
 
 def rpc(url, token, method, arguments, timeout=120):
+    if method == "tavo_variable_set":
+        print(f"  [tavo_variable_set] args:{arguments.get('scope')} {arguments.get('name')}")
     """发 tools/call，返回工具内部 JSON（自动解 content[0].text 包裹）。"""
     payload = {"jsonrpc": "2.0", "id": 1, "method": "tools/call",
                "params": {"name": method, "arguments": arguments}}

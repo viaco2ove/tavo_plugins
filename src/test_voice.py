@@ -76,6 +76,7 @@ voice_config = {
 }
 print(f"  音色配置: mode={voice_config['mode']}, prompt={voice_config['prompt'][:30]}...")
 
+print(f"  [tavo_variable_set] args:chat tf_voice_config")
 # 绑定到 tf_voice_config
 result2 = client.call("tavo_variable_set", {
     "scope": "chat",
@@ -85,6 +86,7 @@ result2 = client.call("tavo_variable_set", {
 })
 print(f"  tf_voice_config 设置: {parse(result2)}")
 
+print(f"  [tavo_variable_set] args:chat tf_character_voices")
 # 同时绑定到角色音色
 result3 = client.call("tavo_variable_set", {
     "scope": "chat",

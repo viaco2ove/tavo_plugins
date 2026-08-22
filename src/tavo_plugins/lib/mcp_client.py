@@ -94,6 +94,7 @@ class McpClient:
         args = {"scope": scope, "name": name, "value": value}
         if scope == "chat":
             args["chatId"] = chat_id
+        print(f"  [tavo_variable_set] args:{args}")
         return self.call("tavo_variable_set", args)
 
     def variable_get(self, chat_id, name, scope="chat"):

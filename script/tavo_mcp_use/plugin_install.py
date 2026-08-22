@@ -82,6 +82,8 @@ def resolve_auth(args):
 # MCP JSON-RPC 调用
 # ---------------------------------------------------------------------------
 def rpc(url, token, method, arguments, timeout=90):
+    if method == "tavo_variable_set":
+        print(f"  [tavo_variable_set] args:{arguments.get('scope')} {arguments.get('name')}")
     payload = {
         "jsonrpc": "2.0",
         "id": 1,

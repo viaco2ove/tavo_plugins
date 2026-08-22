@@ -24,6 +24,8 @@ HEADERS = {'Authorization': f'Bearer {TOKEN}', 'Content-Type': 'application/json
 
 
 def rpc(method, params, idx=1):
+    if method == "tavo_variable_set":
+        print(f"  [tavo_variable_set] args:{params.get('scope')} {params.get('name')}")
     resp = requests.post(BASE, json={
         'jsonrpc': '2.0', 'id': idx, 'method': method, 'params': params
     }, headers=HEADERS, timeout=30)

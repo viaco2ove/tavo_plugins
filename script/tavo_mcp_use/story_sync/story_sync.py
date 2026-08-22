@@ -94,6 +94,8 @@ def resolve_auth(args):
 # MCP JSON-RPC
 # ---------------------------------------------------------------------------
 def rpc(url, token, method, arguments, timeout=120):
+    if method == "tavo_variable_set":
+        print(f"  [tavo_variable_set] args:{arguments.get('scope')} {arguments.get('name')}")
     payload = {
         "jsonrpc": "2.0",
         "id": 1,
@@ -596,6 +598,8 @@ def ensure_chapter_edit_variable(cfg, url, token, chat_id, dry):
     try:
         # 双写：chat + global。global 写入不能带 chatId（带了会静默失败）。
         # tavo_chat_reset 会清 chat scope，global 是重启后的恢复来源。
+        print(f"  [tavo_variable_set] args:chat  tf_story.edit")
+        print(f"  [tavo_variable_set] args:global  tf_story.edit")
         call(url, token, "tavo_variable_set",
              {"scope": "chat", "chatId": chat_id, "name": "tf_story.edit", "value": edit})
         call(url, token, "tavo_variable_set",

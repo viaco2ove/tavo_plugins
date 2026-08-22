@@ -26,6 +26,7 @@ TOKEN = env.get("tavo_mcp_toekn") or env.get("tavo_mcp_token")
 CHAT_ID = "2"
 
 def rpc(method, args, timeout=60):
+    print(f"  [tavo_variable_set] args:chat  tmm_story_static")
     payload = {"jsonrpc": "2.0", "id": 1, "method": "tools/call",
                "params": {"name": method, "arguments": args}}
     data = json.dumps(payload).encode("utf-8")
@@ -170,6 +171,7 @@ def main():
         print("  built %s (%s) lv=%s hp=%s mp=%s" % (name, card["roleType"], card["level"], card["hp"], card["mp"]))
 
     static = {"name": "谁让这个山大王修仙的！ · 第1章", "synopsis": "", "characters": characters}
+    print(f"  [tavo_variable_set] args:chat  tmm_story_static")
     # 写变量（chatId 必须整型）
     rpc("tavo_variable_set", {"scope":"chat","chatId":int(CHAT_ID),"name":"tmm_story_static","value":static})
     # 写后回填校验：确认 found=true

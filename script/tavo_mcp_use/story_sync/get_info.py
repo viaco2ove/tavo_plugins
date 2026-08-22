@@ -75,6 +75,8 @@ def parse(result):
 
 
 def rpc(url, token, method, args, timeout=30):
+    if method == "tavo_variable_set":
+        print(f"  [tavo_variable_set] args:{args.get('scope')} {args.get('name')}")
     body = rpc_raw(url, token, method, args, timeout)
     data, err = parse(body)
     if err:
