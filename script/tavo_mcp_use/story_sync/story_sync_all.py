@@ -831,7 +831,9 @@ def sync_chapters(http_url, token, chat_id, config, story_dir, dry):
             'cardScenario': config.get('card_scenario', ''),
             'cardTags': config.get('card_tags', []),
         }
-        variable_set(http_url, token, chat_id, 'tf_story.edit', edit)
+        rpc(http_url, token, 'tavo_variable_set', {
+            'scope': 'chat', 'chatId': chat_id, 'name': 'tf_story.edit', 'value': edit
+        })
         print('  [chapter] Write tf_story.edit chapters=%d intro=%d globalBg=%d' % (
             len(chapters), len(edit['intro']), len(edit['globalBackground'])))
         # Init tf_progress
