@@ -397,10 +397,12 @@ def _sync_sprites(client, chat_id, char_ids, story_dir, config, echo, sprite_ids
     sprites_by_name[persona_name] = p_entry
 
     for scope in ["chat", "global"]:
+        echo(f"  [tavo_variable_set] scope:{scope} variable_key:tf_sprites")
         client.variable_set(chat_id, "tf_sprites", {"byName": sprites_by_name}, scope=scope)
     echo(f"  [OK] tf_sprites -> {len(sprites_by_name)} chars")
 
     for scope in ["chat", "global"]:
+        echo(f"  [tavo_variable_set] scope:{scope} variable_key:tf_sprite_persona_name")
         client.variable_set(chat_id, "tf_sprite_persona_name", persona_name, scope=scope)
     echo(f"  [OK] tf_sprite_persona_name -> {persona_name}")
 
@@ -419,6 +421,7 @@ def _sync_sprites(client, chat_id, char_ids, story_dir, config, echo, sprite_ids
         r = client.file_save(chat_id, "fallback_bg.jpg", b64, scope="chat")
         fb_path = r.get("path", "")
         for scope in ["chat", "global"]:
+            echo(f"  [tavo_variable_set] scope:{scope} variable_key:tf_sprite_fallback_bg")
             client.variable_set(chat_id, "tf_sprite_fallback_bg", fb_path, scope=scope)
         echo(f"  [OK] tf_sprite_fallback_bg -> {fb_path}")
 
