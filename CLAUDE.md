@@ -81,6 +81,10 @@ Detailed design specs are in `md/currdesign/toonflow_story_memory_manager/`:
 ## git 提交限制
 不允许自己commit 和push 到 git
 
+## 不允许ai 修改的标注
+文件第一行: @no_modify
+或者 # @no_modify
+或者 # no_modify
 
 ## 特别注意
 [for_ai.md](md/toonflow-game-md/for_ai.md)

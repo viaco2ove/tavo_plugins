@@ -1,39 +1,36 @@
-# 命令执行检查
-
+# no_modify
 ```bash
 python -m tavo_plugins sync --story-json "story.json" --force --skip-plugins
 ```
+# 用户身份测试
+单独先测试给给用户身份:纯小白，上传头像后设置头像路径，然后上传立绘图像，用全局变量绑定立绘信息。
+上传音色文件并绑定到用户身份:纯小白
 
-## 用户身份测试 ✅
+# 故事信息绑定测试
+故事信息绑定：
+"chat_name": "谁让这个山大王修仙的！"
+群聊绑定->故事数据.简介:intro, 故事数据.全局背景：global_bg,故事数据.card_scenario，故事数据.card_tags
+## 绑定了怎么用：
+// Tavo 的 chat 变量经 tavo.get 返回的是包装对象 {target,name,found,value}，
+// 真实数据在 .value 里。所有读变量都必须解包，否则 v.chapters / v.level 等会是 undefined，
+// 代码会误判为"空"并覆盖，造成配置/参数卡被清空。
+function readChatVar(name) {
+  try {
+    let v = tavo.get(name);
+    let guard = 0;
+    while (v && typeof v === 'object' && v.found !== undefined && 'value' in v && guard < 5) {
+      v = v.value; guard++;
+    }
+    return v;
+  } catch (e) { return null; }
+}
 
-| 测试项 | 结果 |
-|--------|------|
-| Persona 头像 | `files/global/纯小白.png` ✅ |
-| tf_sprites 立绘绑定 | `纯小白 fg=files/chat/sprite_fg_29.webp` ✅ |
-| tf_character_voices 音色绑定 | `纯小白 audioRef=files/global/voice_纯小白.wav` ✅ |
-
-## 故事信息绑定 ✅
-
-读取代码：
-```javascript
 const edit = readChatVar('tf_story.edit') || {};
 let bg = String(edit.globalBackground || '').trim();
-```
 
-| 变量 | 结果 |
-|------|------|
-| `edit.intro` | 有内容 ✅ |
-| `edit.globalBackground` | 有内容 ✅ |
-| `edit.cardScenario` | 有内容 ✅ |
-| `edit.cardTags` | 有内容 ✅ |
+也就是故事变量的
+tf_story.edit.globalBackground 和 tf_story.edit.intro
 
-## 章节数据绑定 ✅
-
-| 变量 | 结果 |
-|------|------|
-| `edit.chapters[0].openingRole` | `旁白` ✅ |
-| `edit.chapters[0].openingLine` | 有内容 ✅ |
-| `edit.chapters[0].background` | 有内容 ✅ |
-| `edit.chapters[0].content` | 1238 字符 ✅ |
-| `edit.chapters[0].successCondition` | 有内容 ✅ |
-| `edit.chapters[0].title` | `第 1 章：穿越成山大王` ✅ |
+# 故事章节数据绑定测试
+"chat_name": "谁让这个山大王修仙的！"
+章节数据绑定到故事：开场白，开场白发言人， 章节背景图片，章节内容，章节结束条件

@@ -273,9 +273,6 @@ def chat_current(http_url, token, chat_id):
 def variable_set(http_url, token, chat_id, name, value, scope="chat"):
     rpc(http_url, token, "tavo_variable_set",
         {"scope": scope, "chatId": chat_id, "name": name, "value": value})
-    if scope == "chat":
-        rpc(http_url, token, "tavo_variable_set",
-            {"scope": "global", "name": name, "value": value})
 
 def file_save(http_url, token, chat_id, name, local_path, scope="chat"):
     """上传本地文件 -> files/<scope>/<name>，返回引用路径（scope=chat 传 chatId）"""
@@ -826,35 +823,17 @@ def sync_chapters(http_url, token, chat_id, config, story_dir, dry):
             fname, chapters[-1]["title"], enabled))
 
     if chapters and not dry:
-        # Clear global scope to avoid reading stale data
-        for var_name in ['tf_story.edit', 'tf_progress']:
-            try:
-                rpc(http_url, token, 'tavo_variable_set',
-                    {'scope': 'global', 'name': var_name, 'value': {}})
-            except:
-                pass
-        # Read existing from chat scope
-        try:
-            existing = unwrap(rpc(http_url, token, 'tavo_variable_get',
-                {'chatId': chat_id, 'scope': 'chat', 'name': 'tf_story.edit'}))
-        except Exception:
-            existing = {}
-        edit = dict(existing) if isinstance(existing, dict) else {}
-        edit['chapters'] = chapters
-        edit['currentChapterIndex'] = 0
-        # 添加故事数据
-        edit['intro'] = config.get('intro', '')
-        edit['globalBackground'] = config.get('global_bg', '')
-        edit['cardScenario'] = config.get('card_scenario', '')
-        edit['cardTags'] = config.get('card_tags', [])
+        edit = {
+            'chapters': chapters,
+            'currentChapterIndex': 0,
+            'intro': config.get('intro', ''),
+            'globalBackground': config.get('global_bg', ''),
+            'cardScenario': config.get('card_scenario', ''),
+            'cardTags': config.get('card_tags', []),
+        }
         variable_set(http_url, token, chat_id, 'tf_story.edit', edit)
-        print('  [chapter] Write tf_story.edit.chapters=%d chapters' % len(chapters))
-        # 同时写入单独的变量方便读取
-        variable_set(http_url, token, chat_id, 'tf_intro', edit['intro'])
-        variable_set(http_url, token, chat_id, 'tf_global_bg', edit.get('globalBackground', ''))
-        variable_set(http_url, token, chat_id, 'tf_card_scenario', edit.get('cardScenario', ''))
-        variable_set(http_url, token, chat_id, 'tf_card_tags', edit.get('cardTags', []))
-        print('  [chapter] Write tf_story.edit with story data')
+        print('  [chapter] Write tf_story.edit chapters=%d intro=%d globalBg=%d' % (
+            len(chapters), len(edit['intro']), len(edit['globalBackground'])))
         # Init tf_progress
         progress = {'currentChapterIndex': 0, 'currentEvent': 0, 'completedChapters': [], 'phases': [], 'currentPhase': 0, 'currentEventIndex': 0}
         variable_set(http_url, token, chat_id, 'tf_progress', progress)

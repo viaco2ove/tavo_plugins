@@ -613,8 +613,8 @@
     if (!T || !T.chat) return null;
     var chat = await T.chat.current();
     if (!chat) return null;
-    // 静态基准卡（记忆插件解析好的权威参数卡）按名兜底：即使这里拿不到角色描述，参数也能显示
-    var staticStory = readChatVar('tmm_story_static') || readChatVar('tmm_story') || null;
+    // 静态基准卡（记忆插件解析好的权威参数卡）按名兜底：优先读 tmm_story（含动态数据），回退 tmm_story_static
+    var staticStory = readChatVar('tmm_story') || readChatVar('tmm_story_static') || null;
     var staticByName = {};
     if (staticStory && staticStory.characters) {
       staticStory.characters.forEach(function (c) { if (c && c.name) staticByName[c.name] = c; });
@@ -1523,7 +1523,32 @@
 
   function openSheet() {
     var o = document.getElementById('tf-story-overlay');
-    if (o) { o.classList.add('open'); renderSheet(); }
+    if (o) {
+      o.classList.add('open');
+      // 确保 tmm_story 展示层包含最新的动态数据（hp/mp/level 等）
+      // 读取 tmm 中的动态补丁，同步合并到 tmm_story
+      try {
+        var tmm = readChatVar('tmm') || {};
+        var storyStatic = readChatVar('tmm_story') || readChatVar('tmm_story_static') || { characters: [] };
+        var cards = storyStatic.characters || [];
+        var playerPatch = (tmm.cards && tmm.cards.player) || {};
+        var npcPatches = (tmm.cards && tmm.cards.npcs) || {};
+        if (Object.keys(playerPatch).length || Object.keys(npcPatches).length) {
+          cards = cards.map(function(ch) {
+            if (ch.roleType === 'player' && Object.keys(playerPatch).length) {
+              return Object.assign({}, ch, { card: Object.assign({}, ch.card || {}, playerPatch) });
+            }
+            if (npcPatches[ch.name] && Object.keys(npcPatches[ch.name]).length) {
+              return Object.assign({}, ch, { card: Object.assign({}, ch.card || {}, npcPatches[ch.name]) });
+            }
+            return ch;
+          });
+          // 用同步后的数据覆盖 tmm_story（下次打开时也正确）
+          T.set('tmm_story', { name: storyStatic.name || '故事', characters: cards }, 'chat');
+        }
+      } catch(e) { /* ignore */ }
+      renderSheet();
+    }
   }
   function closeSheet() { var o = document.getElementById('tf-story-overlay'); if (o) o.classList.remove('open'); }
 
