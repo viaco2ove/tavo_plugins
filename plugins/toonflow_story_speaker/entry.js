@@ -7,7 +7,7 @@
 
 'use strict';
 
-// 注入等待效果 CSS（台词生成中蓝色，语音生成中黄色）
+// 注入等待效果 CSS（台词生成中蓝色，语音生成中黄色）:台词生成中蓝色 "。->."，语音生成中黄色"。->."
 (function() {
   var style = document.createElement('style');
   style.textContent = `
@@ -79,6 +79,7 @@
 
 const NS = 'tf_speaker';
 const ORCH_FLAG = 'tf_orch.active';
+let _orchBusy = false; // 编排锁：防止 auto_orchestrate 并发抢占
 
 // 时间戳函数（用于日志）
 function ts() {
@@ -267,6 +268,12 @@ async function tf_speaker(type, data) {
   if (!cfg.enabled) return;
   if (getOrchestration() === 'system') return;
 
+  // 编排锁：防止 auto_orchestrate 并发抢占（同一轮编排内多次 emit 事件）
+  if (_orchBusy) {
+    console.log('[tf_speaker][LOCK] 编排锁占用，跳过: ' + type);
+    return;
+  }
+
   if('opening' == type ){
       var role = (data && data.role) || '旁白';
     var text = (data && data.text) || '';
@@ -321,6 +328,12 @@ async function tf_speaker(type, data) {
   }else if ('append_message_steam' == type ){
     // 流式输出台词：speaker 自己调用 LLM 生成台词（不依赖 mcs 二次生成）
     console.log("[tf_speaker][steam] 收到流式台词委托 speaker=" + (data&&data.speaker) + " motive=" + (data&&data.motive));
+    // 编排锁：防止多轮 auto_orchestrate 并发抢占
+    if (_orchBusy) {
+      console.log("[tf_speaker][steam] 编排锁占用，跳过");
+      return;
+    }
+    _orchBusy = true;
     try {
       // 1. 查找角色
       var steamRole = (data && data.speaker) || '旁白';
@@ -447,6 +460,9 @@ async function tf_speaker(type, data) {
       // 注意：流式进行中不要在这里写 TTS/编排逻辑，等 setInterval 内部完成
     } catch(e) {
       console.error("[tf_speaker][steam] 流式输出异常", e);
+    } finally {
+      // 释放编排锁，让下一轮编排可以进入
+      _orchBusy = false;
     }
   }
   else if (type === 'append_message'){
@@ -466,6 +482,7 @@ async function tf_speaker(type, data) {
       return;
     }
     // 触发下一轮编排
+    console.log('[tf_speaker][orchestrate][steam] → 继续编排，auto_orchestrate');
     if (window.tf_story_emit) window.tf_story_emit('auto_orchestrate', {});
   } catch (e) {
     console.warn('[tf_speaker] auto_orchestrate失败', e);
@@ -475,6 +492,12 @@ async function tf_speaker(type, data) {
 
 // 生成前：注入对齐 Toonflow story_speaker 的「入参」（当前事件 / 最近对话 / 在场角色当前状态）+ 编排标记
 tavo.plugin.on('generation:prepare', async (event) => {
+  // 编排锁：防止上一轮 append_message_steam 的 LLM 流被新一轮 generation:prepare 抢占
+  if (_orchBusy) {
+    console.log('[speaker][gen:prepare] 编排锁占用，跳过生成');
+    try { event.text = ''; } catch (e) {}
+    return;
+  }
   const cfg = getConfig();
   if (!cfg.enabled) return;
   if (getOrchestration() === 'system') return; // 跟随系统：不注入动态状态、不显示编排中
@@ -496,9 +519,9 @@ tavo.plugin.on('generation:prepare', async (event) => {
   }
 });
 
-tavo.plugin.on('generation:success', async () => { try { tavo.set(ORCH_FLAG, false, 'chat'); } catch (e) {} });
-tavo.plugin.on('generation:error', async () => { try { tavo.set(ORCH_FLAG, false, 'chat'); } catch (e) {} });
-tavo.plugin.on('generation:cancelled', async () => { try { tavo.set(ORCH_FLAG, false, 'chat'); } catch (e) {} });
+tavo.plugin.on('generation:success', async () => { try { tavo.set(ORCH_FLAG, false, 'chat'); _orchBusy = false; } catch (e) { _orchBusy = false; } });
+tavo.plugin.on('generation:error', async () => { try { tavo.set(ORCH_FLAG, false, 'chat'); _orchBusy = false; } catch (e) { _orchBusy = false; } });
+tavo.plugin.on('generation:cancelled', async () => { try { tavo.set(ORCH_FLAG, false, 'chat'); _orchBusy = false; } catch (e) { _orchBusy = false; } });
 
 // 侧边栏：测试生成一句当前角色台词（隐藏消息）
 tavo.plugin.onSidebarAction('speaker-test', async () => {

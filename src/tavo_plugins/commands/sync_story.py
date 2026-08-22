@@ -238,11 +238,11 @@ def sync_story(client, story_dir, force=False, skip_sprite=False,
 
     # ---- 4. 重绑群聊 ----
     echo("[OK] 第4步: 重绑群聊(角色+世界书+persona)")
-    # 过滤 narrator 和 persona，只保留普通角色
-    persona_name = config.get("persona", {}).get("name", "纯小白")
+    # 过滤  persona，只保留非persona角色
+    persona_name = p.get("name", "")
     char_id_list = [
         int(v) for k, v in char_ids.items()
-        if k not in ("旁白", persona_name) and v and str(v).isdigit()
+        if k not in ( persona_name) and v and str(v).isdigit()
     ]
     lorebook_ids = [int(lorebook_id)] if lorebook_id and str(lorebook_id).isdigit() else []
     persona_int = int(persona_id) if persona_id and str(persona_id).isdigit() else None
@@ -324,7 +324,7 @@ def _sync_sprites(client, chat_id, char_ids, story_dir, config, echo, sprite_ids
     sprites_by_name = {}
 
     # NPC 角色（非 narrator，非 persona）
-    persona_name = config.get("persona", {}).get("name", "纯小白")
+    persona_name = config.get("persona", {}).get("name", "")
 
     for name, cid in use_ids.items():
         # 跳过 narrator 和 persona
