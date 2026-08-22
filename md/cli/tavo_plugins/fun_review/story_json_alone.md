@@ -31,6 +31,24 @@ let bg = String(edit.globalBackground || '').trim();
 也就是故事变量的
 tf_story.edit.globalBackground 和 tf_story.edit.intro
 
+mcp 操作：
+``` PYTHON
+edit = {
+    'chapters': chapters,
+    'currentChapterIndex': 0,
+    'intro': config.get('intro', ''),
+    'globalBackground': config.get('global_bg', ''),
+    'cardScenario': config.get('card_scenario', ''),
+    'cardTags': config.get('card_tags', []),
+}
+# MCP JSON-RPC
+rpc(http_url, token, 'tavo_variable_set', {
+    'scope': 'chat', 'chatId': chat_id, 'name': 'tf_story.edit', 'value': edit
+})
+```
+但真正的真元数据global scope ：
+
+
 # 故事章节数据绑定测试
 "chat_name": "谁让这个山大王修仙的！"
 章节数据绑定到故事：开场白，开场白发言人， 章节背景图片，章节内容，章节结束条件
