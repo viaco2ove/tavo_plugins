@@ -33,6 +33,31 @@ function readChatVar(name) {
   } catch (e) { return null; }
 }
 
+// 变量命名（对齐变量设计.原则）：
+//   chat scope  → tf_story（不带 chat_id）
+//   global scope → tf_story_{chat_id}（带 chat_id）
+let _mcsChatId = null;
+function storyNs(name) { return 'tf_story.' + name; }
+function storyNsGlobal(name) {
+  return _mcsChatId ? ('tf_story_' + _mcsChatId + '.' + name) : ('tf_story.' + name);
+}
+function progressVarName() { return 'tf_progress'; }
+function progressVarNameGlobal() {
+  return _mcsChatId ? ('tf_progress_' + _mcsChatId) : 'tf_progress';
+}
+// 双 scope 读取：先 global，再 chat
+function readDualScope(chatName, globalName) {
+  let v = readChatVar(chatName);
+  if (v && typeof v === 'object') return v;
+  try {
+    let g = tavo.get(globalName, 'global');
+    let guard = 0;
+    while (g && typeof g === 'object' && g.found !== undefined && 'value' in g && guard < 5) { g = g.value; guard++; }
+    if (g && typeof g === 'object') return g;
+  } catch (e) {}
+  return null;
+}
+
 function getConfig() {
   const get = (k, fallback) => {
     try {
@@ -237,7 +262,7 @@ function hashCode(str) {
 // 'system' = 跟随系统（不接管）；缺省 / 'plugin' = 角色编排插件接管
 function getOrchestration() {
   try {
-    const edit = readChatVar('tf_story.edit') || {};
+    const edit = readDualScope(storyNs('edit'), storyNsGlobal('edit')) || {};
     const v = edit.orchestration;
     return v === 'system' ? 'system' : 'plugin';
   } catch (e) { return 'plugin'; }
@@ -246,7 +271,7 @@ function getOrchestration() {
 // 台词数量：传给 agent 的「最近对话」条数（对齐 Toonflow recent_dialogue 入参），默认 20
 function getLineCount() {
   try {
-    const edit = readChatVar('tf_story.edit') || {};
+    const edit = readDualScope(storyNs('edit'), storyNsGlobal('edit')) || {};
     const v = parseInt(edit.lineCount, 10);
     return (v >= 1) ? v : 20;
   } catch (e) { return 20; }
@@ -298,7 +323,7 @@ function getScenarioPrompt() {
 
 // 进入聊天：把群聊切到场景模式并写入编排规则（自由模式下放宽规则）
 async function getEffectiveScenarioPrompt() {
-  const freeMode = (() => { try { return !!!!(readChatVar('tf_progress')||{}).sessionFreeMode; } catch (e) { return false; } })();
+  const freeMode = (() => { try { return !!!!(readDualScope(progressVarName(), progressVarNameGlobal())||{}).sessionFreeMode; } catch (e) { return false; } })();
   const base = getScenarioPrompt();
   const wbInject = await getWorldbookInject();
   if (!freeMode) return base + wbInject;
@@ -339,6 +364,7 @@ async function _retry(fn, label, maxTries) {
 }
 
 tavo.plugin.on('chat:opened', async () => {
+  try { const c = await tavo.chat.current(); _mcsChatId = c && c.id; } catch (e) {}
   const cfg = getConfig();
   if (!cfg.enabled) {
     console.log('[' + ts() + '] [mcs] skip: enabled=false');
@@ -394,7 +420,7 @@ tavo.plugin.on('message:added', async () => {
   const cfg = getConfig();
   if (!cfg.enabled) return;
   if (getOrchestration() === 'system') return; // 跟随系统：不接管群聊
-  const freeMode = (() => { try { return !!!!(readChatVar('tf_progress')||{}).sessionFreeMode; } catch (e) { return false; } })();
+  const freeMode = (() => { try { return !!!!(readDualScope(progressVarName(), progressVarNameGlobal())||{}).sessionFreeMode; } catch (e) { return false; } })();
   const lastVal = (() => { try { return readChatVar('mcs_free_mode_seen'); } catch (e) { return false; } })();
   if (freeMode !== lastVal) {
     try {
@@ -435,7 +461,7 @@ function classifyIntent(text) {
 // 读取意图模式（与 memory_manager 共享同一配置）
 function getIntentMode() {
   try {
-    const edit = readChatVar('tf_story.edit') || {};
+    const edit = readDualScope(storyNs('edit'), storyNsGlobal('edit')) || {};
     const m = edit.intentMode;
     if (m === 'keyword' || m === 'model_api' || m === 'auto') return m;
     return 'auto';
@@ -528,9 +554,9 @@ async function findCharacterId(name) {
 async function buildOrchestrationPrompt(userInput) {
   console.log('[buildOrchestrationPrompt ]promptParts get start');
   const n = getLineCount();
-  const edit = readChatVar('tf_story.edit') || {};
+  const edit = readDualScope(storyNs('edit'), storyNsGlobal('edit')) || {};
   const chapters = edit.chapters || [];
-  const progress = readChatVar('tf_progress') || {};
+  const progress = readDualScope(progressVarName(), progressVarNameGlobal()) || {};
   const chapterIdx = (typeof progress.currentChapterIndex === 'number') ? progress.currentChapterIndex : 0;
   const chapter = chapters[chapterIdx];
   const chapterTitle = chapter?.title || '（无）';
@@ -576,9 +602,9 @@ async function buildOrchestrationPrompt(userInput) {
     : [];
 
   // 对齐 toonflow：读 tf_progress.phases[currentPhase].events[currentEvent]
-  const phases = (readChatVar('tf_progress') || {}).phases || [];
-  const phaseIdx = Math.max(0, (readChatVar('tf_progress') || {}).currentPhase || 0);
-  const eventIdx = Math.max(0, (readChatVar('tf_progress') || {}).currentEvent || 0);
+  const phases = (readDualScope(progressVarName(), progressVarNameGlobal()) || {}).phases || [];
+  const phaseIdx = Math.max(0, (readDualScope(progressVarName(), progressVarNameGlobal()) || {}).currentPhase || 0);
+  const eventIdx = Math.max(0, (readDualScope(progressVarName(), progressVarNameGlobal()) || {}).currentEvent || 0);
   const phase = phases[phaseIdx] || {};
   const events = phase.events || [];
   const curEv = events[eventIdx] || {};
@@ -612,7 +638,7 @@ async function buildOrchestrationPrompt(userInput) {
   // allowed_speakers: 去掉用户
   const allowedSpeakers = roles.filter(r => r.name !== '用户').map(r => r.name);
 
-  const freeMode = (readChatVar('tf_progress') || {}).sessionFreeMode;
+  const freeMode = (readDualScope(progressVarName(), progressVarNameGlobal()) || {}).sessionFreeMode;
 
   // 从 event_manager 获取章节+事件状态（编排前同步）
   let storyStatus = null;
@@ -828,11 +854,11 @@ function buildSpeakerNextEventLines(nextEv) {
 }
 
 async function buildSpeakerPrompt(speaker, roleType, motive, eventSummary, evDigest, nextEvInfo, worldKb) {
-  const edit = readChatVar('tf_story.edit') || {};
+  const edit = readDualScope(storyNs('edit'), storyNsGlobal('edit')) || {};
   const chapters = edit.chapters || [];
-  const chapterIdx = (readChatVar('tf_progress') || {}).currentChapterIndex || 0;
+  const chapterIdx = (readDualScope(progressVarName(), progressVarNameGlobal()) || {}).currentChapterIndex || 0;
   const chapter = chapters[chapterIdx] || {};
-  const freeMode = (readChatVar('tf_progress') || {}).sessionFreeMode;
+  const freeMode = (readDualScope(progressVarName(), progressVarNameGlobal()) || {}).sessionFreeMode;
 
   // 世界知识：如果未传入，则基于 eventSummary 做关键词匹配获取
   if (!worldKb) {
@@ -843,8 +869,8 @@ async function buildSpeakerPrompt(speaker, roleType, motive, eventSummary, evDig
   const castState = await buildSpeakerCastState();
 
   // 阶段信息
-  const phases = (readChatVar('tf_progress') || {}).phases || [];
-  const phaseIdx = Math.max(0, (readChatVar('tf_progress') || {}).currentPhase || 0);
+  const phases = (readDualScope(progressVarName(), progressVarNameGlobal()) || {}).phases || [];
+  const phaseIdx = Math.max(0, (readDualScope(progressVarName(), progressVarNameGlobal()) || {}).currentPhase || 0);
   const phase = phases[phaseIdx] || {};
   const phaseGoal = phase.name || '';
 
@@ -1025,7 +1051,7 @@ function game_orchestration(userText,intentResult){
 
       // 触发 2: 事件进度推进 (本地状态机，由 event_manager message:added 自动处理)
       try {
-        const p = readChatVar('tf_progress') || {};
+        const p = readDualScope(progressVarName(), progressVarNameGlobal()) || {};
         console.log('[' + ts() + '] [mcs] 事件进度读取 currentPhase=' + (p.currentPhase||0) + ' currentEvent=' + (p.currentEvent||0));
       } catch (e) {}
 
@@ -1046,7 +1072,7 @@ function game_orchestration(userText,intentResult){
       console.log('[' + ts() + '] 🎭 [mcs] │ 📝 用户输入: ' + JSON.stringify(userText.slice(0,80)));
       console.log('[' + ts() + '] 🎭 [mcs] │ 🎯 意图: ' + (intentResult && intentResult.intent ? intentResult.intent : 'normal')
         + (intentResult && intentResult.confidence ? ' conf=' + intentResult.confidence : ''));
-      const progress = readChatVar('tf_progress') || {};
+      const progress = readDualScope(progressVarName(), progressVarNameGlobal()) || {};
       const phases = progress.phases || [];
       const phaseIdx = Math.max(0, progress.currentPhase || 0);
       const eventIdx = Math.max(0, progress.currentEvent || 0);
@@ -1081,7 +1107,7 @@ function game_orchestration(userText,intentResult){
       console.log('[' + ts() + '] 🎭 [mcs] │ 📄 阶段一prompt长: ' + orchPrompt.length + '字符');
       // 打印当前章节/事件/进度（对齐 toonflow 编排调试信息）
       try {
-        const p = readChatVar('tf_progress') || {};
+        const p = readDualScope(progressVarName(), progressVarNameGlobal()) || {};
         const ph = (p.phases || [])[p.currentPhase || 0] || {};
         console.log('[' + ts() + '] 🎭 [mcs] 当前进度: 第' + ((p.currentChapterIndex || 0) + 1) + '章 phase=' + (p.currentPhase || 0) + '/' + (p.phases || []).length + ' event=' + (p.currentEvent || 0) + '/' + (ph.events || []).length + (p.sessionFreeMode ? ' [自由模式]' : ''));
       } catch (e) {}
@@ -1298,7 +1324,7 @@ tavo.plugin.onSidebarAction('mcs-toggle', async () => {
   const next = cur === 'system' ? 'plugin' : 'system';
   // 同步到群聊编排设置（与故事配置面板保持一致）
   try {
-    const edit = (readChatVar('tf_story.edit') || {});
+    const edit = (readDualScope(storyNs('edit'), storyNsGlobal('edit')) || {});
     edit.orchestration = next;
     tavo.set('tf_story.edit', edit, 'chat');
   } catch (e) {}

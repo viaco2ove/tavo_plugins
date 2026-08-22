@@ -114,6 +114,31 @@ function readChatVar(name) {
   return v;
 }
 
+// 变量命名（对齐变量设计.原则）：
+//   chat scope  → tf_story（不带 chat_id）
+//   global scope → tf_story_{chat_id}（带 chat_id）
+let _speakerChatId = null;
+function storyNs(name) { return 'tf_story.' + name; }
+function storyNsGlobal(name) {
+  return _speakerChatId ? ('tf_story_' + _speakerChatId + '.' + name) : ('tf_story.' + name);
+}
+function progressVarName() { return 'tf_progress'; }
+function progressVarNameGlobal() {
+  return _speakerChatId ? ('tf_progress_' + _speakerChatId) : 'tf_progress';
+}
+// 双 scope 读取：先 global，再 chat
+function readDualScope(chatName, globalName) {
+  let v = readChatVar(chatName);
+  if (v && typeof v === 'object') return v;
+  try {
+    let g = tavo.get(globalName, 'global');
+    let guard = 0;
+    while (g && typeof g === 'object' && g.found !== undefined && 'value' in g && guard < 5) { g = g.value; guard++; }
+    if (g && typeof g === 'object') return g;
+  } catch (e) {}
+  return null;
+}
+
 function getConfig() {
   const get = (k, fallback) => {
     try {
@@ -134,7 +159,7 @@ function getConfig() {
 // 'system' = 跟随系统（不接管、不注入动态状态、不显示编排中）；缺省 / 'plugin' = 插件接管
 function getOrchestration() {
   try {
-    const edit = readChatVar('tf_story.edit') || {};
+    const edit = readDualScope(storyNs('edit'), storyNsGlobal('edit')) || {};
     const v = edit.orchestration;
     return v === 'system' ? 'system' : 'plugin';
   } catch (e) { return 'plugin'; }
@@ -143,7 +168,7 @@ function getOrchestration() {
 // 台词数量：发给 agent 的「最近对话」条数（对齐 Toonflow recent_dialogue 入参），默认 20
 function getLineCount() {
   try {
-    const edit = readChatVar('tf_story.edit') || {};
+    const edit = readDualScope(storyNs('edit'), storyNsGlobal('edit')) || {};
     const v = parseInt(edit.lineCount, 10);
     return (v >= 1) ? v : 20;
   } catch (e) { return 20; }
@@ -193,10 +218,10 @@ async function buildCastState() {
 // 取当前进度所在章节的标题 + 本章内容大纲，作为本轮发言唯一依据。
 async function getCurrentEventText() {
   try {
-    const edit = readChatVar('tf_story.edit') || {};
+    const edit = readDualScope(storyNs('edit'), storyNsGlobal('edit')) || {};
     const chapters = edit.chapters || [];
     let prog = null;
-    try { prog = readChatVar('tf_progress'); } catch (e) {}
+    try { prog = readDualScope(progressVarName(), progressVarNameGlobal()); } catch (e) {}
     const idx = (prog && typeof prog.currentChapterIndex === 'number') ? prog.currentChapterIndex : 0;
     const ch = chapters[idx];
     if (!ch) return '';
@@ -222,7 +247,8 @@ async function buildRecentDialogue(n) {
 }
 
 // 方案1：window 事件总线监听开场白委托（event_manager 在 playChapterOpening 里调用 tf_story_emit）
-tavo.plugin.on('chat:opened', function() {
+tavo.plugin.on('chat:opened', async function() {
+  try { const c = await tavo.chat.current(); _speakerChatId = c && c.id; } catch (e) {}
 
   window.tf_story_on('opening', async function(data) {tf_speaker('opening',data);});
 
@@ -485,7 +511,7 @@ tavo.plugin.onSidebarAction('speaker-test', async () => {
     const state = await buildCastState();
 
     // 自由模式：放宽台词长度（用户可自由讨论/提问/闲聊）
-    const freeMode = (() => { try { return !!(readChatVar('tf_progress') || {}).sessionFreeMode; } catch (e) { return false; } })();
+    const freeMode = (() => { try { return !!(readDualScope(progressVarName(), progressVarNameGlobal()) || {}).sessionFreeMode; } catch (e) { return false; } })();
     const lengthHint = freeMode ? '40~150字，2~4句（自由模式可稍长）' : '40~80字，最多2句';
 
     const prompt = (state ? state + '\n' : '') +

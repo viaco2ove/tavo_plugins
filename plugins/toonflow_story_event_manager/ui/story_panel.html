@@ -344,6 +344,36 @@
   var T = (typeof tavo !== 'undefined') ? tavo : (window.tavo || null);
   var STORY_NS = 'tf_story';
 
+  // 获取带 chat_id 的变量名
+  var _panelChatId = null;
+  async function getPanelChatId() {
+    if (_panelChatId) return _panelChatId;
+    try {
+      var chat = await T.chat.current();
+      _panelChatId = chat && chat.id;
+    } catch (e) {}
+    return _panelChatId;
+  }
+  function panelNs(name) {
+    // chat scope: tf_story.{name}（不带 chat_id）
+    return 'tf_story.' + name;
+  }
+  function panelNsGlobal(name) {
+    // global scope: tf_story_{chat_id}.{name}（带 chat_id）
+    return _panelChatId ? ('tf_story_' + _panelChatId + '.' + name) : ('tf_story.' + name);
+  }
+  function tmmNs(name) {
+    return _panelChatId ? ('tmm_' + name + '_' + _panelChatId) : ('tmm_' + name);
+  }
+  function progressNs() {
+    // chat scope: tf_progress（不带 chat_id）
+    return 'tf_progress';
+  }
+  function progressNsGlobal() {
+    // global scope: tf_progress_{chat_id}（带 chat_id）
+    return _panelChatId ? ('tf_progress_' + _panelChatId) : 'tf_progress';
+  }
+
   // Tavo 的 chat 变量经 T.get 返回的是包装对象 {target,name,found,value}，真实数据在 .value 里。
   // 不解包的话 v.chapters / v.level 等都是 undefined，会被误判为"空"并拿默认值覆盖，清空配置。
   function readChatVar(name) {
@@ -357,11 +387,12 @@
     } catch (e) { return null; }
   }
   // 读变量：先 global（tavo_chat_reset 不影响），再 chat；统一解包 found/value 包装
-  function readVarAnyScope(name) {
+  // chatName: chat scope 变量名；globalName: global scope 变量名（可能不同）
+  function readVarDualScope(chatName, globalName) {
     var result = null;
-    // 先查 global scope（tavo_chat_reset 后 chat 会清空，global 还在）
+    // 先查 global scope
     try {
-      var v = T.get(name, 'global');
+      var v = T.get(globalName, 'global');
       var guard = 0;
       while (v && typeof v === 'object' && v.found !== undefined && ('value' in v) && guard < 5) {
         v = v.value; guard++;
@@ -371,7 +402,7 @@
     // global 没有或为空，查 chat scope
     if (result === null || result === '' || (typeof result === 'object' && Object.keys(result).length === 0)) {
       try {
-        var v2 = T.get(name);
+        var v2 = T.get(chatName);
         var guard2 = 0;
         while (v2 && typeof v2 === 'object' && v2.found !== undefined && ('value' in v2) && guard2 < 5) {
           v2 = v2.value; guard2++;
@@ -379,6 +410,12 @@
         if (v2 !== null && v2 !== undefined && v2 !== '') result = v2;
       } catch (e) {}
     }
+    return result;
+  }
+  // 向后兼容：旧函数，chat 和 global 用同一个名字
+  function readVarAnyScope(name) {
+    return readVarDualScope(name, name);
+  }
     return result;
   }
   var CHAPTER_GUIDE = [
@@ -454,8 +491,9 @@
   }
   async function resolveChapterBg(root) {
     // 读 tf_chapter_backgrounds（global/chat 都要查）
-    var chapterBgs = readVarAnyScope('tf_chapter_backgrounds') || {};
-    var storyEdit = readVarAnyScope('tf_story.edit') || {};
+    var chapterBgsVar = _panelChatId ? ('tf_chapter_backgrounds_' + _panelChatId) : 'tf_chapter_backgrounds';
+    var chapterBgs = readVarDualScope('tf_chapter_backgrounds', chapterBgsVar) || {};
+    var storyEdit = readVarDualScope(panelNs('edit'), panelNsGlobal('edit')) || {};
     var curIdx = (storyEdit.currentChapterIndex != null) ? storyEdit.currentChapterIndex : 0;
     // chapterBgs 的 key 格式：chapter_1, chapter_2 ...（同步时写入的 key）
     var bgPath = chapterBgs['chapter_' + (curIdx + 1)] || chapterBgs['chapter_' + curIdx] || '';
@@ -613,8 +651,10 @@
     if (!T || !T.chat) return null;
     var chat = await T.chat.current();
     if (!chat) return null;
+    // 设置当前 chatId
+    _panelChatId = chat.id;
     // 静态基准卡（记忆插件解析好的权威参数卡）按名兜底：优先读 tmm_story（含动态数据），回退 tmm_story_static
-    var staticStory = readChatVar('tmm_story') || readChatVar('tmm_story_static') || null;
+    var staticStory = readChatVar(tmmNs('story')) || readChatVar(tmmNs('story_static')) || null;
     var staticByName = {};
     if (staticStory && staticStory.characters) {
       staticStory.characters.forEach(function (c) { if (c && c.name) staticByName[c.name] = c; });
@@ -926,10 +966,10 @@
     return phases;
   }
 
-  // 当前进度快照（从 tf_progress 读）
+  // 当前进度快照（从 tf_progress_{chat_id} 读）
   function getProgressState() {
     try {
-      var raw = readVarAnyScope('tf_progress');
+      var raw = readVarDualScope(progressNs(), progressNsGlobal());
       if (raw && typeof raw === 'object') return raw;
     } catch (e) {}
     return {};
@@ -1069,7 +1109,7 @@
   // 故事进度（章节结局判定器 / 自由模式状态）
   function progressHtml() {
     var p = null;
-    try { p = readVarAnyScope('tf_progress') || null; } catch (e) {}
+    try { p = readVarDualScope(progressNs(), progressNsGlobal()) || null; } catch (e) {}
     if (!p) return '<div class="tf-card"><div class="tf-card__text">尚未开始判定（用户还没发言）</div></div>';
     var chapters = (_edit && _edit.chapters) || [];
     var total = chapters.length;
@@ -1125,7 +1165,7 @@
   async function loadEdit() {
     // 优先读已保存变量（global → chat）。tavo_chat_reset 后 chat 清空，但 global 仍在。
     var saved = null;
-    try { saved = readVarAnyScope(STORY_NS + '.edit'); } catch (e) {}
+    try { saved = readVarDualScope(panelNs('edit'), panelNsGlobal('edit')); } catch (e) {}
     if (saved && typeof saved === 'object' && (saved.chapters || saved.intro || saved.globalBackground)) {
       _edit = saved;
       if (!_edit.chapters) _edit.chapters = [];
@@ -1181,9 +1221,9 @@
   }
 
   function saveEditVar() {
-    // 双写：chat + global scope（防 tavo_chat_reset 清空）
-    try { T.set(STORY_NS + '.edit', _edit, 'chat'); } catch (e) {}
-    try { T.set(STORY_NS + '.edit', _edit, 'global'); } catch (e) {}
+    // 双写：chat scope → tf_story.edit，global scope → tf_story_{chat_id}.edit
+    try { T.set(panelNs('edit'), _edit, 'chat'); } catch (e) {}
+    try { T.set(panelNsGlobal('edit'), _edit, 'global'); } catch (e) {}
   }
 
   function editorHtml() {
@@ -1529,7 +1569,7 @@
       // 读取 tmm 中的动态补丁，同步合并到 tmm_story
       try {
         var tmm = readChatVar('tmm') || {};
-        var storyStatic = readChatVar('tmm_story') || readChatVar('tmm_story_static') || { characters: [] };
+        var storyStatic = readChatVar(tmmNs('story')) || readChatVar(tmmNs('story_static')) || { characters: [] };
         var cards = storyStatic.characters || [];
         var playerPatch = (tmm.cards && tmm.cards.player) || {};
         var npcPatches = (tmm.cards && tmm.cards.npcs) || {};
@@ -1544,7 +1584,7 @@
             return ch;
           });
           // 用同步后的数据覆盖 tmm_story（下次打开时也正确）
-          T.set('tmm_story', { name: storyStatic.name || '故事', characters: cards }, 'chat');
+          T.set(tmmNs('story'), { name: storyStatic.name || '故事', characters: cards }, 'chat');
         }
       } catch(e) { /* ignore */ }
       renderSheet();

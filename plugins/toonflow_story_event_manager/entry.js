@@ -246,9 +246,27 @@ const _safeOnSide = (name, fn) => {
   }
 };
 
-const NS = 'tf_story';
-const PROGRESS_NS = 'tf_progress';
+const NS_BASE = 'tf_story';
+const PROGRESS_NS_BASE = 'tf_progress';
 const STAGE_PLUGIN_ID = 'com.toonflow.multi-character-stage';
+let _currentChatId = null; // 当前聊天 ID，用于构建带 chat_id 的全局变量名
+
+// 变量命名规则（对齐变量设计.原则）：
+//   chat scope  → tf_story.{name}（不带 chat_id，chat scope 本身就是聊天级别的）
+//   global scope → tf_story_{chat_id}.{name}（带 chat_id，global scope 是所有聊天共享的）
+function ns(name) { return NS_BASE + '.' + name; }              // chat scope 用
+function nsGlobal(name) {                                        // global scope 用
+  return _currentChatId ? (NS_BASE + '_' + _currentChatId + '.' + name) : (NS_BASE + '.' + name);
+}
+function progressNs() { return PROGRESS_NS_BASE; }               // chat scope 用
+function progressNsGlobal() {                                    // global scope 用
+  return _currentChatId ? (PROGRESS_NS_BASE + '_' + _currentChatId) : PROGRESS_NS_BASE;
+}
+
+// 向后兼容：NS 和 PROGRESS_NS 仍然指向基础名（不带 chat_id）
+// 主要用于 boot 状态等不需要区分聊天的变量
+const NS = NS_BASE;
+const PROGRESS_NS = PROGRESS_NS_BASE;
 
 function cfgGet(k, fb) {
   try { const v = tavo.plugin.config.get(k); return (v === undefined || v === null) ? fb : v; } catch (e) { return fb; }
@@ -287,11 +305,12 @@ function readVarAnyScope(name) {
 }
 
 // 写变量：双写 chat + global，确保 reset 后仍能恢复
-function writeVarDual(name, value) {
+// chatVarName: chat scope 变量名（不带 chat_id）
+// globalVarName: global scope 变量名（带 chat_id）
+function writeVarDual(chatVarName, globalVarName, value) {
   let ok = false;
-  try { tavo.set(name, value, 'chat'); ok = true; } catch (e) {}
-  // global scope：去掉 chat 专属后缀，写同名变量
-  try { tavo.set(name, value, 'global'); } catch (e) {}
+  try { tavo.set(chatVarName, value, 'chat'); ok = true; } catch (e) { console.warn('[tf_story][writeVarDual] chat write failed: ' + (e && e.message)); }
+  try { tavo.set(globalVarName, value, 'global'); console.log('[tf_story][writeVarDual] global write: ' + globalVarName); } catch (e) { console.warn('[tf_story][writeVarDual] global write failed: ' + (e && e.message)); }
   return ok;
 }
 
@@ -558,12 +577,21 @@ function defaultProgress() {
 }
 
 function getProgress() {
-  const v = readChatVar(PROGRESS_NS);
+  // 先查 chat scope（tf_progress），再查 global scope（tf_progress_{chat_id}）
+  let v = readChatVar(progressNs());
+  if (!(v && typeof v === 'object')) {
+    try {
+      let g = tavo.get(progressNsGlobal(), 'global');
+      let guard = 0;
+      while (g && typeof g === 'object' && g.found !== undefined && 'value' in g && guard < 5) { g = g.value; guard++; }
+      if (g && typeof g === 'object') v = g;
+    } catch (e) {}
+  }
   return (v && typeof v === 'object') ? v : defaultProgress();
 }
 
 function setProgress(p) {
-  try { writeVarDual(PROGRESS_NS, p); return true; } catch (e) { return false; }
+  try { writeVarDual(progressNs(), progressNsGlobal(), p); return true; } catch (e) { return false; }
 }
 
 // 章节推进时同步写入 tf_story.edit.currentChapterIndex（供 sprite 等插件监听）
@@ -805,14 +833,23 @@ async function syncEditToWorldbook(edit) {
 }
 
 function getEdit() {
-  const v = readChatVar(NS + '.edit');
-  if(!(v && typeof v === 'object')){
-    console.error('[tf_story] │ ？？？readChatVar(NS + \'.edit\') 数据异常！！！');
+  // 先查 chat scope（tf_story.edit），再查 global scope（tf_story_{chat_id}.edit）
+  let v = readChatVar(ns('edit'));
+  if (!(v && typeof v === 'object')) {
+    try {
+      let g = tavo.get(nsGlobal('edit'), 'global');
+      let guard = 0;
+      while (g && typeof g === 'object' && g.found !== undefined && 'value' in g && guard < 5) { g = g.value; guard++; }
+      if (g && typeof g === 'object') v = g;
+    } catch (e) {}
+  }
+  if (!(v && typeof v === 'object')){
+    console.error('[tf_story] │ ？？？getEdit 数据异常！！！');
   }
   return (v && typeof v === 'object') ? v : defaultEditData();
 }
 function setEdit(edit) {
-  try { writeVarDual(NS + '.edit', edit); return true; } catch (e) { return false; }
+  try { writeVarDual(ns('edit'), nsGlobal('edit'), edit); return true; } catch (e) { return false; }
 }
 
 function isValidChapter(ch) {
@@ -868,7 +905,9 @@ function notifyBootStage(stage, detail) {
 // 恢复静态数据：global -> chat（tavo_chat_reset 清了 chat，global 是权威备份）
 function restoreStaticData() {
   let restored = false;
-  const names = [NS + '.edit', 'tmm_story_static'];
+  const editName = ns('edit');
+  const staticName = 'tmm_story_static' + (_currentChatId ? '_' + _currentChatId : '');
+  const names = [editName, staticName];
   for (const name of names) {
     try {
       // chat 里还有就跳过（正常续玩）
@@ -883,11 +922,27 @@ function restoreStaticData() {
           return g;
         } catch (e) { return null; }
       })();
-      if (gv && typeof gv === 'object' && Object.keys(gv).length) {
+      console.log('[tf_story][restore] name=' + name + ' gv=' + (gv ? JSON.stringify(gv).slice(0, 200) : 'null'));
+      // 检查 global 数据是否有实质内容（防止 {chapters:[{...}]} 被 Object.keys().length===1 误判为空）
+      const hasContent = (gv && typeof gv === 'object') ? (() => {
+        if (name === editName) {
+          // tf_story.edit: 只要有 chapters 数组（哪怕是空的 [{title:...}]）就算有内容
+          return Array.isArray(gv.chapters) && gv.chapters.length > 0;
+        } else if (name === staticName) {
+          // tmm_story_static: 只要有 characters 数组就算有内容
+          return Array.isArray(gv.characters) && gv.characters.length > 0;
+        }
+        return Object.keys(gv).length > 0;
+      })() : false;
+      console.log('[tf_story][restore] hasContent=' + hasContent);
+      if (hasContent) {
         tavo.set(name, gv, 'chat');
+        console.log('[tf_story][restore] restored: ' + name);
         restored = true;
       }
-    } catch (e) {}
+    } catch (e) {
+      console.warn('[tf_story][restore] error for ' + name + ': ' + (e && e.message));
+    }
   }
   return restored;
 }
@@ -897,8 +952,8 @@ function restoreStaticData() {
 function rebuildDynamicData() {
   let rebuilt = false;
   // tf_progress
-  let prog = readVarAnyScope(PROGRESS_NS);
-  const edit = readVarAnyScope(NS + '.edit') || defaultEditData();
+  let prog = readVarAnyScope(progressNs());
+  const edit = readVarAnyScope(ns('edit')) || defaultEditData();
   const chapters = edit.chapters || [];
   if (!prog || typeof prog !== 'object' || !Array.isArray(prog.completedChapters)) {
     prog = defaultProgress();
@@ -1104,6 +1159,7 @@ async function bootSequence() {
   console.log('[tf_story][boot] start, myGuard=' + myGuard);
   let chatId = null;
   try { const c = await tavo.chat.current(); chatId = c && c.id; console.log('[tf_story][boot] chatId=' + chatId); } catch (e) { console.warn('[tf_story][boot] chat.current failed', e); }
+  _currentChatId = chatId;
 
   // 0) 立刻切到 natural 模式 + 清空 overrideScenario，阻断官方 scenario 默认开场
   // chat:opened 触发时 tavo 内部可能未 ready，报 "internal error, try again"，重试
@@ -1127,7 +1183,9 @@ async function bootSequence() {
   let sessionStage;
   const chatBoot = readChatVar(BOOT_NS);
   const globalHasData = (() => {
-    const gv = (() => { try { let g = tavo.get('tf_story.edit', 'global'); let i=0; while (g && typeof g==='object' && 'value' in g && i<5){g=g.value;i++;} return g; } catch(e){return null;} })();
+    // 读 global 的 tf_story_{chat_id}.edit（带 chat_id）
+    const editVar = chatId ? ('tf_story_' + chatId + '.edit') : 'tf_story.edit';
+    const gv = (() => { try { let g = tavo.get(editVar, 'global'); let i=0; while (g && typeof g==='object' && 'value' in g && i<5){g=g.value;i++;} return g; } catch(e){return null;} })();
     return !!(gv && typeof gv === 'object' && Array.isArray(gv.chapters) && gv.chapters.length);
   })();
 

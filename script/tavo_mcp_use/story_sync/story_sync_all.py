@@ -767,7 +767,7 @@ def sync_chat(http_url, token, config, char_ids, lorebook_id, persona_id, existi
         cid = r.get("chatId") or r.get("id")
         if cid is None:
             sys.exit("[FATAL] chat_create 失败，未返回 chatId：%r" % (r,))
-        print("  [chat] create id=%s name=%s" % (cid, chat_name))
+        print("  [chat] create chat id=%s name=%s" % (cid, chat_name))
         return cid
 
     if existing_chat_id:
@@ -823,23 +823,41 @@ def sync_chapters(http_url, token, chat_id, config, story_dir, dry):
             fname, chapters[-1]["title"], enabled))
 
     if chapters and not dry:
-        edit = {
-            'chapters': chapters,
-            'currentChapterIndex': 0,
-            'intro': config.get('intro', ''),
-            'globalBackground': config.get('global_bg', ''),
-            'cardScenario': config.get('card_scenario', ''),
-            'cardTags': config.get('card_tags', []),
-        }
+        variable_key = 'tf_story_%s.edit' % chat_id
+        # 读取已有数据（可能已有 intro/globalBackground 等）
+        try:
+            existing_edit = unwrap(rpc(http_url, token, 'tavo_variable_get',
+                {'chatId': chat_id, 'scope': 'global', 'name': variable_key}))
+        except Exception:
+            existing_edit = {}
+        # 解包 {found, value} 包装
+        if isinstance(existing_edit, dict) and 'value' in existing_edit:
+            existing_edit = dict(existing_edit.get('value') or {})
+        else:
+            existing_edit = dict(existing_edit) if isinstance(existing_edit, dict) else {}
+        # 构建 edit（直接作为顶层变量值）
+        edit = existing_edit
+        edit['chapters'] = chapters
+        edit['currentChapterIndex'] = 0
+        edit['intro'] = config.get('intro', '') or edit.get('intro', '')
+        edit['globalBackground'] = config.get('global_bg', '') or edit.get('globalBackground', '')
+        edit['cardScenario'] = config.get('card_scenario', '') or edit.get('cardScenario', '')
+        edit['cardTags'] = config.get('card_tags', []) or edit.get('cardTags', [])
+        if not edit.get('lineCount'):
+            edit['lineCount'] = 20
+
+        # 只写 global scope（chat scope 由 event_manager 的 writeVarDual 写入 tf_story）
         rpc(http_url, token, 'tavo_variable_set', {
-            'scope': 'chat', 'chatId': chat_id, 'name': 'tf_story.edit', 'value': edit
+            'scope': 'global', 'chatId': chat_id, 'name': variable_key, 'value': edit
         })
-        print('  [chapter] Write tf_story.edit chapters=%d intro=%d globalBg=%d' % (
-            len(chapters), len(edit['intro']), len(edit['globalBackground'])))
-        # Init tf_progress
+        print('  [chapter] Write %s (global only) chapters=%d intro=%d globalBg=%d' % (
+            variable_key, len(chapters), len(edit.get('intro', '')), len(edit.get('globalBackground', ''))))
+
+        # Init tf_progress（只写 global scope）
+        progress_var = 'tf_progress_%s' % chat_id
         progress = {'currentChapterIndex': 0, 'currentEvent': 0, 'completedChapters': [], 'phases': [], 'currentPhase': 0, 'currentEventIndex': 0}
-        variable_set(http_url, token, chat_id, 'tf_progress', progress)
-        print('  [progress] Init tf_progress')
+        variable_set(http_url, token, chat_id, progress_var, progress, scope='global')
+        print('  [progress] Init %s (global only)' % progress_var)
     return chapters
 
 
@@ -973,15 +991,18 @@ def sync_sprites(http_url, token, chat_id, config, story_dir, dry):
             break
 
     if not dry and sprites_by_name:
-        variable_set(http_url, token, chat_id, "tf_sprites",
-            {"byName": sprites_by_name, "byId": sprites_by_id})
-        print("  [tf_sprites] -> %d 角色" % len(sprites_by_name))
+        for scope in ['chat', 'global']:
+            variable_set(http_url, token, chat_id, "tf_sprites",
+                {"byName": sprites_by_name, "byId": sprites_by_id}, scope=scope)
+        print("  [tf_sprites] -> %d 角色 (chat+global)" % len(sprites_by_name))
     if not dry and chapter_bgs:
-        variable_set(http_url, token, chat_id, "tf_chapter_backgrounds", chapter_bgs)
-        print("  [tf_chapter_backgrounds] -> %d 章节" % len(chapter_bgs))
+        chapter_bgs_var = 'tf_chapter_backgrounds_%s' % chat_id
+        variable_set(http_url, token, chat_id, chapter_bgs_var, chapter_bgs, scope='global')
+        print("  [%s] -> %d 章节 (global only)" % (chapter_bgs_var, len(chapter_bgs)))
     if not dry and fallback_bg:
-        variable_set(http_url, token, chat_id, "tf_sprite_fallback_bg", fallback_bg)
-        print("  [tf_sprite_fallback_bg] -> %s" % fallback_bg)
+        for scope in ['chat', 'global']:
+            variable_set(http_url, token, chat_id, "tf_sprite_fallback_bg", fallback_bg, scope=scope)
+        print("  [tf_sprite_fallback_bg] -> %s (chat+global)" % fallback_bg)
 
     return sprites_by_name, chapter_bgs, fallback_bg
 
@@ -1050,8 +1071,9 @@ def sync_voices(http_url, token, chat_id, config, story_dir, char_ids, dry):
             character_voices[char_name] = voice_config
 
     if character_voices and not dry:
-        variable_set(http_url, token, chat_id, "tf_character_voices", character_voices)
-        print("  [voice] tf_character_voices: %d 个角色" % len(character_voices))
+        for scope in ['chat', 'global']:
+            variable_set(http_url, token, chat_id, "tf_character_voices", character_voices, scope=scope)
+        print("  [voice] tf_character_voices: %d 个角色 (chat+global)" % len(character_voices))
 
     return character_voices
 

@@ -358,8 +358,37 @@ async function runSafetyCheck(currentState, parsed, directive) {
   return { decision: parsed2.decision, reason: parsed2.reason || '', modifiedPatch: parsed2.modifiedPatch || null };
 }
 
-const STORY_NS = 'tmm_story';
-const STATIC_NS = 'tmm_story_static'; // 受保护的静态基准卡：一次性构建，重启聊天不清空
+let _tmmChatId = null; // 当前聊天 ID
+
+function tmmNs(name) { return _tmmChatId ? ('tmm_' + name + '_' + _tmmChatId) : ('tmm_' + name); }
+
+const STORY_NS_BASE = 'tmm_story';
+const STATIC_NS_BASE = 'tmm_story_static'; // 受保护的静态基准卡：一次性构建，重启聊天不清空
+
+// 故事数据命名空间（对齐变量设计.原则）：
+//   chat scope  → tf_story（不带 chat_id）
+//   global scope → tf_story_{chat_id}（带 chat_id）
+const STORY_DATA_NS_BASE = 'tf_story';
+const PROGRESS_NS_BASE = 'tf_progress';
+
+// 兼容旧变量名
+const STORY_NS = STORY_NS_BASE;
+const STATIC_NS = STATIC_NS_BASE;
+
+// chat scope 变量名（不带 chat_id）
+function storyNs(name) {
+  return STORY_DATA_NS_BASE + '.' + name;
+}
+function progressVarName() {
+  return PROGRESS_NS_BASE;
+}
+// global scope 变量名（带 chat_id）
+function storyNsGlobal(name) {
+  return _tmmChatId ? (STORY_DATA_NS_BASE + '_' + _tmmChatId + '.' + name) : (STORY_DATA_NS_BASE + '.' + name);
+}
+function progressVarNameGlobal() {
+  return _tmmChatId ? (PROGRESS_NS_BASE + '_' + _tmmChatId) : PROGRESS_NS_BASE;
+}
 
 // Tavo 的 chat 变量经 tavo.get 返回的是包装对象 {target,name,found,value}，
 // 真实数据在 .value 里。所有读变量都必须解包，否则 v.chapters / v.level 等会是 undefined，
@@ -554,6 +583,8 @@ async function buildStaticStory(force) {
     if (!tavo.chat || !tavo.chat.current) return null;
     const chat = await tavo.chat.current();
     if (!chat) return null;
+    // 设置当前 chatId
+    _tmmChatId = chat.id;
     const books = chat.lorebooks || [];
     let synopsis = chat.description || chat.synopsis || '';
     if (!synopsis && books[0] && books[0].entries && books[0].entries[0]) {
@@ -577,8 +608,9 @@ async function buildStaticStory(force) {
     };
     // 静态基准卡必须写 global scope 才能抗 tavo_chat_reset！
     // chat scope 在 reset 时被清空，导致角色参数卡全部消失。
-    try { tavo.set(STATIC_NS, staticStory, 'global'); } catch (e) {}
-    try { tavo.set(STATIC_NS, staticStory, 'chat'); } catch (e) {}
+    const staticName = tmmNs('story_static');
+    try { tavo.set(staticName, staticStory, 'global'); } catch (e) {}
+    try { tavo.set(staticName, staticStory, 'chat'); } catch (e) {}
     return staticStory;
   } catch (e) {
     console.warn('[tmm] buildStaticStory failed', e);
@@ -588,10 +620,11 @@ async function buildStaticStory(force) {
 
 // 读取静态基准卡：优先 chat scope，回退 global scope（global 在 reset 后仍能恢复）
 function readStaticStory() {
+  const staticName = tmmNs('story_static');
   let v = null;
-  try { v = tavo.get(STATIC_NS, 'chat'); } catch (e) {}
+  try { v = tavo.get(staticName, 'chat'); } catch (e) {}
   if (v && typeof v === 'object' && v.found !== false && v.value) return v.value;
-  try { v = tavo.get(STATIC_NS, 'global'); } catch (e) {}
+  try { v = tavo.get(staticName, 'global'); } catch (e) {}
   if (v && typeof v === 'object' && v.found !== false && v.value) return v.value;
   return null;
 }
@@ -609,7 +642,7 @@ async function initStory() {
     if (!staticStory) return;
     // 展示层 = 静态基准的深拷贝，立即生效
     const display = JSON.parse(JSON.stringify(staticStory));
-    tavo.set(STORY_NS, display, 'chat');
+    tavo.set(tmmNs('story'), display, 'chat');
     // 把持久化的动态增量立刻合并回来，避免展示层短暂空白/清零
     syncStoryDynamicCards();
   } catch (e) {
@@ -620,7 +653,7 @@ async function initStory() {
 // 记忆刷新后把动态参数补丁回流进 tmm_story，让信息面板展示实时数值
 function syncStoryDynamicCards() {
   try {
-    const story = readChatVar(STORY_NS);
+    const story = readChatVar(tmmNs('story'));
     if (!story || !story.characters) return;
     const mem = readChatVar(NS) || defaultState();
     const player = (mem.cards && mem.cards.player) ? mem.cards.player : {};
@@ -635,7 +668,7 @@ function syncStoryDynamicCards() {
         changed = true;
       }
     });
-    if (changed) tavo.set(STORY_NS, story, 'chat');
+    if (changed) tavo.set(tmmNs('story'), story, 'chat');
   } catch (e) {}
 }
 
@@ -671,11 +704,21 @@ function defaultState() {
   };
 }
 
-// 读取全局原始背景（等级称号对照表等）：优先 tf_story.edit.globalBackground，
-// 再补充 lorebook 里 constant 的【简介】/【全局背景】条目（event_manager 写入的）
+// 读取全局原始背景（等级称号对照表等）：优先 tf_story（chat scope），
+// 回退 tf_story_{chat_id}（global scope），再补充 lorebook 里的简介/全局背景
 async function getGlobalBackground() {
   try {
-    const edit = readChatVar('tf_story.edit') || {};
+    let edit = readChatVar(storyNs('edit'));
+    if (!edit || typeof edit !== 'object') {
+      // 回退到 global scope
+      try {
+        let g = tavo.get(storyNsGlobal('edit'), 'global');
+        let guard = 0;
+        while (g && typeof g === 'object' && g.found !== undefined && 'value' in g && guard < 5) { g = g.value; guard++; }
+        if (g && typeof g === 'object') edit = g;
+      } catch (e) {}
+    }
+    edit = edit || {};
     let bg = String(edit.globalBackground || '').trim();
     try {
       const chat = await tavo.chat.current();
@@ -694,9 +737,27 @@ async function getGlobalBackground() {
 // 当前事件状态：所在章节标题/内容/完成条件
 async function getEventState() {
   try {
-    const edit = readChatVar('tf_story.edit') || {};
+    let edit = readChatVar(storyNs('edit'));
+    if (!edit || typeof edit !== 'object') {
+      try {
+        let g = tavo.get(storyNsGlobal('edit'), 'global');
+        let guard = 0;
+        while (g && typeof g === 'object' && g.found !== undefined && 'value' in g && guard < 5) { g = g.value; guard++; }
+        if (g && typeof g === 'object') edit = g;
+      } catch (e) {}
+    }
+    edit = edit || {};
     const chapters = edit.chapters || [];
-    const prog = readChatVar('tf_progress') || {};
+    let prog = readChatVar(progressVarName());
+    if (!prog || typeof prog !== 'object') {
+      try {
+        let g = tavo.get(progressVarNameGlobal(), 'global');
+        let guard = 0;
+        while (g && typeof g === 'object' && g.found !== undefined && 'value' in g && guard < 5) { g = g.value; guard++; }
+        if (g && typeof g === 'object') prog = g;
+      } catch (e) {}
+    }
+    prog = prog || {};
     const idx = (typeof prog.currentChapterIndex === 'number') ? prog.currentChapterIndex : 0;
     const ch = chapters[idx];
     if (!ch) return '（自由模式，无进行中章节）';
@@ -709,7 +770,7 @@ async function getEventState() {
 
 // 角色动态参数卡列表（来自 tmm_story / 静态基准）：让记忆 LLM 看到每个角色当前 card
 function buildCharacterCardList() {
-  const story = readChatVar(STORY_NS) || readChatVar(STATIC_NS);
+  const story = readChatVar(tmmNs('story')) || readChatVar(tmmNs('story_static'));
   const characters = (story && Array.isArray(story.characters)) ? story.characters : [];
   if (!characters.length) return '（无角色参数卡）';
   return characters.map(ch => {
@@ -743,7 +804,7 @@ async function runMemoryAgent(directive) {
     if (!cfg.enabled) { console.log('[tmm] runMemoryAgent skip: enabled=false'); return; }
 
     // 防御：展示层 tmm_story 缺失（如重置后）则立刻重建，保证模型能看到角色参数卡以生成 patch
-    if (!readChatVar(STORY_NS)) {
+    if (!readChatVar(tmmNs('story'))) {
       try { await initStory(); } catch (e) {}
     }
 
@@ -1018,7 +1079,16 @@ if (typeof window !== 'undefined') {
     // 暴露意图模式读取（跟 memory-manager 内部 getIntentMode 共享同一份配置 tf_story.edit.intentMode）
     getMode: function () {
       try {
-        const edit = readChatVar('tf_story.edit') || {};
+        let edit = readChatVar(storyNs('edit'));
+        if (!edit || typeof edit !== 'object') {
+          try {
+            let g = tavo.get(storyNsGlobal('edit'), 'global');
+            let guard = 0;
+            while (g && typeof g === 'object' && g.found !== undefined && 'value' in g && guard < 5) { g = g.value; guard++; }
+            if (g && typeof g === 'object') edit = g;
+          } catch (e) {}
+        }
+        edit = edit || {};
         const m = edit.intentMode;
         if (m === 'keyword' || m === 'model_api' || m === 'auto') return m;
         return 'auto';
@@ -1279,7 +1349,16 @@ function applyKeywordDirective(state, rawText) {
 
 function getIntentMode() {
   try {
-    const edit = readChatVar('tf_story.edit') || {};
+    let edit = readChatVar(storyNs('edit'));
+    if (!edit || typeof edit !== 'object') {
+      try {
+        let g = tavo.get(storyNsGlobal('edit'), 'global');
+        let guard = 0;
+        while (g && typeof g === 'object' && g.found !== undefined && 'value' in g && guard < 5) { g = g.value; guard++; }
+        if (g && typeof g === 'object') edit = g;
+      } catch (e) {}
+    }
+    edit = edit || {};
     const m = edit.intentMode;
     if (m === 'keyword' || m === 'model_api' || m === 'auto') return m;
     return 'auto';

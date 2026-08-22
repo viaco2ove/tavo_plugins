@@ -456,18 +456,27 @@ def _sync_chapters(client, chat_id, story_dir, config, echo):
 
     # ---- 同步简介 / 全局背景（兼容 intro/globalBackground 与 global_bg） ----
     story_json_path = os.path.join(story_dir, "story.json")
+    echo(f"  [DEBUG] story_json_path = {story_json_path}")
+    echo(f"  [DEBUG] story.json exists = {os.path.isfile(story_json_path)}")
+
     intro = config.get("intro", "") or ""
     global_bg = (
         config.get("globalBackground", "")
         or config.get("global_bg", "")
         or config.get("globalBackground", "")
     )
+    echo(f"  [DEBUG] config.intro = {repr(intro[:50] if intro else intro)}")
+    echo(f"  [DEBUG] config.globalBackground = {repr(global_bg[:50] if global_bg else global_bg)}")
+
     if os.path.isfile(story_json_path):
         try:
             with open(story_json_path, encoding="utf-8") as f:
                 sjson = json.load(f)
+            echo(f"  [DEBUG] story.json keys = {list(sjson.keys())}")
             intro = intro or sjson.get("intro", "") or ""
             global_bg = global_bg or sjson.get("globalBackground", "") or sjson.get("global_bg", "") or ""
+            echo(f"  [DEBUG] after story.json: intro = {repr(intro[:50] if intro else intro)}")
+            echo(f"  [DEBUG] after story.json: global_bg = {repr(global_bg[:50] if global_bg else global_bg)}")
         except Exception as e:
             echo(f"  [WARN] 读 story.json 失败: {e}")
 
@@ -507,9 +516,18 @@ def _sync_chapters(client, chat_id, story_dir, config, echo):
         })
         echo(f"  {chapters[-1]['title']} ({len(chapters[-1]['events'])} events)")
 
+    echo(f"  [DEBUG] total chapters parsed = {len(chapters)}")
+
     if chapters:
+        # 变量命名（对齐变量设计.原则）：
+        #   global scope → tf_story_{chat_id}.edit（带 chat_id）
+        #   chat scope → tf_story.edit（不带 chat_id，由 event_manager writeVarDual 写入）
+        edit_var = f"tf_story_{chat_id}.edit"
+        progress_var = f"tf_progress_{chat_id}"
+        bg_var = f"tf_chapter_backgrounds_{chat_id}"
+
         # 解包 {target,name,found,value} 包装
-        existing = client.variable_get(chat_id, "tf_story.edit")
+        existing = client.variable_get(chat_id, edit_var)
         if isinstance(existing, dict) and 'value' in existing and 'found' in existing:
             existing = existing['value']
         edit = dict(existing) if isinstance(existing, dict) else {}
@@ -522,15 +540,25 @@ def _sync_chapters(client, chat_id, story_dir, config, echo):
             edit["globalBackground"] = global_bg
         if not edit.get("lineCount"):
             edit["lineCount"] = 20
-        for scope in ["chat", "global"]:
-            client.variable_set(chat_id, "tf_story.edit", edit, scope=scope)
-        echo(f"  [OK] tf_story.edit -> {len(chapters)} chapters")
 
-        # 写 tf_chapter_backgrounds（以章节 JSON 的 background 为准，key: chapter_1, chapter_2...）
+        echo(f"  [DEBUG] chat_id = {chat_id}")
+        echo(f"  [DEBUG] edit_var = {edit_var}")
+        echo(f"  [DEBUG] intro (to be written) = {repr(intro[:100] if intro else intro)}")
+        echo(f"  [DEBUG] global_bg (to be written) = {repr(global_bg[:100] if global_bg else global_bg)}")
+        echo(f"  [DEBUG] edit intro (before write) = {repr(edit.get('intro', '')[:100] if edit.get('intro') else 'EMPTY')}")
+        echo(f"  [DEBUG] edit globalBackground (before write) = {repr(edit.get('globalBackground', '')[:100] if edit.get('globalBackground') else 'EMPTY')}")
+        echo(f"  [DEBUG] edit keys = {list(edit.keys())}")
+
+        # 只写 global scope（chat scope 由 event_manager 的 writeVarDual 写入 tf_story）
+        client.variable_set(chat_id, edit_var, edit, scope="global")
+        echo(f"  [SET] {edit_var} (scope=global) = {json.dumps(edit, ensure_ascii=False)[:200]}")
+
+        # 写 tf_chapter_backgrounds（只写 global scope，chat scope 由 event_manager 写入）
         if chapter_bgs:
-            for scope in ["chat", "global"]:
-                client.variable_set(chat_id, "tf_chapter_backgrounds", chapter_bgs, scope=scope)
-            echo(f"  [OK] tf_chapter_backgrounds -> {len(chapter_bgs)}")
+            client.variable_set(chat_id, bg_var, chapter_bgs, scope="global")
+            echo(f"  [SET] {bg_var} (scope=global) = {json.dumps(chapter_bgs, ensure_ascii=False)}")
+        else:
+            echo(f"  [DEBUG] no chapter_bgs to write")
 
         progress = {
             "currentChapterIndex": 0,
@@ -539,9 +567,10 @@ def _sync_chapters(client, chat_id, story_dir, config, echo):
             "phases": [],
             "sessionFreeMode": False,
         }
-        for scope in ["chat", "global"]:
-            client.variable_set(chat_id, "tf_progress", progress, scope=scope)
-        echo("  [OK] tf_progress -> initialized")
+        client.variable_set(chat_id, progress_var, progress, scope="global")
+        echo(f"  [SET] {progress_var} (scope=global) = {json.dumps(progress, ensure_ascii=False)}")
+    else:
+        echo(f"  [WARN] no chapters to write!")
 
 
 def _sync_plugins(client, story_dir, echo):
