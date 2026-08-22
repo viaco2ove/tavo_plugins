@@ -388,6 +388,11 @@ def auto_generate_sync_config(story_dir, story_data):
         # 同步 source_entries（story.json 更新时同步）
         if "source_entries" not in cfg.get("worldbook", {}):
             cfg["worldbook"]["source_entries"] = entries
+        # 同步故事数据（intro, global_bg, card_scenario, card_tags）
+        cfg["intro"] = story_data.get("intro", "")
+        cfg["global_bg"] = story_data.get("global_bg", "")
+        cfg["card_scenario"] = story_data.get("card_scenario", "")
+        cfg["card_tags"] = story_data.get("card_tags", [])
         # 修 Bug #3: 差量更新 characters（按 name 为 key）
         # 新增的 npc 角色会被加进去，被移除的角色会被从 config 里删掉
         # （但手动编辑的 description/first_mes 不会被覆盖）
@@ -570,14 +575,9 @@ def sync_characters(http_url, token, config, story_dir, dry, force, chat_id_for_
 
 
 def upload_character_avatars(http_url, token, chat_id, char_ids, story_dir, config, dry):
-    """第二阶段：给 char_ids 里的角色上传 avatar。
+    """第二阶段：给 char_ids 里的角色上传 avatar 并更新角色卡。
 
     用于 sync_chat 之后、chat_update 重绑之前。Persona 和 NPC 都会补 avatar。
-    persona_create 已经支持更新式（复用现有 persona 时不会重复上传 avatar；
-    这里只对需要补 avatar 的角色调用 upload_avatar）。
-    注意：MCP 端 persona 资源没有显式 update avatar 工具，这里只能给 character_import_card
-    路径下的 NPC 重新创建 card 并覆盖 avatar（如果 MCP 接受同名重复创建则 update，
-    否则会创建新副本——本函数不试图更新已存在 persona 的 avatar，只跳过）。
     """
     print("\n=== 上传角色 avatar（chat_id=%s） ===" % chat_id)
     if not chat_id or dry:
@@ -587,17 +587,25 @@ def upload_character_avatars(http_url, token, chat_id, char_ids, story_dir, conf
             print("  [avatar] chat_id 无效，跳过")
         return
 
+    # Persona avatar: 上传并更新
     p = config.get("persona", {})
     persona_name = p.get("name", "")
-    if persona_name and char_ids.get(persona_name):
+    persona_id = char_ids.get(persona_name)
+    if persona_name and persona_id:
         av_local = avatar_abs(story_dir, p.get("avatar_file", ""))
         if av_local and os.path.isfile(av_local):
-            # 尝试用 update persona avatar 的方式 — 若无 update 工具则跳过
-            # 当前 MCP 端未提供 tavo_persona_update，所以 persona avatar 只能
-            # 在 sync_characters 阶段通过 persona_create 传，但那时没 chat_id。
-            # 这里暂时跳过 persona avatar。
-            print("  [persona avatar] 跳过（persona_update 工具未提供，留待 MCP 端支持）")
+            av_ref = upload_avatar(http_url, token, chat_id, persona_name, av_local, dry=dry)
+            if av_ref and not dry:
+                try:
+                    rpc(http_url, token, "tavo_persona_update", {
+                        "id": int(persona_id),
+                        "persona": {"avatar": av_ref}
+                    })
+                    print("  [persona avatar] 更新 id=%s avatar=%s" % (persona_id, av_ref))
+                except Exception as e:
+                    print("  [persona avatar] 更新失败: %s" % e)
 
+    # NPC avatar: 上传后重新导入角色卡以更新 avatar
     for c in config.get("characters", []):
         name = c.get("name")
         if not name or name not in char_ids:
@@ -605,12 +613,28 @@ def upload_character_avatars(http_url, token, chat_id, char_ids, story_dir, conf
         av_local = avatar_abs(story_dir, c.get("avatar_file", ""))
         if not av_local or not os.path.isfile(av_local):
             continue
-        # NPC avatar: 上传到 chat，然后尝试更新 character card
+
+        old_cid = char_ids.get(name)
         av_ref = upload_avatar(http_url, token, chat_id, name, av_local, dry=dry)
         if av_ref:
-            # MCP 端如果有 tavo_character_update / tavo_character_set_avatar，可以补；
-            # 目前 MCP 端只暴露 import_card 路径，会创建新副本。暂时记录状态。
-            print("  [char avatar] %s -> %s (注: 旧 MCP 不支持单点 update, 需 import_card 重建)" % (name, av_ref))
+            if not dry:
+                # 先删除旧角色
+                try:
+                    rpc(http_url, token, "tavo_character_delete", {"id": old_cid})
+                    print("  [char]    删除旧角色 id=%s name=%s" % (old_cid, name))
+                except Exception as e:
+                    print("  [char]    删除旧角色失败: %s" % e)
+
+                # 重新导入带 avatar 的角色卡
+                new_cid = character_import(http_url, token, name,
+                                          c.get("description", ""), c.get("first_mes", ""),
+                                          c.get("personality", "NPC"),
+                                          c.get("roleType", "npc"), av_ref, dry=dry)
+                if new_cid:
+                    char_ids[name] = new_cid
+                    print("  [char]    更新头像 id=%s->%s name=%s avatar=%s" % (old_cid, new_cid, name, av_ref))
+            else:
+                print("  [char avatar] %s -> %s (dry)" % (name, av_ref))
 
 # ---------------------------------------------------------------------------
 # 同步世界书
@@ -792,9 +816,10 @@ def sync_chapters(http_url, token, chat_id, config, story_dir, dry):
             "title": ch.get("title", fname.replace(".json","")),
             "content": ch.get("content",""),
             "openingRole": ch.get("openingRole",""),
-            "openingLine": ch.get("openingLine",""),
+            "openingLine": ch.get("openingText") or ch.get("openingLine",""),
+            "background": ch.get("background",""),
             "events": ch.get("events",[]),
-            "successCondition": ch.get("successCondition",""),
+            "successCondition": ch.get("completionCondition") or ch.get("successCondition",""),
             "enabled": enabled,
         })
         print("  [chapter] %s %s (enabled=%s)" % (
@@ -817,8 +842,19 @@ def sync_chapters(http_url, token, chat_id, config, story_dir, dry):
         edit = dict(existing) if isinstance(existing, dict) else {}
         edit['chapters'] = chapters
         edit['currentChapterIndex'] = 0
+        # 添加故事数据
+        edit['intro'] = config.get('intro', '')
+        edit['globalBackground'] = config.get('global_bg', '')
+        edit['cardScenario'] = config.get('card_scenario', '')
+        edit['cardTags'] = config.get('card_tags', [])
         variable_set(http_url, token, chat_id, 'tf_story.edit', edit)
         print('  [chapter] Write tf_story.edit.chapters=%d chapters' % len(chapters))
+        # 同时写入单独的变量方便读取
+        variable_set(http_url, token, chat_id, 'tf_intro', edit['intro'])
+        variable_set(http_url, token, chat_id, 'tf_global_bg', edit.get('globalBackground', ''))
+        variable_set(http_url, token, chat_id, 'tf_card_scenario', edit.get('cardScenario', ''))
+        variable_set(http_url, token, chat_id, 'tf_card_tags', edit.get('cardTags', []))
+        print('  [chapter] Write tf_story.edit with story data')
         # Init tf_progress
         progress = {'currentChapterIndex': 0, 'currentEvent': 0, 'completedChapters': [], 'phases': [], 'currentPhase': 0, 'currentEventIndex': 0}
         variable_set(http_url, token, chat_id, 'tf_progress', progress)
@@ -845,7 +881,51 @@ def sync_sprites(http_url, token, chat_id, config, story_dir, dry):
     img_dir = os.path.join(story_dir, "image")
     char_map = config.get("_char_id_map", {})  # {name: tavo_id}
 
+    # 先处理 persona 立绘
+    p = config.get("persona", {})
+    persona_name = p.get("name", "")
+    persona_id = char_map.get(persona_name)
+    if persona_name and persona_id:
+        persona_entry = {"id": persona_id, "name": persona_name, "roleType": "persona", "fg": "", "bg": ""}
+        persona_ex_dir = os.path.join(ex_avatars, persona_name)
+        # fg: 优先 original.png, 再 avatar.webp
+        fg_path = None; fg_ext = ".png"
+        for src_fname, ext in [("original.png", ".png"), ("avatar.webp", ".webp")]:
+            src = os.path.join(persona_ex_dir, src_fname) if os.path.isdir(persona_ex_dir) else None
+            if src and os.path.isfile(src):
+                fg_path = src; fg_ext = ext; break
+        # bg: background.png
+        bg_src = None
+        if os.path.isdir(persona_ex_dir):
+            bg_path = os.path.join(persona_ex_dir, "background.png")
+            if os.path.isfile(bg_path):
+                bg_src = bg_path
+
+        if fg_path:
+            dest = "sprite_fg_%s%s" % (persona_id, fg_ext)
+            if not dry:
+                saved = file_save(http_url, token, chat_id, dest, fg_path)
+                persona_entry["fg"] = saved
+            else:
+                persona_entry["fg"] = dest + " (dry)"
+            print("  [sprite] %s fg -> %s" % (persona_name, persona_entry["fg"]))
+        if bg_src:
+            dest = "sprite_bg_%s.png" % persona_id
+            if not dry:
+                saved = file_save(http_url, token, chat_id, dest, bg_src)
+                persona_entry["bg"] = saved
+            else:
+                persona_entry["bg"] = dest + " (dry)"
+            print("  [sprite] %s bg -> %s" % (persona_name, persona_entry["bg"]))
+
+        if persona_entry["fg"] or persona_entry["bg"]:
+            sprites_by_name[persona_name] = persona_entry
+            sprites_by_id[str(persona_id)] = {"name": persona_name, "fg": persona_entry.get("fg",""), "bg": persona_entry.get("bg","")}
+
+    # NPC 立绘（跳过 persona，因为已处理过）
     for char_name, tavo_id in char_map.items():
+        if char_name == persona_name:
+            continue  # 跳过 persona
         entry = {"id": tavo_id, "name": char_name, "roleType": "npc", "fg": "", "bg": ""}
 
         # 三层 fallback
@@ -923,6 +1003,77 @@ def sync_sprites(http_url, token, chat_id, config, story_dir, dry):
         print("  [tf_sprite_fallback_bg] -> %s" % fallback_bg)
 
     return sprites_by_name, chapter_bgs, fallback_bg
+
+
+# ---------------------------------------------------------------------------
+# 同步音色文件
+# ---------------------------------------------------------------------------
+def sync_voices(http_url, token, chat_id, config, story_dir, char_ids, dry):
+    """同步音色文件
+
+    从 ex/avatars/<角色>/voice.wav 上传，并从 role.json 读取音色配置。
+    绑定到 tf_character_voices 变量。
+    """
+    print("\n=== 同步音色文件 ===")
+    ex_avatars = os.path.join(story_dir, "ex", "avatars")
+    if not os.path.isdir(ex_avatars):
+        print("  [voice] ex/avatars 目录不存在，跳过")
+        return
+
+    character_voices = {}
+
+    for char_name in char_ids.keys():
+        char_dir = os.path.join(ex_avatars, char_name)
+        if not os.path.isdir(char_dir):
+            continue
+
+        # 读取 role.json
+        role_json_path = os.path.join(char_dir, "role.json")
+        voice_config = {}
+        if os.path.isfile(role_json_path):
+            try:
+                with open(role_json_path, encoding="utf-8") as f:
+                    role_data = json.load(f)
+                voice_config = {
+                    "mode": role_data.get("voiceMode", "prompt_voice"),
+                    "prompt": role_data.get("voicePromptText", ""),
+                    "audioRef": "",
+                    "enabled": True
+                }
+            except Exception as e:
+                print("  [voice] %s role.json 读取失败: %s" % (char_name, e))
+
+        # 上传 voice.wav
+        voice_path = os.path.join(char_dir, "voice.wav")
+        if os.path.isfile(voice_path) and not dry:
+            try:
+                with open(voice_path, "rb") as f:
+                    voice_b64 = base64.b64encode(f.read()).decode()
+                # 文件名用角色名
+                safe_name = "".join(c for c in char_name if c.isalnum() or c in ("_", "-")).rstrip()
+                dest = "voice_%s.wav" % safe_name
+                result = rpc(http_url, token, "tavo_file_save", {
+                    "chatId": chat_id,
+                    "name": dest,
+                    "content": voice_b64,
+                    "options": {"scope": "global", "encoding": "base64"}
+                })
+                saved = unwrap(result).get("path", "")
+                if saved:
+                    voice_config["audioRef"] = saved
+                    print("  [voice] %s -> %s" % (char_name, saved))
+            except Exception as e:
+                print("  [voice] %s 上传失败: %s" % (char_name, e))
+
+        if voice_config.get("audioRef") or voice_config.get("prompt"):
+            character_voices[char_name] = voice_config
+
+    if character_voices and not dry:
+        variable_set(http_url, token, chat_id, "tf_character_voices", character_voices)
+        print("  [voice] tf_character_voices: %d 个角色" % len(character_voices))
+
+    return character_voices
+
 
 # ---------------------------------------------------------------------------
 # 同步插件（打包 plugins/ 目录安装）
@@ -1095,22 +1246,26 @@ def main():
                             print('  [char] Delete failed: ' + str(e))
             except Exception:
                 pass
-        # 删除 persona
+        # 删除 persona（搜索更多结果，确保删除所有重复）
         for cfg in [config.get('persona')]:
             if cfg and cfg.get('name'):
                 try:
-                    result2 = rpc(http_url, token, 'tavo_persona_search', {'query': cfg['name'], 'limit': 5})
-                    items = result2.get('items', []) if isinstance(result2, dict) else (result2 or [])
+                    result2 = rpc(http_url, token, 'tavo_persona_search', {'query': cfg['name'], 'limit': 100})
+                    # 解析 content[0].text 中的 JSON
+                    content = result2.get('content', [{}])[0].get('text', '{}')
+                    data2 = json.loads(content)
+                    items = data2.get('items', []) if isinstance(data2, dict) else (data2 or [])
                     for item in items:
                         if item.get('name') == cfg['name']:
                             pid = item.get('id')
                             try:
-                                rpc(http_url, token, 'tavo_persona_delete', {'personaId': pid})
+                                # 注意：参数名是 id 不是 personaId
+                                rpc(http_url, token, 'tavo_persona_delete', {'id': int(pid)})
                                 print('  [persona] Deleted id=%s name=%s' % (pid, cfg['name']))
-                            except Exception:
-                                pass
-                except Exception:
-                    pass
+                            except Exception as e:
+                                print('  [persona] Delete failed id=%s: %s' % (pid, e))
+                except Exception as e:
+                    print('  [persona] Search failed: %s' % e)
         # 删除世界书
         try:
             lb_result = rpc(http_url, token, 'tavo_lorebook_search', {'query': '', 'limit': 50})
@@ -1195,9 +1350,22 @@ def main():
     if not args.skip_sprite:
         sync_sprites(http_url, token, chat_id, config, story_dir, args.dry)
 
-    # 9. 同步插件
+    # 9. 同步音色文件
+    sync_voices(http_url, token, chat_id, config, story_dir, char_ids, args.dry)
+
+    # 10. 同步插件
     if not args.skip_plugins:
         sync_plugins(http_url, token, args.dry)
+
+    # 10. 保存 char_ids.json（ID 映射，供下次同步复用）
+    if not args.dry:
+        char_ids_path = os.path.join(story_dir, "char_ids.json")
+        try:
+            with open(char_ids_path, "w", encoding="utf-8") as f:
+                json.dump(char_ids, f, ensure_ascii=False, indent=2)
+            print("  [cache] char_ids.json saved: %s" % char_ids_path)
+        except Exception as e:
+            print("  [cache] char_ids.json save failed: %s" % e)
 
     print("\n=== 完成 ===")
     if args.dry:

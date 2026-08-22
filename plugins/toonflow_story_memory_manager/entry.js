@@ -920,6 +920,15 @@ _safeOn('chat:opened', async () => {
   }
   // 打开聊天：保护静态基准卡，重新生成展示层（动态参数从基准 + 持久化增量重新派生）
   await initStory();
+  // 确保展示层 tmm_story 包含最新的动态数据（tmm 可能是刚初始化的空状态，
+  // 需要等下一轮记忆刷新后才能拿到真实数据；这里触发一次刷新让面板显示正确）
+  if (refreshing) return;
+  setTimeout(() => {
+    if (!refreshing) {
+      console.log('[tmm] chat:opened: triggering initial memory refresh for panel sync');
+      runMemoryAgent().catch(e => console.warn('[tmm] initial refresh failed', e));
+    }
+  }, 500);
 });
 
 _safeOn('chat:updated', async () => {

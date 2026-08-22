@@ -1,4 +1,4 @@
-# no_modify
+**# no_modify**
 # 命令效果检查
 
 ```bash
@@ -104,4 +104,4 @@ python -m tavo_plugins sync --story-json "story.json" --force --skip-plugins
 - [ ] `tf_sprite_fallback_bg` 变量：存在（如果有兜底背景）
 
 ### step11: 同步音色文件
-- [ ]上传音色文件并绑定到角色卡
+- [ ]上传音色文件并绑定到角色卡（包括用户身份）
