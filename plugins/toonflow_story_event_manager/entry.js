@@ -1079,37 +1079,37 @@ async function judgeAndAdvance(messageContext) {
   }
   // 只有成功是下一个章节
   if (outcome.result !== 'success') {
-     return;
-  }
-  // success
-  if (!progress.completedChapters.includes(idx)) progress.completedChapters.push(idx);
+       // success
+      if (!progress.completedChapters.includes(idx)) progress.completedChapters.push(idx);
 
-  // 对齐官方 pendingChapterId 语义：只宣告下一章，不立即切换
-  // 下一轮 judgeAndAdvance 的 phase0 会检测到 pendingChapterId 并执行真正切换
-  const nextIdx = idx + 1;
-  if (nextIdx >= chapters.length) {
-    // 故事完结：直接切换（无下一章，不需要延迟语义）
-    progress.storyCompleted = true;
-    progress.sessionFreeMode = (cfgGet('autoFreeMode', true) !== false);
-    progress.currentChapterIndex = nextIdx;
-    progress.updatedAt = Date.now();
-    setProgress(progress);
-    syncChapterIndex(nextIdx);
-    tavo.utils.toast('🎉 故事已完结！' + (progress.sessionFreeMode ? '已进入自由模式' : ''));
-    try {
-      await tavo.message.append({
-        content: '【故事完结】所有章节已完成。' + (progress.sessionFreeMode ? ' 进入自由模式，用户可继续对话，无需推进章节。' : ''),
-        hidden: false,
-      });
-    } catch (e) {}
-  } else {
-    // 有下一章：设置 pendingChapterId（本轮宣告，下轮生效）
-    progress.pendingChapterId = nextIdx;
-    progress.updatedAt = Date.now();
-    setProgress(progress);
-    console.log('[tf_story][judge] chapter success: pendingChapterId=' + nextIdx + ' (will switch next round)');
-    tavo.utils.toast('✅ 第 ' + (idx + 1) + ' 章完成！下一章将在下一轮对话开始时切换');
+      // 对齐官方 pendingChapterId 语义：只宣告下一章，不立即切换
+      // 下一轮 judgeAndAdvance 的 phase0 会检测到 pendingChapterId 并执行真正切换
+      const nextIdx = idx + 1;
+      if (nextIdx >= chapters.length) {
+        // 故事完结：直接切换（无下一章，不需要延迟语义）
+        progress.storyCompleted = true;
+        progress.sessionFreeMode = (cfgGet('autoFreeMode', true) !== false);
+        progress.currentChapterIndex = nextIdx;
+        progress.updatedAt = Date.now();
+        setProgress(progress);
+        syncChapterIndex(nextIdx);
+        tavo.utils.toast('🎉 故事已完结！' + (progress.sessionFreeMode ? '已进入自由模式' : ''));
+        try {
+          await tavo.message.append({
+            content: '【故事完结】所有章节已完成。' + (progress.sessionFreeMode ? ' 进入自由模式，用户可继续对话，无需推进章节。' : ''),
+            hidden: false,
+          });
+        } catch (e) {}
+      } else {
+        // 有下一章：设置 pendingChapterId（本轮宣告，下轮生效）
+        progress.pendingChapterId = nextIdx;
+        progress.updatedAt = Date.now();
+        setProgress(progress);
+        console.log('[tf_story][judge] chapter success: pendingChapterId=' + nextIdx + ' (will switch next round)');
+        tavo.utils.toast('✅ 第 ' + (idx + 1) + ' 章完成！下一章将在下一轮对话开始时切换');
+      }
   }
+
 }
 
 async function getAllMessagesText() {
