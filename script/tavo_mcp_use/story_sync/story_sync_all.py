@@ -1122,9 +1122,13 @@ def sync_voices(http_url, token, chat_id, config, story_dir, char_ids, dry):
             character_voices[char_name] = voice_config
 
     if character_voices and not dry:
-        for scope in ['chat', 'global']:
-            print('  [tavo_variable_set] scope:%s variable_key:%s' % (scope, 'tf_character_voices'))
-            variable_set(http_url, token, chat_id, "tf_character_voices", character_voices, scope=scope)
+        # chat scope: tf_character_voices（不带 chat_id）
+        print('  [tavo_variable_set] scope:chat variable_key:tf_character_voices')
+        variable_set(http_url, token, chat_id, "tf_character_voices", character_voices, scope="chat")
+        # global scope: tf_character_voices_{chat_id}（带 chat_id）
+        voice_var_global = "tf_character_voices_%s" % chat_id
+        print('  [tavo_variable_set] scope:global variable_key:%s' % voice_var_global)
+        variable_set(http_url, token, chat_id, voice_var_global, character_voices, scope="global")
         print("  [voice] tf_character_voices: %d 个角色 (chat+global)" % len(character_voices))
 
     return character_voices

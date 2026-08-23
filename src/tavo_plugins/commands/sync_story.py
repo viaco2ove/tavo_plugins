@@ -523,9 +523,11 @@ cid = use_ids.get(char_key, "") or use_ids.get(dir_name, "")
                 voice_files[char_key] = {"mode": "clone_voice", "prompt": "", "audioRef": voice_path_tavo, "enabled": True, "charId": cid_str}
                 echo(f"  voice {char_key} (id={cid_str or '?'}) from {dir_name} -> {voice_path_tavo}")
     if voice_files:
-        for scope in ["chat", "global"]:
-            echo(f"  [tavo_variable_set] scope:{scope} variable_key:tf_character_voices")
-            client.variable_set(chat_id, "tf_character_voices", voice_files, scope=scope)
+        echo(f"  [tavo_variable_set] scope:chat variable_key:tf_character_voices")
+        client.variable_set(chat_id, "tf_character_voices", voice_files, scope="chat")
+        voice_var_global = f"tf_character_voices_{chat_id}"
+        echo(f"  [tavo_variable_set] scope:global variable_key:{voice_var_global}")
+        client.variable_set(chat_id, voice_var_global, voice_files, scope="global")
         echo(f"  [OK] tf_character_voices -> {len(voice_files)}")
 
 

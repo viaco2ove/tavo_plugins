@@ -2707,7 +2707,9 @@
 
                 try {
                     // 音色：{ "角色名": { mode, prompt, audioRef, enabled } }
-                    var vfAll = readVar('tf_character_voices') || {};
+                    // chat scope: tf_character_voices; global scope: tf_character_voices_{chat_id}
+                    var vfGlobalKey = _panelChatId ? ('tf_character_voices_' + _panelChatId) : 'tf_character_voices';
+                    var vfAll = readVarDualScope('tf_character_voices', vfGlobalKey) || {};
                     var voiceEntry = (typeof vfAll === 'object') ? (vfAll[name] || null) : null;
                     var voicePath = voiceEntry ? (voiceEntry.audioRef || '') : '';
                     if (voicePath) {
@@ -2825,14 +2827,15 @@
                         }
                         console.log('[role-config] 立绘: ' + pendingSpritePath);
                     }
-                    // 2. 音色：写入 tf_character_voices（统一格式）
+                    // 2. 音色：写入 tf_character_voices（chat scope）+ tf_character_voices_{chat_id}（global scope）
                     if (pendingVoicePath) {
-                        var vfAll = readVar('tf_character_voices') || {};
+                        var vfGlobalKey2 = _panelChatId ? ('tf_character_voices_' + _panelChatId) : 'tf_character_voices';
+                        var vfAll = readVarDualScope('tf_character_voices', vfGlobalKey2) || {};
                         if (typeof vfAll !== 'object') vfAll = {};
                         vfAll[charName] = { mode: 'clone_voice', prompt: '', audioRef: pendingVoicePath, enabled: true, charId: String(charId || '') };
                         tavo.set('tf_character_voices', vfAll, 'chat');
                         try {
-                            tavo.set('tf_character_voices', vfAll, 'global');
+                            tavo.set(vfGlobalKey2, vfAll, 'global');
                         } catch (e) {
                         }
                         // 作废 voiceId

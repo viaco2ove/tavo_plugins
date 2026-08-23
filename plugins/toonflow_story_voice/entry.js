@@ -12,7 +12,12 @@
 // - 切换平台: 清空所有 voiceId（旧平台 id 在新平台无效）
 
 const VOICE_NS = 'tf_voice';          // voiceId 缓存 {byCharId: {...}}
-const VOICE_FILE_NS = 'tf_character_voices'; // 音色配置 {<charName>: {mode, prompt, audioRef, enabled}}
+const VOICE_FILE_NS = 'tf_character_voices'; // chat scope 音色配置 {<charName>: {mode, prompt, audioRef, enabled}}
+let _voiceChatId = null; // 当前 chat id，用于 global scope 变量命名
+
+function voiceFileNsGlobal() {
+  return _voiceChatId ? (VOICE_FILE_NS + '_' + _voiceChatId) : VOICE_FILE_NS;
+}
 
 // 日志时间戳
 const ts = () => {
@@ -77,11 +82,15 @@ function setVoiceCache(cache) {
   writeVar(VOICE_NS, cache, 'chat');
 }
 
-// 读音色文件绑定
+// 读音色文件绑定：chat scope → tf_character_voices，global scope → tf_character_voices_{chat_id}
 function getVoiceFiles(scope) {
-  console.log('[API][voice] getVoiceFiles scope=' + scope + ' key=' + VOICE_FILE_NS)
-  let v = readVar(VOICE_FILE_NS, scope);
-  if (!v) v = readVar(VOICE_FILE_NS, 'global');
+  const globalNs = voiceFileNsGlobal();
+  console.log('[API][voice] getVoiceFiles scope=' + scope + ' chatKey=' + VOICE_FILE_NS + ' globalKey=' + globalNs);
+  // 先尝试 global scope
+  let v = readVar(globalNs, 'global');
+  if (v && typeof v === 'object') return v;
+  // 再尝试 chat scope
+  v = readVar(VOICE_FILE_NS, 'chat');
   if (v && typeof v === 'object') return v;
   return {};
 }
@@ -132,20 +141,18 @@ function tf_voice_funs () {
 
       // 绑定音色文件（角色配置弹窗保存时调用）
       bindVoiceFile: (charId, name, file) => {
-        const files = getVoiceFiles('global');
-        if(!files){
-          console.log('[API][voice] bindVoiceFile files is null')
-        }else {
-          console.log('[API][voice] bindVoiceFile files ', JSON.stringify(files))
-          files[name] = { mode: 'clone_voice', prompt: '', audioRef: file, enabled: true };
-          console.log('[API][voice] bindVoiceFile files name:'+name, JSON.stringify(files[name]))
-          writeVar(VOICE_FILE_NS, files, 'chat');
-          writeVar(VOICE_FILE_NS, files, 'global');
-          // 文件变了，旧 voiceId 作废
-          tf_voice_funs().invalidateVoiceId(charId);
-          vl('bindVoiceFile charId=' + charId + ' file=' + file);
-        }
-
+        const files = getVoiceFiles();
+        console.log('[API][voice] bindVoiceFile files: ' + JSON.stringify(files));
+        files[name] = { mode: 'clone_voice', prompt: '', audioRef: file, enabled: true };
+        console.log('[API][voice] bindVoiceFile files name:' + name, JSON.stringify(files[name]));
+        // chat scope: tf_character_voices（不带 chat_id）
+        try { tavo.set(VOICE_FILE_NS, files, 'chat'); } catch (e) { vw('bindVoiceFile write chat error', e.message); }
+        // global scope: tf_character_voices_{chat_id}（带 chat_id）
+        const globalNs = voiceFileNsGlobal();
+        try { tavo.set(globalNs, files, 'global'); } catch (e) { vw('bindVoiceFile write global error', e.message); }
+        // 文件变了，旧 voiceId 作废
+        tf_voice_funs().invalidateVoiceId(charId);
+        vl('bindVoiceFile charId=' + charId + ' file=' + file + ' globalKey=' + globalNs);
       },
 
       // 读音色文件绑定
@@ -597,7 +604,11 @@ window.tf_voice_stream = {
 
 // ---------- 平台切换 -> 清空 voiceId ----------
 tavo.plugin.on('chat:opened', async () => {
-  vl('chat:opened, platform=' + cfg('voice_platform', 'xiaomimimo'));
+  try {
+    const chat = await tavo.chat.current();
+    _voiceChatId = chat && chat.id;
+  } catch (e) {}
+  vl('chat:opened, platform=' + cfg('voice_platform', 'xiaomimimo') + ' chatId=' + _voiceChatId);
   window.tf_voice = tf_voice_funs;
   console.log("window.tf_voice:",window.tf_voice);
 });
