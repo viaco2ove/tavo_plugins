@@ -1023,8 +1023,9 @@ def sync_sprites(http_url, token, chat_id, config, story_dir, dry):
 def sync_voices(http_url, token, chat_id, config, story_dir, char_ids, dry):
     """同步音色文件
 
-    从 ex/avatars/<角色>/voice.wav 上传，并从 role.json 读取音色配置。
+    从 ex/avatars/<dir>/voice.wav 上传，并从 role.json 读取音色配置。
     绑定到 tf_character_voices 变量。
+    关键：key 用角色名（不是目录名），旁白的 voice.wav 实际放在"某男子"目录，但 character_voices 的 key 必须是"旁白"。
     """
     print("\n=== 同步音色文件 ===")
     ex_avatars = os.path.join(story_dir, "ex", "avatars")
@@ -1032,38 +1033,77 @@ def sync_voices(http_url, token, chat_id, config, story_dir, char_ids, dry):
         print("  [voice] ex/avatars 目录不存在，跳过")
         return
 
+    # 加载 roles.json 索引：role.json 里的 files.voice 路径 → name
+    # roles.json 结构: {npc: [...], player: {...}, narrator: {...}}
+    roles_index = {}
+    roles_json_path = os.path.join(story_dir, "ex", "roles.json")
+    if os.path.isfile(roles_json_path):
+        try:
+            with open(roles_json_path, encoding="utf-8") as f:
+                roles_data = json.load(f)
+            for key in ("npc", "player", "narrator"):
+                v = roles_data.get(key)
+                if isinstance(v, list):
+                    for role in v:
+                        if role.get("name"):
+                            roles_index[role["name"]] = role
+                elif isinstance(v, dict) and v.get("name"):
+                    roles_index[v["name"]] = v
+        except Exception as e:
+            print("  [voice] roles.json 读取失败: %s" % e)
+
     character_voices = {}
 
-    for char_name in char_ids.keys():
-        char_dir = os.path.join(ex_avatars, char_name)
+    # 遍历所有 ex/avatars 子目录（有 voice.wav 就处理）
+    for dir_name in os.listdir(ex_avatars):
+        char_dir = os.path.join(ex_avatars, dir_name)
         if not os.path.isdir(char_dir):
             continue
+        voice_path = os.path.join(char_dir, "voice.wav")
+        if not os.path.isfile(voice_path):
+            continue
 
-        # 读取 role.json
-        role_json_path = os.path.join(char_dir, "role.json")
+        # 找归属角色：role.json 里的 files.voice 指向此目录
+        char_name = None
+        for rname, role in roles_index.items():
+            fv = (role.get("files") or {}).get("voice", "") or ""
+            if fv and ("/" + dir_name + "/voice.wav" in fv.replace("\\", "/")):
+                char_name = rname
+                break
+        if not char_name:
+            # 兜底：用目录名（兼容没有 roles.json 的情况）
+            char_name = dir_name
+
+        # 读取该角色 role.json 拿 voiceMode / voicePromptText
+        char_role_json = os.path.join(char_dir, "role.json")
         voice_config = {}
-        if os.path.isfile(role_json_path):
+        if os.path.isfile(char_role_json):
             try:
-                with open(role_json_path, encoding="utf-8") as f:
+                with open(char_role_json, encoding="utf-8") as f:
                     role_data = json.load(f)
                 voice_config = {
-                    "mode": role_data.get("voiceMode", "prompt_voice"),
+                    "mode": role_data.get("voiceMode", "clone_voice"),
                     "prompt": role_data.get("voicePromptText", ""),
                     "audioRef": "",
-                    "enabled": True
+                    "enabled": True,
                 }
-            except Exception as e:
-                print("  [voice] %s role.json 读取失败: %s" % (char_name, e))
+            except Exception:
+                pass
+        else:
+            voice_config = {"mode": "clone_voice", "prompt": "", "audioRef": "", "enabled": True}
 
         # 上传 voice.wav
-        voice_path = os.path.join(char_dir, "voice.wav")
-        if os.path.isfile(voice_path) and not dry:
+        if not dry:
             try:
                 with open(voice_path, "rb") as f:
                     voice_b64 = base64.b64encode(f.read()).decode()
-                # 文件名用角色名
-                safe_name = "".join(c for c in char_name if c.isalnum() or c in ("_", "-")).rstrip()
-                dest = "voice_%s.wav" % safe_name
+                # 文件名：优先用 cid，没数字 cid（旁白等）才用 safe_name
+                cid = char_ids.get(char_name, "")
+                if cid and str(cid).isdigit():
+                    dest = "voice_%d.wav" % int(cid)
+                else:
+                    safe = "".join(c for c in char_name if c.isalnum() or c in ("_", "-")) or "narrator"
+                    dest = "voice_%s.wav" % safe
                 result = rpc(http_url, token, "tavo_file_save", {
                     "chatId": chat_id,
                     "name": dest,
@@ -1073,7 +1113,8 @@ def sync_voices(http_url, token, chat_id, config, story_dir, char_ids, dry):
                 saved = unwrap(result).get("path", "")
                 if saved:
                     voice_config["audioRef"] = saved
-                    print("  [voice] %s -> %s" % (char_name, saved))
+                    voice_config["charId"] = str(cid) if cid else ""
+                    print("  [voice] %s (id=%s, dir=%s) -> %s" % (char_name, cid, dir_name, saved))
             except Exception as e:
                 print("  [voice] %s 上传失败: %s" % (char_name, e))
 

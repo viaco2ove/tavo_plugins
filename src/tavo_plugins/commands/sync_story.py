@@ -505,19 +505,23 @@ def _sync_sprites(client, chat_id, char_ids, story_dir, config, echo, sprite_ids
                 # 兜底：用目录名（兼容没有 roles.json 的情况）
                 char_key = dir_name
             # 文件名：旁白等非数字 id 用 safe_name，普通角色用 cid
-            cid = use_ids.get(char_key, "") or use_ids.get(dir_name, "")
+cid = use_ids.get(char_key, "") or use_ids.get(dir_name, "")
+            cid_str = ""
             if cid and str(cid).isdigit():
                 dest = f"voice_{int(cid)}.wav"
+                cid_str = str(int(cid))
             else:
                 safe = "".join(c for c in char_key if c.isalnum() or c in ("_", "-")) or "narrator"
                 dest = f"voice_{safe}.wav"
+                if cid:
+                    cid_str = str(cid)
             with open(voice_path, "rb") as f:
                 b64 = base64.b64encode(f.read()).decode()
             r = client.file_save(chat_id, dest, b64, scope="chat")
             voice_path_tavo = r.get("path", "")
             if voice_path_tavo:
-                voice_files[char_key] = {"mode": "clone_voice", "prompt": "", "audioRef": voice_path_tavo, "enabled": True}
-                echo(f"  voice {char_key} (from {dir_name}) -> {voice_path_tavo}")
+                voice_files[char_key] = {"mode": "clone_voice", "prompt": "", "audioRef": voice_path_tavo, "enabled": True, "charId": cid_str}
+                echo(f"  voice {char_key} (id={cid_str or '?'}) from {dir_name} -> {voice_path_tavo}")
     if voice_files:
         for scope in ["chat", "global"]:
             echo(f"  [tavo_variable_set] scope:{scope} variable_key:tf_character_voices")

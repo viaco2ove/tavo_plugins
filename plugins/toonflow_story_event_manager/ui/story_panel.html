@@ -2829,7 +2829,7 @@
                     if (pendingVoicePath) {
                         var vfAll = readVar('tf_character_voices') || {};
                         if (typeof vfAll !== 'object') vfAll = {};
-                        vfAll[charName] = { mode: 'clone_voice', prompt: '', audioRef: pendingVoicePath, enabled: true };
+                        vfAll[charName] = { mode: 'clone_voice', prompt: '', audioRef: pendingVoicePath, enabled: true, charId: String(charId || '') };
                         tavo.set('tf_character_voices', vfAll, 'chat');
                         try {
                             tavo.set('tf_character_voices', vfAll, 'global');

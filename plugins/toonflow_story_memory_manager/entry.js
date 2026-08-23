@@ -939,7 +939,11 @@ async function runMemoryAgent(directive) {
     if (llm && typeof llm.callDirect === 'function') {
       try {
         raw = await Promise.race([
-          llm.callDirect(MEMORY_RULES + '\n\n' + prompt, { maxCompletionTokens: 1500 }),
+          // 对齐 fixDB.prompts.ts _PROMPT_STORY_MEMORY：system + user 分离
+          llm.callDirect(
+            [{ role: 'system', content: MEMORY_RULES }, { role: 'user', content: prompt }],
+            { maxCompletionTokens: 1500, usageType: '记忆管理' }
+          ),
           new Promise((_, reject) => {
             timeoutHandle = setTimeout(() => reject(new Error('tf_llm.callDirect timeout 30s')), LLM_TIMEOUT_MS);
           }),

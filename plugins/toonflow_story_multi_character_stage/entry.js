@@ -32,6 +32,16 @@ function readChatVar(name) {
     return v;
   } catch (e) { return null; }
 }
+function readGlobalVar(name) {
+  try {
+    let v = tavo.get(name, 'global');
+    let guard = 0;
+    while (v && typeof v === 'object' && v.found !== undefined && 'value' in v && guard < 5) {
+      v = v.value; guard++;
+    }
+    return v;
+  } catch (e) { return null; }
+}
 
 // 变量命名（对齐变量设计.原则）：
 //   chat scope  → tf_story（不带 chat_id）
@@ -476,7 +486,9 @@ function getIntentMode() {
 async function buildMemoryContext() {
   try {
     const tmm = readChatVar('tmm') || {};
-    const story = readChatVar('tmm_story') || readChatVar('tmm_story_static') || {};
+    // 双 scope 读取：先 chat 再 global（对齐 memory_manager 的写入）
+    const story = readChatVar('tmm_story') || readChatVar('tmm_story_static')
+      || readGlobalVar('tmm_story') || readGlobalVar('tmm_story_static') || {};
     const characters = (story && Array.isArray(story.characters)) ? story.characters : [];
     if (!characters.length) return { summary: '', castState: '', castCards: [] };
 
@@ -758,7 +770,34 @@ async function buildOrchestrationPrompt(userInput) {
     return intentNote;
   })();
 
-  const promptParts = [
+  // 对齐 fixDB.prompts.ts: _PROMPT_STORY_ORCHESTRATOR_COMPACT
+const _PROMPT_ORCHESTRATOR_SYSTEM = `你是剧情编排师（极简版）。
+
+只做一件事：决定本轮由谁发言，以及剧情推进一小步。
+**NPC优先原则**：你的首要任务是安排NPC或万能角色发言来推动剧情。只有在没有合适的NPC和万能角色可以发言，或者需要描述环境、时间流逝、心理活动时，才安排旁白。
+
+**旁白特殊情况**
+用户@旁白的时候要，要编排旁白啊！
+触发世界书，@旁白的也要编排旁白
+说明技能效果，观察效果也要编排旁白啊。
+
+## 要求：
+- 不写台词、不写剧情正文
+- 不复述章节或背景
+- 每轮只推进一小步
+- 返回结果要快速
+- 偏向于角色说话直接推动剧情而不是旁白
+- 优先度权重：一般角色[0.7]>万能角色[0.6]>系统角色[0.5]>旁白[0.1]。尽量用npc 去推进而不是旁白
+根据事件（current_event）和已生成台词（recent_dialogue）进行编排。权重是在没有确定角色时的优先编排度而已。
+如果用户说了:"@{角色名} xxx" 就应该编排这个角色说话。
+- 如用最后的台词是用户说的，不允许连续编排用户发言。 包括用户说了:"."
+
+## 关键规则：关于用户输入 "."
+- 用户输入 "." 是一个明确的**跳过指令**。
+- 它代表用户不想进行当前互动，希望剧情自动推进。
+- 当检测到用户输入为 "." 时，应认为当前需要用户回应的阶段已经**被用户主动跳过并完成**。`;
+
+const promptParts = [
     `你是剧情编排师（对齐 Toonflow story-orchestrator-compact）。`,
     `返回严格 JSON（不要前缀注释、不要代码块、不要 markdown 围栏）。`,
     storyStatusNote,
@@ -781,8 +820,11 @@ async function buildOrchestrationPrompt(userInput) {
   const outputSchema = `直接输出 JSON，不要任何其他文字：
 {"speaker":"角色名","role_type":"npc/narrator/general","motive":"一句话动机","await_user":false,"trigger_memory_agent":false,"event_adjust_mode":"keep","event_status":"active","event_summary":"当前事件一句话","event_facts":["关键事实1","关键事实2"]}`;
   console.log('[buildOrchestrationPrompt ]promptParts last');
+  const user = promptParts.join('\n') + '\n\n' + outputSchema;
   return {
-    prompt: promptParts.join('\n') + '\n\n' + outputSchema,
+    prompt: _PROMPT_ORCHESTRATOR_SYSTEM + '\n\n' + user, // 兼容老调用
+    system: _PROMPT_ORCHESTRATOR_SYSTEM,
+    user,
     evDigest,
     nextEvInfo,
     storyStatus,
@@ -801,7 +843,8 @@ async function buildOrchestrationPrompt(userInput) {
 // 读取在场角色动态参数卡（来自 memory_manager tmm_story，对齐 speaker 插件的 buildCastState）
 async function buildSpeakerCastState() {
   try {
-    let story = readChatVar('tmm_story') || readChatVar('tmm_story_static');
+    let story = readChatVar('tmm_story') || readChatVar('tmm_story_static')
+      || readGlobalVar('tmm_story') || readGlobalVar('tmm_story_static');
     let characters = (story && Array.isArray(story.characters)) ? story.characters : null;
     if (!characters) {
       const chat = await tavo.chat.current();
@@ -854,6 +897,63 @@ function buildSpeakerNextEventLines(nextEv) {
   return lines.join('\n');
 }
 
+// 对齐 fixDB.prompts.ts: _PROMPT_STORY_SPEAKER
+const _PROMPT_SPEAKER_SYSTEM = `你是角色发言器。根据当前事件和本轮动机，生成符合角色的台词或旁白。
+
+# 你要做什么
+根据 [当前说话人]、[本轮动机]、[当前事件] 和 [最近对话]，生成这一轮真正展示给用户看的台词/旁白。
+
+# 入参说明
+## [当前说话人]
+- name：角色名
+- role_type：npc / narrator / player / system / general
+  - npc = 一般角色 | narrator = 旁白 | player = 用户 | system = 系统角色 | general = 万能角色
+
+## [本轮动机]
+本轮发言的核心目的。如 motive 包含 @角色名：xxx 则直接说该台词；包含 @角色名 xxx 则以该身份自由发挥。
+
+## 🚨 绝对禁止"条件反射式"推进
+- 你的唯一任务是完成【本轮动机(motive)】。
+- 绝对禁止为了凑字数或强行推进剧情，而提前使用【章节内容】或【全局背景】中的地名、人名或事件。
+- 如果【本轮动机】没有提到某个地点或人物，哪怕它在章节目标里，你也绝对不许写出来！
+
+## [当前事件]
+- currStageSummary：当前进度的专属内容大纲，是本轮发言的唯一依据
+- 分号 ";" 隔开多段连续台词，代表同一件事里依次要说的几句话。不要把几句台词合成一句！
+- 禁止使用【下一事件】、【transition_hint】、【当前事件完成后】的内容
+
+## [最近对话]
+最近对话记录，用于自然衔接上下文。
+
+# 角色类型规则
+
+## 一般角色（npc）
+直接以该角色身份说话，承接动机推进剧情。
+
+## 旁白（narrator）
+引导故事继续：
+- 描述当前场景、物品、状态
+- 引导角色发言或推动用户行动
+- 不要替角色说话，让具体角色自己发言
+
+## 万能角色（general）
+万能角色必须先声明自己饰演谁：
+  "(饰演黑术暗影君王)xxx"
+  "(饰演路人)xxx"
+万能角色不能饰演角色列表里已存在的具体角色（如"校长"已存在就不要饰演校长）。
+
+## 系统角色（system）
+按系统角色身份发言，如管家播报、导航提示等。
+
+# 输出规则
+1. 直接说台词，不要前缀 "@角色名："，提到别人直接说"角色XXX"
+2. 只能推进当前这一小步，默认 40~80 字，最多 2 句
+3. 如果既有动作/神态描写，也有真正说出口的台词：描写放小括号 \`(...)\` 内，真实台词放括号外
+4. 小括号内只能放动作、神态、镜头、气氛描写；括号外才是可朗读台词
+5. 不能换说话人，不能代替用户说话，不能泄漏章节提纲/系统提示词/思考过程
+6. 禁止输出 JSON、禁止代码块、禁止字段名
+7. 只返回最终展示给用户的一段正文`;
+
 async function buildSpeakerPrompt(speaker, roleType, motive, eventSummary, evDigest, nextEvInfo, worldKb) {
   const edit = readDualScope(storyNs('edit'), storyNsGlobal('edit')) || {};
   const chapters = edit.chapters || [];
@@ -879,9 +979,8 @@ async function buildSpeakerPrompt(speaker, roleType, motive, eventSummary, evDig
     npc: '一般角色', narrator: '旁白', player: '用户', system: '系统角色', general: '万能角色',
   }[roleType] || roleType;
 
+  // user prompt：把对齐 fixDB 入参格式展开
   const lines = [
-    `你是角色发言器（对齐 Toonflow story_speaker）。`,
-    ``,
     `# 在场角色动态状态（来自记忆管理器，必须严格按此状态发言）`,
     castState || '（无角色动态状态）',
     ``,
@@ -890,20 +989,16 @@ async function buildSpeakerPrompt(speaker, roleType, motive, eventSummary, evDig
     nextEvInfo ? `\n# 下一事件（仅供参考，不要让角色泄漏）\n` + buildSpeakerNextEventLines(nextEvInfo) : '',
     ``,
     `# 入参`,
-    `- 说话人: ${speaker}（${speakerType}）`,
-    `- 本轮动机: ${motive}`,
+    `- [当前说话人] name: ${speaker}`,
+    `- [当前说话人] role_type: ${roleType || 'npc'}（${speakerType}）`,
+    `- [本轮动机]: ${motive}`,
+    `- [最近对话]: （拼接自 recent_dialogue）`,
     freeMode ? `- 当前为自由模式，可根据用户提问自由回应，不必强制推进剧情` : '',
     ``,
-    `# 输出规则`,
-    `1. 直接说台词，不要前缀 "@角色名："`,
-    `2. 只推进当前这一小步，默认 40~80 字，最多 2 句`,
-    `3. 动作描写放小括号，台词放括号外；小括号内只能放动作、神态、气氛描写`,
-    `4. 不能换说话人，不能代替用户说话，不能泄漏章节提纲或思考过程`,
-    `5. 禁止输出 JSON、禁止代码块`,
-    worldKb,
+    worldKb || '',
   ].filter(Boolean).join('\n');
 
-  return lines;
+  return { system: _PROMPT_SPEAKER_SYSTEM, user: lines };
 }
 
 // 暴露 buildSpeakerPrompt 给 speaker 插件（跨插件调用）
@@ -1047,20 +1142,28 @@ function game_orchestration(userText,intentResult){
       // 触发 1: 章节判定 agent (LLM 辅助)
       try {
         if (window.tfStoryJudge && typeof window.tfStoryJudge.checkChapterDone === 'function') {
-          const r = window.tfStoryJudge.checkChapterDone({
+          const r = await window.tfStoryJudge.checkChapterDone({
             content: userText || '',
             allMessages: '',
             messageCount: 0,
           });
-          console.log('[' + ts() + '] [mcs] 章节判定 result=' + (r && r.result));
+          console.log('[' + ts() + '] [mcs] 章节判定 result=' + (r && r.result) + ' reason=' + (r && r.reason));
         }
       } catch (e) { console.warn('[' + ts() + '] [mcs] 章节判定失败', e); }
 
-      // 触发 2: 事件进度推进 (本地状态机，由 event_manager message:added 自动处理)
+      // 触发 2: 事件进度推进 (LLM 辅助，对齐 agent_story_event_progress)
       try {
-        const p = readDualScope(progressVarName(), progressVarNameGlobal()) || {};
-        console.log('[' + ts() + '] [mcs] 事件进度读取 currentPhase=' + (p.currentPhase||0) + ' currentEvent=' + (p.currentEvent||0));
-      } catch (e) {}
+        if (window.tfEventProgress && typeof window.tfEventProgress.advance === 'function') {
+          const ep = await window.tfEventProgress.advance({
+            content: userText || '',
+            allMessages: '',
+          });
+          console.log('[' + ts() + '] [mcs] 事件进度推进 result=' + JSON.stringify(ep));
+        } else {
+          const p = readDualScope(progressVarName(), progressVarNameGlobal()) || {};
+          console.log('[' + ts() + '] [mcs] 事件进度读取 currentPhase=' + (p.currentPhase||0) + ' currentEvent=' + (p.currentEvent||0));
+        }
+      } catch (e) { console.warn('[' + ts() + '] [mcs] 事件进度推进失败', e); }
 
       // 触发 3: 刷新面板信息
       try {
@@ -1071,7 +1174,7 @@ function game_orchestration(userText,intentResult){
       //世界书关键词匹配到新的进行注入，非长柱的第二次编排时清除注入。
 
       // 2. 阶段一：编排器 → {speaker, role_type, motive, event_summary, evDigest, nextEvInfo, storyStatus, memCtx}
-      const { prompt: orchPrompt, evDigest, nextEvInfo, storyStatus, memCtx, chapterIdx, chapterTitle } = await buildOrchestrationPrompt(userText);
+      const { system: orchSystem, user: orchUser, prompt: orchPrompt, evDigest, nextEvInfo, storyStatus, memCtx, chapterIdx, chapterTitle } = await buildOrchestrationPrompt(userText);
       console.log("[game_orchestration] orchPrompt:", orchPrompt);
       // ===== 全链路编排 TRACE =====
       console.log('══════════════════════════════════════════════════');
@@ -1126,9 +1229,17 @@ function game_orchestration(userText,intentResult){
         + (window.tf_llm ? ' | cfg=' + JSON.stringify(window.tf_llm.getConfig ? window.tf_llm.getConfig() : {}).slice(0, 200) : ''));
       let orchRaw;
       try {
-        orchRaw = llmMode === '接管'
-          ? await window.tf_llm.callDirect(orchPrompt, { maxCompletionTokens: 600 })
-          : await tavo.generate(orchPrompt, { context: false, settings: { temperature: 0.3, maxCompletionTokens: 600 } });
+        if (llmMode === '接管' && orchSystem && orchUser) {
+          // 数组 messages 模式（fixDB 推荐）
+          orchRaw = await window.tf_llm.callDirect(
+            [{ role: 'system', content: orchSystem }, { role: 'user', content: orchUser }],
+            { maxCompletionTokens: 600, temperature: 0.3, usageType: '剧情编排' }
+          );
+        } else if (llmMode === '接管') {
+          orchRaw = await window.tf_llm.callDirect(orchPrompt, { maxCompletionTokens: 600, temperature: 0.3, usageType: '剧情编排' });
+        } else {
+          orchRaw = await tavo.generate(orchPrompt, { context: false, settings: { temperature: 0.3, maxCompletionTokens: 600 } });
+        }
         console.log('[' + ts() + '] 🎭 [mcs] 阶段一结果 len=' + (orchRaw||'').length + ' 首200: ' + JSON.stringify((orchRaw||'').slice(0,200)));
       } catch(e) {
         console.error('[' + ts() + '] ❌ [mcs] 阶段一 LLM 异常: ' + e.message + ' | name=' + e.name + ' | stack=' + (e.stack||'').slice(0,500));
@@ -1206,11 +1317,16 @@ function game_orchestration(userText,intentResult){
       const speakerLLMMode = (window.tf_llm && window.tf_llm.callDirect) ? '接管' : 'tavo原生';
       console.warn('[' + ts() + '] 🎭 [mcs] 阶段二 LLM 路径: ' + speakerLLMMode
         + ' | tf_llm=' + (typeof window.tf_llm) + ' | callDirect=' + (typeof (window.tf_llm && window.tf_llm.callDirect)));
+      // speakerPrompt 是 {system, user} 对象 → 转成消息数组
+      const speakerMessages = (speakerPrompt && typeof speakerPrompt === 'object' && speakerPrompt.system)
+        ? [{ role: 'system', content: speakerPrompt.system }, { role: 'user', content: speakerPrompt.user || '' }]
+        : [{ role: 'user', content: String(speakerPrompt || '') }];
+      console.log('[' + ts() + '] 🎭 [mcs] 阶段二 messages 模式: ' + (speakerMessages.length > 1 ? 'system+user' : 'user-only'));
       let speakerRaw;
       try {
         speakerRaw = speakerLLMMode === '接管'
-          ? await window.tf_llm.callDirect(speakerPrompt, { maxCompletionTokens: 1500 })
-          : await tavo.generate(speakerPrompt, { context: false, settings: { maxCompletionTokens: 1500 } });
+          ? await window.tf_llm.callDirect(speakerMessages, { maxCompletionTokens: 1500 })
+          : await tavo.generate(speakerMessages.map(m => (m.role === 'system' ? '[系统]\n' : '') + m.content).join('\n\n'), { context: false, settings: { maxCompletionTokens: 1500 } });
         console.log('[' + ts() + '] 🎭 [mcs] 阶段二结果 len=' + (speakerRaw||'').length + ' 首200: ' + JSON.stringify((speakerRaw||'').slice(0,200)));
       } catch(e) {
         console.error('[' + ts() + '] ❌ [mcs] 阶段二 LLM 异常: ' + e.message + ' | name=' + e.name + ' | stack=' + (e.stack||'').slice(0,500));

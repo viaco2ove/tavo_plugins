@@ -78,7 +78,8 @@ function setVoiceCache(cache) {
 
 // 读音色文件绑定
 function getVoiceFiles() {
-  const v = readVar(VOICE_FILE_NS);
+  let v = readVar(VOICE_FILE_NS, 'chat');
+  if (!v) v = readVar(VOICE_FILE_NS, 'global');
   if (v && typeof v === 'object') return v;
   return {};
 }
@@ -89,26 +90,31 @@ function tf_voice_funs () {
   return {
     // 取角色 voiceId（有缓存直接返回，无则 null）
     getVoiceId: (charId) => {
-      vl('[API] getVoiceId charId=' + charId);
       const cache = getVoiceCache();
       const e = cache.byCharId[charId];
-      const platform = cfg('voice_platform', 'xiaomimimo');
-      vl('[API] getVoiceId cache=' + JSON.stringify(e) + ' platform=' + platform);
-      if (e && e.platform === platform && e.voiceId) return e.voiceId;
-      return null;
+      // 返回完整对象（含 voiceId, platform），playTtsForSegments 据此判断是否同平台
+      return e && e.voiceId ? { voiceId: e.voiceId, platform: e.platform } : null;
     },
 
-        // 缓存 voiceId
-      cacheVoiceId: (charId, voiceId) => {
+        // 缓存 voiceId（接受 {voiceId, platform} 对象或纯 voiceId 字符串）
+      cacheVoiceId: (charId, voiceIdOrObj) => {
         const cache = getVoiceCache();
+        let voiceId, platform;
+        if (typeof voiceIdOrObj === 'object' && voiceIdOrObj !== null) {
+          voiceId = voiceIdOrObj.voiceId;
+          platform = voiceIdOrObj.platform || cfg('voice_platform', 'xiaomimimo');
+        } else {
+          voiceId = voiceIdOrObj;
+          platform = cfg('voice_platform', 'xiaomimimo');
+        }
         cache.byCharId[charId] = {
           voiceId: voiceId,
-          platform: cfg('voice_platform', 'xiaomimimo'),
+          platform: platform,
           updatedAt: Date.now(),
           status: 'ready',
         };
         setVoiceCache(cache);
-        vl('cacheVoiceId charId=' + charId + ' voiceId=' + voiceId);
+        vl('cacheVoiceId charId=' + charId + ' voiceId=' + voiceId + ' platform=' + platform);
       },
 
       // voiceId 失效（合成报错时调用，下次重新克隆）
@@ -124,7 +130,7 @@ function tf_voice_funs () {
 
       // 绑定音色文件（角色配置弹窗保存时调用）
       bindVoiceFile: (charId, name, file) => {
-        const files = getVoiceFiles();
+        const files = getVoiceFiles('global');
         files[name] = { mode: 'clone_voice', prompt: '', audioRef: file, enabled: true };
         writeVar(VOICE_FILE_NS, files, 'chat');
         // 文件变了，旧 voiceId 作废
@@ -134,14 +140,39 @@ function tf_voice_funs () {
 
       // 读音色文件绑定
       getVoiceFile: (charId) => {
-        const files = getVoiceFiles();
-        // tf_character_voices 格式: {<charName>: {mode, prompt, audioRef, enabled}}
-        // charId 可能是角色名或ID，需要兼容
+        const c = getVoiceFiles('global');
+        // tf_character_voices 格式: {<charName>: {mode, prompt, audioRef, enabled, charId}}
+        // charId 可能是: (1) 角色名 "旁白"/"红缥缈" (2) tavo 数字 ID "110" (3) narrator/npc 字符串
+        const cidStr = String(charId);
+        const fileKeys = Object.keys(files);
+        console.log('[API][voice] getVoiceFile charId=' + cidStr + ' files_keys=' + JSON.stringify(fileKeys)
+        + ' files=' + JSON.stringify(fileKeys));
+        vl('[API] getVoiceFile charId=' + cidStr + ' files_keys=' + JSON.stringify(fileKeys));
+        // (1) 直接按 key 匹配
+        if (files[cidStr]) {
+          const cfg = files[cidStr];
+          if (cfg.audioRef) {
+            vl('[API] getVoiceFile hit by key: ' + cidStr + ' audioRef=' + cfg.audioRef);
+            return { file: cfg.audioRef, name: cidStr, mode: cfg.mode };
+          }
+        }
+        // (2) 按 cfg.charId 字段匹配
         for (const [name, cfg] of Object.entries(files)) {
-          if (name === charId || cfg.charId === charId) {
+          if (cfg.charId && String(cfg.charId) === cidStr && cfg.audioRef) {
+            vl('[API] getVoiceFile hit by cfg.charId: ' + name);
             return { file: cfg.audioRef, name: name, mode: cfg.mode };
           }
         }
+        // (3) 智能兜底：旁白/narrator 走"旁白"key
+        if (cidStr === '旁白' || cidStr === 'narrator') {
+          for (const key of ['旁白', 'narrator']) {
+            if (files[key] && files[key].audioRef) {
+              vl('[API] getVoiceFile hit by narrator fallback: ' + key);
+              return { file: files[key].audioRef, name: key, mode: files[key].mode };
+            }
+          }
+        }
+        vl('[API] getVoiceFile miss for charId=' + cidStr);
         return null;
       },
 
@@ -304,20 +335,31 @@ async function playTtsForSegments(charId, segments) {
   vl('[TTS] platform=' + platform + ' apiKey=' + (apiKey ? 'configured' : 'MISSING!'));
   if (!apiKey) { vw('未配置 API Key，跳过语音'); return; }
 
-  let voiceId = window.tf_voice().getVoiceId(charId);
-  vl('[TTS] voiceId from cache=' + (voiceId || 'null'));
-  if (!voiceId) {
-    const vf = window.tf_voice().getVoiceFile(charId);
-    vl('[TTS] voiceFile=' + JSON.stringify(vf));
-    if (!vf || !vf.file) { vw('角色 ' + charId + ' 无音色文件，跳过'); return; }
-    const audioUrl = tavo.file.url(vf.file, 'chat');
-    vl('[TTS] audioUrl=' + audioUrl);
+  // 每次都先查音色文件——voiceId 必须由"该角色的音色文件"克隆出来
+  // 不能直接复用缓存的 voiceId（可能在错误上下文里被污染）
+  const vf = window.tf_voice().getVoiceFile(charId);
+  vl('[TTS] voiceFile=' + JSON.stringify(vf));
+  if (!vf || !vf.file) {
+    vw('[TTS] 角色 ' + charId + ' 无音色文件，跳过');
+    return;
+  }
+  const audioUrl = tavo.file.url(vf.file, 'chat');
+  vl('[TTS] audioUrl=' + audioUrl);
+
+  let voiceId = null;
+  const cached = window.tf_voice().getVoiceId(charId);
+  if (cached && cached.platform === platform) {
+    voiceId = cached.voiceId;
+    vl('[TTS] voiceId from cache=' + voiceId);
+  } else {
     try {
       voiceId = (platform === 'aliyun')
         ? await aliyunEnrollVoice(apiKey, audioUrl, 'tf_' + charId)
         : await xiaomiCloneVoice(apiKey, audioUrl);
       vl('[TTS] cloned voiceId=' + voiceId);
-      window.tf_voice().cacheVoiceId(charId, voiceId);
+      if (voiceId) {
+        window.tf_voice().cacheVoiceId(charId, { voiceId: voiceId, platform: platform });
+      }
     } catch(e) {
       vw('[TTS] clone failed: ' + e.message);
       throw e;
