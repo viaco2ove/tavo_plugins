@@ -394,7 +394,7 @@ async function steam_speaker_writer(type, data){
         role: 'assistant',
         characterId: steamCharEntry ? steamCharEntry.id : undefined,
         characterName: steamRole,
-        content: '<div id="'+msg_div_id+'" class="tf-waiting"><span class="tf-waiting-dots-blue">台词生成中...</span></div>',
+        content: '<div id="'+msg_div_id+'" class="tf-waiting">台词生成中</div><span class="tf-waiting-dots-blue">...</span>',
         hidden: false,
       };
       var steamMsg = null;
