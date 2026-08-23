@@ -858,7 +858,7 @@ async function runMemoryAgent(directive) {
   console.log('[tmm] runMemoryAgent start, directive=' + JSON.stringify((directive || '').slice(0, 60)) + ', refreshing=' + refreshing);
   if (refreshing) {
     console.log('[tmm] runMemoryAgent skipped: previous still refreshing');
-    tavo.utils.toast('@记忆管理：上一轮还在跑，跳过本次（避免堆积）');
+    // tavo.utils.toast('@记忆管理：上一轮还在跑，跳过本次（避免堆积）');
     return;
   }
   refreshing = true;
