@@ -571,8 +571,8 @@ async function buildOrchestrationPrompt(userInput) {
   const chapters = edit.chapters || [];
   const progress = readDualScope(progressVarName(), progressVarNameGlobal()) || {};
   const chapterIdx = (typeof progress.currentChapterIndex === 'number') ? progress.currentChapterIndex : 0;
-  const chapter = chapters[chapterIdx];
-  const chapterTitle = chapter?.title || '（无）';
+  const chapter = chapters[chapterIdx] || {};
+  const chapterTitle = chapter.title || '（无）';
 
   // roles: 角色名 + 角色类型（wildcard_roles 独立传入）
   let roles = [];
@@ -619,7 +619,7 @@ async function buildOrchestrationPrompt(userInput) {
   const phaseIdx = Math.max(0, (readDualScope(progressVarName(), progressVarNameGlobal()) || {}).currentPhase || 0);
   const eventIdx = Math.max(0, (readDualScope(progressVarName(), progressVarNameGlobal()) || {}).currentEvent || 0);
   const phase = phases[phaseIdx] || {};
-  const events = phase.events || [];
+  const events = Array.isArray(phase.events) ? phase.events : [];
   const curEv = events[eventIdx] || {};
   const nextEv = events[eventIdx + 1] || null;
   const isUserNode = /用户发言|用户/.test(curEv.name || '');
@@ -627,8 +627,9 @@ async function buildOrchestrationPrompt(userInput) {
   // eventDigest.window: 章节内容中该事件前后的文字上下文（简化为前2行+后1行）
   const contentLines = (chapter?.content || '').split('\n').filter(l => l.trim());
   const eventLineIdx = contentLines.findIndex(l => (curEv.name && l.includes(curEv.name)) || l.includes(phase.name || ''));
-  const winBefore = contentLines.slice(Math.max(0, eventLineIdx - 2), eventLineIdx).join(' ').trim().slice(0, 200);
-  const winAfter = contentLines.slice(eventLineIdx + 1, eventLineIdx + 2).join(' ').trim().slice(0, 100);
+  const safeIdx = eventLineIdx >= 0 ? eventLineIdx : contentLines.length;
+  const winBefore = contentLines.slice(Math.max(0, safeIdx - 2), safeIdx).join(' ').trim().slice(0, 200);
+  const winAfter = contentLines.slice(safeIdx + 1, safeIdx + 2).join(' ').trim().slice(0, 100);
   const evDigest = {
     index: eventIdx + 1,
     kind: isUserNode ? 'user' : 'scene',
