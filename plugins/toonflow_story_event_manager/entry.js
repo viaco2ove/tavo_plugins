@@ -5,6 +5,8 @@
 // window.tf_story_on(event, handler)  监听
 // window.tf_story_emit(event, data)   触发
 // ============================================================
+let isNeedJump=true;
+let cmAtJump ='#jump';
 (function() {
   console.log('[_handlers] add start 1');
   var _handlers = {};
@@ -443,6 +445,7 @@ async function _llmJudgeEventProgress(progress, chapters, recentDialogue) {
   }
   // 解析 ended / event_status / progress_summary / progress_facts / reason
   if (!raw) return { ended: false, event_status: 'active', reason: 'empty' };
+    console.warn('[tf_story][event_llm] 调用 :raw', JSON.stringify(raw));
   let txt = String(raw).trim();
   const fence = txt.match(/```(?:json)?\s*([\s\S]*?)```/i);
   if (fence) txt = fence[1].trim();
@@ -1023,25 +1026,16 @@ async function judgeAndAdvance(messageContext) {
   // 事件推进结果必须落盘（即使章节未完成，面板也要显示最新 stage 状态）
   setProgress(progress);
 
-  // 阶段二：章节结局判定（优先 LLM，回退启发式）
+  // 阶段二：章节结局判定（纯 LLM 驱动，无硬编码启发式）
   console.log("[tf_story][judge] cond=" + JSON.stringify(chapter.successCondition) + " msgCount=" + (messageContext.messageCount || 0));
 
-  let outcome = null;
+  let outcome = { result: 'continue' };
   const llmOutcome = await evaluateChapterOutcomeByAi(chapter, progress, messageContext.content || '');
   if (llmOutcome) {
-    outcome = { result: llmOutcome.result };
+    outcome = { result: llmOutcome.result, reason: llmOutcome.reason || '', guide_summary: llmOutcome.guide_summary || '', guide_facts: llmOutcome.guide_facts || [] };
+    console.log("[tf_story][judge] LLM 章节判定: result=" + outcome.result + " reason=" + (outcome.reason || '').slice(0, 80));
   } else {
-    // 回退到原有启发式
-    const ctx = {
-      latestMessage: messageContext.content || '',
-      allMessages: await getAllMessagesText(),
-      chapterTitle: chapter.title || '',
-      chapterContent: chapter.content || '',
-      messageCount: messageContext.messageCount || 0,
-      memoryItems: await getMemoryItems(),
-    };
-    outcome = evaluateChapterOutcome(chapter, ctx);
-    console.log("[tf_story][judge] 章节判定回退到启发式: result=" + outcome.result);
+    console.log("[tf_story][judge] LLM 章节判定不可用，默认 continue");
   }
 
   if (outcome.result === 'continue') return;
@@ -1995,8 +1989,42 @@ async function evaluateEventProgressByAi(chapter, progress, latestMessageContent
       .replace(/<think>[\s\S]*?<\/think>/gi, '')
       .replace(/<[^>]+>/g, '');
     const fence = cleaned.match(/```(?:json)?\s*([\s\S]*?)```/);
-    const jsonText = fence ? fence[1].trim() : cleaned;
-    const obj = JSON.parse(jsonText);
+    let jsonText = fence ? fence[1].trim() : cleaned;
+    // 修复：LLM 输出 JSON 可能不完整（末尾被截断）或包含尾部注释，从第一个 { 开始解析
+    if (!fence) {
+      const firstBrace = jsonText.indexOf('{');
+      if (firstBrace >= 0) jsonText = jsonText.slice(firstBrace);
+    }
+    // 容错解析：若 JSON.parse 失败，尝试正则提取关键字段
+    let obj;
+    try {
+      obj = JSON.parse(jsonText);
+    } catch (e) {
+      const endedMatch = cleaned.match(/"ended"\s*:\s*(true|false)/i);
+      const resultMatch = cleaned.match(/"result"\s*:\s*"([^"]+)"/);
+      const statusMatch = cleaned.match(/"event_status"\s*:\s*"([^"]+)"/);
+      if (endedMatch) {
+        obj = {
+          ended: endedMatch[1].toLowerCase() === 'true',
+          event_status: statusMatch ? statusMatch[1] : 'active',
+          result: resultMatch ? resultMatch[1] : 'continue',
+          progress_summary: '',
+          progress_facts: [],
+          reason: 'parsed_fallback (incomplete JSON)',
+        };
+      } else if (resultMatch) {
+        obj = {
+          result: resultMatch[1],
+          matched_rule: null,
+          reason: 'parsed_fallback',
+          next_chapter_id: null,
+          guide_summary: '',
+          guide_facts: [],
+        };
+      } else {
+        throw e;
+      }
+    }
     console.log('[tf_story] 🤖 [event_progress] LLM调用 → ended=' + obj.ended + ' status=' + obj.event_status);
     console.log('[tf_story]    reason=' + (obj.reason || '').slice(0, 100));
     console.log('[tf_story]    progress_summary=' + (obj.progress_summary || '').slice(0, 80));
@@ -2015,13 +2043,13 @@ async function evaluateEventProgressByAi(chapter, progress, latestMessageContent
 }
 
 // =========================================================================
-// 事件进度推进（对齐 toonflow-game ChapterProgressEngine.ts）
+// 事件进度推进（纯 LLM 驱动，对齐 toonflow-game applyAiEventProgressResolution）
 //
 // 核心逻辑：
-// 1. 跟踪已完成的 phase（progress.completedPhases 数组）
-// 2. 用户发言节点：用户说话即完成，自动跳到下一个 scene phase
-// 3. scene 节点：AI 判定 ended=true 时标记完成，推进到下一个 phase
-// 4. 跳过"非事件"phase
+// 1. 每轮都调 LLM 判断当前事件是否结束（无硬编码规则）
+// 2. LLM 判 ended=true → 标记 phase 完成，推进到下一个 phase
+// 3. LLM 判 ended=false → 不推进
+// 4. 跟踪已完成的 phase（progress.completedPhases 数组）
 // =========================================================================
 
 function _isPhaseCompleted(completedPhases, phaseName) {
@@ -2040,28 +2068,23 @@ function _resolveNextPhase(phases, completedPhases, currentIndex) {
   for (let i = currentIndex + 1; i < phases.length; i++) {
     const p = phases[i];
     const name = p.name || '';
-    // 跳过"非事件"段
     if (/^非事件/.test(name)) continue;
-    // 跳过已完成的
     if (_isPhaseCompleted(completedPhases, name)) continue;
     return { phase: p, index: i };
   }
   return { phase: null, index: -1 };
 }
 
-// 判断当前 phase 是否为用户发言节点
 function _isUserPhase(phase) {
   if (!phase || !phase.events) return false;
   return phase.events.some(e => /用户发言/.test(e.name || ''));
 }
 
-// 对齐 toonflow applyAiEventProgressResolution
-// 返回 { advanced: boolean, enteredUserPhase?: boolean }
+// 纯 LLM 驱动的事件进度推进（每轮都调 LLM，无硬编码规则）
 async function applySessionUserEventProgress(chapter, progress, latestMessageContent, latestMessageRole, precomputedResolution) {
   const phases = progress.phases || [];
   if (!phases.length) return { advanced: false };
 
-  // 确保 completedPhases 数组存在
   if (!progress.completedPhases) progress.completedPhases = [];
 
   let pi = Math.max(0, progress.currentPhase || 0);
@@ -2069,52 +2092,8 @@ async function applySessionUserEventProgress(chapter, progress, latestMessageCon
   if (!phase) return { advanced: false };
 
   const phaseName = phase.name || '';
-  const trimmed = (latestMessageContent || '').trim();
 
-  // ---- 用户发言节点：用户说话即完成，规则推进 ----
-  if (_isUserPhase(phase)) {
-    console.log('[tf_story][event_progress] 用户发言节点完成，标记 phase[' + pi + ']="' + phaseName + '" 完成');
-    _markPhaseCompleted(progress, phaseName);
-
-    // 找下一个 scene phase
-    const next = _resolveNextPhase(phases, progress.completedPhases, pi);
-    if (next.phase) {
-      progress.currentPhase = next.index;
-      progress.currentEvent = 0;
-      console.log('[tf_story][event_progress] 推进到 phase[' + next.index + ']="' + (next.phase.name || '') + '"');
-    } else {
-      // 所有 phase 已完成
-      progress.currentPhase = phases.length;
-      progress.currentEvent = 0;
-      console.log('[tf_story][event_progress] 所有 phase 已完成');
-    }
-    progress.updatedAt = Date.now();
-    return { advanced: true, enteredUserPhase: false };
-  }
-
-  // ---- scene 节点：需要 AI 判断是否完成 ----
-  // "." 快速跳过（对齐 toonflow "." 跳过指令）
-  if (trimmed === '.') {
-    console.log('[tf_story][event_progress] "." 跳过，标记 phase[' + pi + ']="' + phaseName + '" 完成');
-    _markPhaseCompleted(progress, phaseName);
-
-    const next = _resolveNextPhase(phases, progress.completedPhases, pi);
-    if (next.phase) {
-      progress.currentPhase = next.index;
-      progress.currentEvent = 0;
-      const enteredUser = _isUserPhase(next.phase);
-      console.log('[tf_story][event_progress] 推进到 phase[' + next.index + ']="' + (next.phase.name || '') + '"' + (enteredUser ? ' (等待用户)' : ''));
-      progress.updatedAt = Date.now();
-      return { advanced: true, enteredUserPhase: enteredUser };
-    } else {
-      progress.currentPhase = phases.length;
-      progress.currentEvent = 0;
-      progress.updatedAt = Date.now();
-      return { advanced: true, enteredUserPhase: false };
-    }
-  }
-
-  // 调用 LLM 判断当前事件是否结束
+  // 每轮都调 LLM 判断当前事件是否结束（纯 LLM 驱动，无硬编码规则）
   const resolution = precomputedResolution || await evaluateEventProgressByAi(chapter, progress, latestMessageContent, latestMessageRole);
   if (!resolution) {
     console.log('[tf_story][event_progress] LLM 不可用，事件不推进');
@@ -2122,7 +2101,7 @@ async function applySessionUserEventProgress(chapter, progress, latestMessageCon
   }
 
   if (resolution.ended) {
-    console.log('[tf_story][event_progress] AI 判定 ended=true: ' + (resolution.reason || '').slice(0, 80));
+    console.log('[tf_story][event_progress] LLM ended=true: ' + (resolution.reason || '').slice(0, 80));
     _markPhaseCompleted(progress, phaseName);
 
     const next = _resolveNextPhase(phases, progress.completedPhases, pi);
@@ -2142,7 +2121,7 @@ async function applySessionUserEventProgress(chapter, progress, latestMessageCon
     }
   }
 
-  console.log('[tf_story][event_progress] AI 判定 ended=false，事件不推进: ' + (resolution.reason || '').slice(0, 80));
+  console.log('[tf_story][event_progress] LLM ended=false: ' + (resolution.reason || '').slice(0, 80));
   return { advanced: false };
 }
 
@@ -2285,8 +2264,42 @@ async function evaluateChapterOutcomeByAi(chapter, progress, latestMessageConten
       .replace(/<think>[\s\S]*?<\/think>/gi, '')
       .replace(/<[^>]+>/g, '');
     const fence = cleaned.match(/```(?:json)?\s*([\s\S]*?)```/);
-    const jsonText = fence ? fence[1].trim() : cleaned;
-    const obj = JSON.parse(jsonText);
+    let jsonText = fence ? fence[1].trim() : cleaned;
+    // 修复：LLM 输出 JSON 可能不完整（末尾被截断）或包含尾部注释，从第一个 { 开始解析
+    if (!fence) {
+      const firstBrace = jsonText.indexOf('{');
+      if (firstBrace >= 0) jsonText = jsonText.slice(firstBrace);
+    }
+    // 容错解析：若 JSON.parse 失败，尝试正则提取关键字段
+    let obj;
+    try {
+      obj = JSON.parse(jsonText);
+    } catch (e) {
+      const endedMatch = cleaned.match(/"ended"\s*:\s*(true|false)/i);
+      const resultMatch = cleaned.match(/"result"\s*:\s*"([^"]+)"/);
+      const statusMatch = cleaned.match(/"event_status"\s*:\s*"([^"]+)"/);
+      if (endedMatch) {
+        obj = {
+          ended: endedMatch[1].toLowerCase() === 'true',
+          event_status: statusMatch ? statusMatch[1] : 'active',
+          result: resultMatch ? resultMatch[1] : 'continue',
+          progress_summary: '',
+          progress_facts: [],
+          reason: 'parsed_fallback (incomplete JSON)',
+        };
+      } else if (resultMatch) {
+        obj = {
+          result: resultMatch[1],
+          matched_rule: null,
+          reason: 'parsed_fallback',
+          next_chapter_id: null,
+          guide_summary: '',
+          guide_facts: [],
+        };
+      } else {
+        throw e;
+      }
+    }
     console.log('[tf_story] 🤖 [chapter_judge] LLM调用 → result=' + obj.result + ' matched_rule=' + (obj.matched_rule||'null'));
     console.log('[tf_story]    reason=' + (obj.reason || '').slice(0, 120));
     if (obj.result === 'guide') {

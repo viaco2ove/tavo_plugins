@@ -640,6 +640,7 @@ async function buildOrchestrationPrompt(userInput) {
     ].filter(Boolean),
     window: [winBefore, winAfter].filter(Boolean).join(' | '),
   };
+  console.log("[game_orchestration] evDigest  event_summary:", JSON.stringify(evDigest));
   const nextEvInfo = nextEv ? { index: eventIdx + 2, name: nextEv.name, kind: /用户发言|用户/.test(nextEv.name || '') ? 'user' : 'scene' } : null;
 
   // turn_state
@@ -1172,7 +1173,7 @@ function game_orchestration(userText,intentResult){
       //世界书关键词匹配到新的进行注入，非长柱的第二次编排时清除注入。
 
       // 2. 阶段一：编排器 → {speaker, role_type, motive, event_summary, evDigest, nextEvInfo, storyStatus, memCtx}
-      console.log("[game_orchestration] event_summary:", event_summary);
+
       const { system: orchSystem, user: orchUser, prompt: orchPrompt, evDigest, nextEvInfo, storyStatus, memCtx, chapterIdx, chapterTitle } = await buildOrchestrationPrompt(userText);
       console.log("[game_orchestration] orchPrompt:", orchPrompt);
       // ===== 全链路编排 TRACE =====

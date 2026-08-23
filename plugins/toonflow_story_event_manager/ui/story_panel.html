@@ -1090,14 +1090,16 @@
             let T = (typeof tavo !== 'undefined') ? tavo : (window.tavo || null);
             let STORY_NS = 'tf_story';
 
-            // 获取带 chat_id 的变量名
+            // 获取带 chat_id 的变量名（挂 window 确保跨作用域可访问）
             var _panelChatId = null;
+            window._panelChatId = null;
 
             async function getPanelChatId() {
                 if (_panelChatId) return _panelChatId;
                 try {
                     var chat = await T.chat.current();
                     _panelChatId = chat && chat.id;
+                    window._panelChatId = _panelChatId;
                 } catch (e) {
                 }
                 return _panelChatId;
@@ -1518,6 +1520,7 @@
                 if (!chat) return null;
                 // 设置当前 chatId
                 _panelChatId = chat.id;
+                window._panelChatId = chat.id;
                 // 静态基准卡（记忆插件解析好的权威参数卡）按名兜底：优先读 tmm_story（含动态数据），回退 tmm_story_static
                 var staticStory = readChatVar(tmmNs('story')) || readChatVar(tmmNs('story_static')) || null;
                 var staticByName = {};
@@ -2708,7 +2711,8 @@
                 try {
                     // 音色：{ "角色名": { mode, prompt, audioRef, enabled } }
                     // chat scope: tf_character_voices; global scope: tf_character_voices_{chat_id}
-                    var vfGlobalKey = _panelChatId ? ('tf_character_voices_' + _panelChatId) : 'tf_character_voices';
+                    var _pcid2 = window._panelChatId || _panelChatId || null;
+                    var vfGlobalKey = _pcid2 ? ('tf_character_voices_' + _pcid2) : 'tf_character_voices';
                     var vfAll = readVarDualScope('tf_character_voices', vfGlobalKey) || {};
                     var voiceEntry = (typeof vfAll === 'object') ? (vfAll[name] || null) : null;
                     var voicePath = voiceEntry ? (voiceEntry.audioRef || '') : '';
@@ -2829,7 +2833,8 @@
                     }
                     // 2. 音色：写入 tf_character_voices（chat scope）+ tf_character_voices_{chat_id}（global scope）
                     if (pendingVoicePath) {
-                        var vfGlobalKey2 = _panelChatId ? ('tf_character_voices_' + _panelChatId) : 'tf_character_voices';
+                        var _pcid = window._panelChatId || _panelChatId || null;
+                        var vfGlobalKey2 = _pcid ? ('tf_character_voices_' + _pcid) : 'tf_character_voices';
                         var vfAll = readVarDualScope('tf_character_voices', vfGlobalKey2) || {};
                         if (typeof vfAll !== 'object') vfAll = {};
                         vfAll[charName] = { mode: 'clone_voice', prompt: '', audioRef: pendingVoicePath, enabled: true, charId: String(charId || '') };
