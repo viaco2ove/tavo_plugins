@@ -389,16 +389,18 @@ async function steam_speaker_writer(type, data){
 
       // 2. 生成唯一 div id
       var msg_div_id = 'tf_steam_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+      var msg_div_waiting_id = 'tf_steam_waiting' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
       // 3. 先 append 占位（蓝色 "..." 等待效果，表示台词生成中）
       var steamAppendOpts = {
         role: 'assistant',
         characterId: steamCharEntry ? steamCharEntry.id : undefined,
         characterName: steamRole,
-        content: '<div id="'+msg_div_id+'" class="tf-waiting">台词生成中</div><span class="tf-waiting-dots-blue">...</span>',
+        content: '<div id="'+msg_div_id+'" class="tf-waiting">台词生成中</div><span  id="'+msg_div_id+'" class="tf-waiting-dots-blue">...</span>',
         hidden: false,
       };
       var steamMsg = null;
       var steamTargetDiv = null;
+      var steamTargetWaitingDiv = null;
       try {
         steamMsg = await tavo.message.append(steamAppendOpts);
         // 等待500毫秒
@@ -406,6 +408,8 @@ async function steam_speaker_writer(type, data){
         console.log("[tf_speaker][steam] 已 append 占位 msgId=" + (steamMsg && steamMsg.id) + " divId=" + msg_div_id);
         // 保存 div 引用（不依赖 getElementById，Tavo markdown 渲染器可能移除 id 属性）
         steamTargetDiv = document.getElementById(msg_div_id);
+        steamTargetWaitingDiv = document.getElementById(msg_div_waiting_id);
+        msg_div_waiting_id
         if (!steamTargetDiv) {
            // 没有就直接报错
            console.error("[tf_speaker][steam] steamTargetDiv not found, msg_div_id:", msg_div_id);
@@ -483,12 +487,16 @@ async function steam_speaker_writer(type, data){
           } else {
             console.warn('[tf_speaker][steam] voice 跳过: charEntry=' + (steamCharEntry ? steamCharEntry.id : 'null') + ' text=' + (speechText ? speechText.length : 0));
           }
+          if (steamTargetWaitingDiv) {
+            steamTargetWaitingDiv.style.display = 'none';
+          }
           // 8. await_user 处理
           if (steamAwaitUser === true) {
             console.log('[tf_speaker][steam] awaitUser=true → 停止编排，等待用户');
             try { tavo.set(ORCH_FLAG, false, 'chat'); } catch(e) {}
             return;
           }
+
           // 9. 触发下一轮 NPC 编排
           if (window.tf_story_emit) window.tf_story_emit('auto_orchestrate', {});
           auto_orchestrate(data)
