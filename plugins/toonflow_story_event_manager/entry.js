@@ -224,6 +224,7 @@ async function tfStoryJudge_checkChapterDone(messageContext) {
       progress.currentPhase = 0;
       progress.currentEvent = 0;
       progress.completedPhases = [];
+      progress.completedEvents = [];
       progress.updatedAt = Date.now();
       setProgress(progress);
       return { done: true, result: 'completed', pendingChapterId: null, message: '故事已完结！' + (progress.sessionFreeMode ? ' 进入自由模式' : ''), llmResult, reason };
@@ -865,6 +866,7 @@ function defaultProgress() {
     currentChapterIndex: 0,
     completedChapters: [],
     completedPhases: [],
+    completedEvents: [],
     failedAttempts: 0,
     sessionFreeMode: false,
     storyCompleted: false,
@@ -976,6 +978,7 @@ async function judgeAndAdvance(messageContext) {
       progress.currentPhase = 0;
       progress.currentEvent = 0;
       progress.completedPhases = [];
+      progress.completedEvents = [];
       progress.updatedAt = Date.now();
       setProgress(progress);
       syncChapterIndex(nextIdx);
@@ -992,6 +995,7 @@ async function judgeAndAdvance(messageContext) {
       progress.currentPhase = 0;
       progress.currentEvent = 0;
       progress.completedPhases = [];
+      progress.completedEvents = [];
       progress.failedAttempts = 0;
       // 重新解析新章节 phases
       const nextCh = chapters[nextIdx];
@@ -1724,6 +1728,7 @@ async function manualChapterAdvance(chapters, idx, progress) {
     progress.currentPhase = 0;
     progress.currentEvent = 0;
     progress.completedPhases = [];
+      progress.completedEvents = [];
     progress.updatedAt = Date.now();
     setProgress(progress);
     syncChapterIndex(nextIdx);
@@ -2058,6 +2063,7 @@ function _isPhaseCompleted(completedPhases, phaseName) {
 
 function _markPhaseCompleted(progress, phaseIdx, phaseName) {
   if (!progress.completedPhases) progress.completedPhases = [];
+      progress.completedEvents = [];
   if (!progress.completedPhases.includes(phaseName)) {
     progress.completedPhases.push(phaseName);
   }
@@ -2092,6 +2098,7 @@ async function applySessionUserEventProgress(chapter, progress, latestMessageCon
   if (!phases.length) return { advanced: false };
 
   if (!progress.completedPhases) progress.completedPhases = [];
+  if (!progress.completedEvents) progress.completedEvents = [];
 
   let pi = Math.max(0, progress.currentPhase || 0);
   const phase = phases[pi];
