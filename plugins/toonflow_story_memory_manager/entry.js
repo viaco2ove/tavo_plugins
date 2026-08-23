@@ -214,101 +214,40 @@ const INTENT_ANALYZER_PROMPT = `
 
 你是一个意图分析专家，专门分析用户在角色扮演游戏中的输入，识别用户意图。
 
-## 上下文
+## 意图类别（仅3个）
 
-- 当前环境：Toonflow Game 角色扮演游戏引擎
-- 用户正在进行沉浸式剧情对话，偶尔会触发任务系统
-- 任务系统（Task）复用 MiniGame 框架，非阻塞模式
+将用户输入分类到以下 3 个意图之一：
 
-## 意图类别
+### 1. memory_update（记忆管理）
+用户想更新角色记忆、物品、技能、状态等。
+关键词：@记忆管理、更新记忆、更新物品、得到奖励、得到了物品、获得技能、更新角色卡、@记忆管理器
+示例：
+- "我得到了一把火焰剑"
+- "@记忆管理 更新物品"
+- "我学会了火球术"
+- "HP恢复满了"
 
-你必须将用户输入分类到以下 5 个意图之一：
-敏感性控制
-"#xxxx: " #xxxx:更容易被识别为意图
-"xxxx "   xxxxx 加空格的形式这部分更容易识别为意图
-### 1. create_task（创建/接受任务）
-**触发条件**：用户表达了接受、承诺、执行某个任务/挑战的意愿
-**关键词**：好、我接受、好的、我来做、我去、没问题、我试试、开始行动、执行任务、接取任务、创建任务
-**示例**：
-- 用户输入："好，我接受这个挑战"
-- 用户输入："没问题，包在我身上"
-- 用户输入："让我去调查一下"
-- 用户输入："创建任务,寻找诡器"
-- 用户输入："创建任务 寻找诡器"
+### 2. send（发送 / 正常对话）
+用户在正常对话、推进剧情，不需要特殊处理。
+示例：
+- "老板，今天生意怎么样"
+- "你好"
+- "这座城市有什么历史"
+- "我看看"
+- "好"
 
-### 2. exit_task（退出/放弃任务）
-**触发条件**：用户明确表示要放弃、退出、终止当前任务
-**关键词**：退出、放弃、不做了、算了、取消任务、终止任务、结束任务、离开任务
-**示例**：
-- 用户输入："算了，我不想做了"
-- 用户输入："退出任务"
-- 用户输入："放弃这个任务"
+### 3. other（其他 / 无法判断）
+无法明确归类时，归为 other。
 
-### 3. query_progress（查询任务进度）
-**触发条件**：用户想查看当前任务的完成情况、进度、状态
-**关键词**：任务进度、完成了多少、有几个、完成了吗、任务状态、进展如何、还差什么
-**示例**：
-- 用户输入："我的任务进度怎么样了"
-- 用户输入："完成了多少了"
-- 用户输入："任务还差什么"
+## 输出格式（严格 JSON，不要其他文字）
 
-### 4. game_action（游戏行为）
-**触发条件**：用户在执行具体的游戏操作（攻击、探索、交易、互动等）
-**关键词**：攻击、探索、交易、使用、打开、关闭、查看背包、对话NPC、战斗、移动
-**示例**：
-- 用户输入："我攻击那只怪物"
-- 用户输入："向老板询问线索"
-- 用户输入："打开背包看看"
+{"intent":"memory_update|send|other","confidence":0.0-1.0,"reasoning":"1句话原因"}
 
-### 5. normal_dialog（正常对话）
-**触发条件**：用户在正常推进剧情对话，不涉及任务系统
-**关键词**：无特定关键词，只要不属于以上 4 类即为 normal_dialog
-**示例**：
-- 用户输入："老板，今天生意怎么样"
-- 用户输入："你好，很高兴认识你"
-- 用户输入："这座城市有什么历史"
-
-### 6.memory_update
-**触发条件**：用户表达了更新记忆、回忆、背景信息的意愿
-**关键词**：更新记忆、记忆管理、得到奖励、更新物品、更新角色卡、@记忆管理器、得到了物品
-**示例**：
-- 用户输入："@记忆管理器,更新角色卡"
-- 用户输入："@记忆管理器"
-- 用户输入："@记忆管理器，我完成了任务，得到了奖励"
-
-## 优先级
-
-exit_task > memory_update > create_task > query_progress > game_action > normal_dialog
-同时匹配多个意图时，按优先级取最高。
-
-## 输出格式
-
-你必须输出一个 JSON 对象，不要输出任何其他内容：
-
-\`\`\`json
-{
-  "intent": "意图标签",
-  "confidence": 0.0-1.0,
-  "reasoning": "简要推理过程（1-2句话）",
-  "params": {}
-}
-\`\`\`
-
-## 置信度标准
-
-| 置信度 | 含义 | 示例 |
-|--------|------|------|
-| 0.95-1.0 | 非常明确，关键词高度匹配 | "退出任务" → exit_task |
-| 0.85-0.94 | 明确，有多个匹配点 | "好，我接受这个挑战，去调查那个山洞" → create_task |
-| 0.70-0.84 | 中等，单个弱匹配 | "让我试试" → create_task |
-| < 0.70 | 不确定，偏向默认 | 无法判断 → normal_dialog |
-
-## 推理规则
-
-1. **优先级顺序**：exit_task > create_task > query_progress > game_action > normal_dialog
-2. **模糊处理**：如果用户输入模糊且置信度低于 0.7，返回 normal_dialog
-3. **上下文感知**：如果当前没有进行中的任务，create_task 意图应该降权
-4. **中文语境**："包在我身上" = create_task，"试试看" = create_task
+## 规则
+- 带 @记忆管理 前缀 → 直接 memory_update
+- 明确提到获得/更新/删除物品/技能/HP/MP → memory_update
+- 其余对话、剧情推进 → send
+- 模糊不清 → other
 `;
 
 // ============================================================================
@@ -1079,31 +1018,25 @@ const DIRECTIVE_PREFIXES = ['@记忆管理', '@记忆管理器', '@事件进度�
 if (typeof window !== 'undefined') {
   window.tmmIntent = {
     DIRECTIVE_PREFIXES: DIRECTIVE_PREFIXES,
-    // 同步 keyword 模式：检查是否以指令前缀开头
+    // 同步 keyword 模式：仅检查 @记忆管理 前缀
     classifyKeyword: function (text) {
       const t = String(text || '').trim();
-      for (let i = 0; i < this.DIRECTIVE_PREFIXES.length; i++) {
-        const p = this.DIRECTIVE_PREFIXES[i];
-        if (t.startsWith(p)) {
-          return {
-            isDirective: true,
-            prefix: p,
-            body: t.slice(p.length).replace(/^[\s:：]+/, ''),
-          };
-        }
+      const m = t.match(/^@(记忆管理|记忆管理器)\s*([\s\S]*)$/);
+      if (m) {
+        return { isDirective: true, intent: 'memory_update', prefix: '@' + m[1], body: m[2] };
       }
-      return { isDirective: false, prefix: null, body: null };
+      return { isDirective: false, intent: null };
     },
-    // 异步 LLM 模式：用 PROMPT_INTENT_ANALYZER + INTENT_LLM_DEFAULTS 独立最小配置
-    // 不和主 LLM 调用（PROMPT_STORY_MEMORY）共享参数；返回 { intent, confidence, reasoning, params }
-    // memory_update 意图 = 该让出给 memory-manager 处理
+    // 异步 LLM 模式：用 INTENT_ANALYZER_PROMPT 独立最小配置
+    // 返回 { intent, confidence, reasoning }
+    // intent: 'memory_update' | 'send' | 'other'
     classifyLLM: async function (text, opts) {
       const t = String(text || '').trim();
-      if (!t) return { intent: 'normal_dialog', confidence: 0, reasoning: 'empty input' };
+      if (!t) return { intent: 'send', confidence: 0, reasoning: 'empty input' };
       const llm = (typeof window !== 'undefined') ? window.tf_llm : null;
       if (!llm || typeof llm.callDirect !== 'function') {
         console.warn('[tmm] classifyLLM: window.tf_llm.callDirect 不可用');
-        return { intent: 'normal_dialog', confidence: 0, reasoning: 'tf_llm not available' };
+        return { intent: 'send', confidence: 0, reasoning: 'tf_llm not available' };
       }
       const cfg = getIntentLlmConfig();
       const prompt = INTENT_ANALYZER_PROMPT
@@ -1112,7 +1045,6 @@ if (typeof window !== 'undefined') {
         + '\n\n## 你的输出（仅 JSON，不要其他文字）';
       let raw;
       try {
-        // timeout 15s（独立 LLM 调用不应太久）
         raw = await Promise.race([
           llm.callDirect(prompt, {
             maxCompletionTokens: cfg.maxTokens,
@@ -1124,9 +1056,8 @@ if (typeof window !== 'undefined') {
         ]);
       } catch (e) {
         console.warn('[tmm] classifyLLM call failed', e && e.message);
-        return { intent: 'normal_dialog', confidence: 0, reasoning: 'llm call failed: ' + (e && e.message) };
+        return { intent: 'send', confidence: 0, reasoning: 'llm call failed: ' + (e && e.message) };
       }
-      // 解析 JSON：先剥 ```json 围栏
       const s = String(raw || '').trim();
       const fence = s.match(/```(?:json)?\s*([\s\S]*?)```/);
       const jsonText = fence ? fence[1].trim() : s;
@@ -1134,7 +1065,7 @@ if (typeof window !== 'undefined') {
       try { parsed = JSON.parse(jsonText); } catch (e) {}
       if (!parsed || !parsed.intent) {
         console.warn('[tmm] classifyLLM parse failed, raw=' + s.slice(0, 200));
-        return { intent: 'normal_dialog', confidence: 0, reasoning: 'parse failed' };
+        return { intent: 'send', confidence: 0, reasoning: 'parse failed' };
       }
       console.log('[tmm] classifyLLM: intent=' + parsed.intent + ' confidence=' + parsed.confidence
         + ' (text=' + t.slice(0, 40) + ')');
@@ -1142,26 +1073,11 @@ if (typeof window !== 'undefined') {
         intent: parsed.intent,
         confidence: Number(parsed.confidence) || 0,
         reasoning: parsed.reasoning || '',
-        params: parsed.params || {},
       };
     },
-    // 暴露意图模式读取（跟 memory-manager 内部 getIntentMode 共享同一份配置 tf_story.edit.intentMode）
+    // 暴露意图模式读取（与内部 getIntentMode 共享）
     getMode: function () {
-      try {
-        let edit = readChatVar(storyNs('edit'));
-        if (!edit || typeof edit !== 'object') {
-          try {
-            let g = tavo.get(storyNsGlobal('edit'), 'global');
-            let guard = 0;
-            while (g && typeof g === 'object' && g.found !== undefined && 'value' in g && guard < 5) { g = g.value; guard++; }
-            if (g && typeof g === 'object') edit = g;
-          } catch (e) {}
-        }
-        edit = edit || {};
-        const m = edit.intentMode;
-        if (m === 'keyword' || m === 'model_api' || m === 'auto') return m;
-        return 'auto';
-      } catch (e) { return 'auto'; }
+      return getIntentMode();
     },
     // 外部触发记忆刷新（供 mcs 等插件调用，对齐 Toonflow triggerMemoryAgent=true 语义）
     // triggerMemoryAgent=true 时编排器认为当前回合记忆变化较大，需要立即刷新参数卡
@@ -1177,111 +1093,34 @@ if (typeof window !== 'undefined') {
   console.log('[tmm] intent shared: ' + DIRECTIVE_PREFIXES.length + ' prefixes registered, window.tmmIntent=function');
 }
 
-// 拦截 @记忆管理 / @记忆管理器 直接指令：先取消原发送（不受 5 秒限制），再运行记忆代理。
-// 这是「角色关键信息 / 当前行为 / @记忆管理 指令」能真正生效的关键钩子。
-// 流程（对齐 toonflow PlayerMemoryDirectiveService 调用方式）：
-//   1. 匹配 @记忆管理/@记忆管理器 前缀；不是 → return
-//   2. cancel tavo 原生流程
-//   3. append 用户消息（hidden=true 不污染对话显示，触发 tavo UI 清输入框）
-//   4. 按 mode 分发：
-//      - keyword  : 严格确定性指令（加 skill/装备/物品/HP）— applyKeywordDirective
-//      - model_api: 直接调 LLM（runMemoryAgent + PROMPT_STORY_MEMORY）
-//      - auto     : 先 keyword 试，识别不出 fallback 到 LLM
-//   5. 不在 keyword 模式写 addedOther：自然语言描述必须走 LLM
+// 拦截 @记忆管理 / @记忆管理器 前缀：cancel 原生流程 → 运行记忆代理
+// keyword 层：只做前缀匹配。LLM 层在 multi_character_stage 的 classifyLLM 里。
 _safeOn('input:beforeSend', async (event) => {
   const cfg = getConfig();
   if (!cfg.enabled) return;
   const text = String((event && event.text) || '').trim();
   const m = text.match(/^@(记忆管理|记忆管理器)\s*([\s\S]*)$/);
   if (!m) return;
-  // 0) 立即同步清空输入框（优先于任何 async 操作，防止用户看到"发送中"还有文字）
-  (function clearInputNow() {
-    try {
-      if (typeof tavo.input?.set === 'function') tavo.input.set('')
-      const candidates = document.querySelectorAll('textarea, [contenteditable="true"], input[type="text"]');
-      let cleared = false;
-      candidates.forEach(el => {
-        if (el.offsetParent !== null && !el.readOnly) {
-          if (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA') { el.value = ''; cleared = true; }
-          else { el.innerText = ''; el.textContent = ''; cleared = true; }
-          el.dispatchEvent(new Event('input', { bubbles: true }));
-          el.dispatchEvent(new Event('change', { bubbles: true }));
-        }
-      });
-      if (cleared) console.log('[tmm] input cleared (sync)');
-    } catch (e) { /* ignore */ }
-  })();
-  // 1) cancel tavo 原生流程
-  console.log('[tmm] input:beforeSend entered, text=' + JSON.stringify(text.slice(0, 60)) + ', m=' + (m ? 'matched' : 'no'));
+  console.log('[tmm] @记忆管理 命中: ' + text.slice(0, 60));
+  // 立即清空输入框
+  try {
+    if (typeof tavo.input?.set === 'function') tavo.input.set('');
+    document.querySelectorAll('textarea, [contenteditable="true"], input[type="text"]').forEach(el => {
+      if (el.offsetParent !== null && !el.readOnly) {
+        el.value = ''; el.innerText = ''; el.textContent = '';
+        el.dispatchEvent(new Event('input', { bubbles: true }));
+        el.dispatchEvent(new Event('change', { bubbles: true }));
+      }
+    });
+  } catch (e) {}
+  // cancel tavo 原生流程
   try { if (event && typeof event.cancel === 'function') event.cancel(); } catch (e) {}
-  // 2) append 用户消息（hidden 默认 false：触发 tavo UI 清空输入框 + 消息正常显示）
-  //    跟 toonflow 行为一致：@记忆管理 指令也作为 user message 进聊天历史
+  // append 用户消息（进聊天历史）
   try {
     await tavo.message.append({ role: 'user', content: text });
-    console.log('[tmm] user message appended');
-  } catch (e) {
-    console.warn('[tmm] append user directive failed', e && e.message);
-  }
-  const rawText = '@记忆管理 ' + (m[2] || '').trim();
-  console.log('[tmm] ┌─── @记忆管理 指令 TRACE ─────────────────────');
-  console.log('[tmm] │ 📝 原始输入: ' + JSON.stringify(rawText));
-  const mode = getIntentMode();
-  console.log('[tmm] │ 🎯 意图模式: ' + mode);
-  const state = readChatVar(NS) || defaultState();
-  console.log('[tmm] │ 🧙 player状态: level=' + ((state.cards&&state.cards.player&&state.cards.player.level)||'?')
-    + ' hp=' + ((state.cards&&state.cards.player&&state.cards.player.hp)||'?')
-    + ' items=' + ((state.cards&&state.cards.player&&state.cards.player.items)||[]).length);
-  console.log('[tmm] └─────────────────────────────────────────────');
-
-  if (mode === 'keyword') {
-    // 严格 keyword 模式：只处理"加技能/物品/装备/HP"等确定性指令；识别不出报错
-    const result = applyKeywordDirective(state, rawText);
-    if (result && result.applied) {
-      tavo.set(NS, state, 'chat');
-      syncStoryDynamicCards();
-      const parts = [];
-      if (result.addedSkills.length) parts.push('技能+' + result.addedSkills.length);
-      if (result.addedItems.length) parts.push('物品+' + result.addedItems.length);
-      if (result.addedEquipment.length) parts.push('装备+' + result.addedEquipment.length);
-      tavo.utils.toast('@记忆管理 已更新：' + (parts.join(' · ') || '状态'));
-    } else {
-      runMemoryAgent(m[2] || '');
-      // tavo.utils.toast('@记忆管理（keyword 模式）：未识别出明确指令；如要自然语言语义请设 intentMode=model_api/auto');
-    }
-
-    return;
-  }
-
-  if (mode === 'auto') {
-    // auto 模式：先 keyword；识别不出时自动 fallback 到 LLM
-    const result = applyKeywordDirective(state, rawText);
-    if (result && result.applied) {
-      tavo.set(NS, state, 'chat');
-      syncStoryDynamicCards();
-      const parts = [];
-      if (result.addedSkills.length) parts.push('技能+' + result.addedSkills.length);
-      if (result.addedItems.length) parts.push('物品+' + result.addedItems.length);
-      if (result.addedEquipment.length) parts.push('装备+' + result.addedEquipment.length);
-      tavo.utils.toast('@记忆管理 已更新：' + (parts.join(' · ') || '状态'));
-      return;
-    }
-    // 关键词未识别（hasExplicit=false），fallback 到 LLM（runMemoryAgent + PROMPT_STORY_MEMORY）
-    try {
-      state._pendingDirective = rawText;
-      tavo.set(NS, state, 'chat');
-    } catch (e) {}
-    tavo.utils.toast('@记忆管理：关键词未识别，自动转 LLM 处理（auto 模式）…');
-    runMemoryAgent(m[2] || '')
-      .catch(err => { console.warn('[tmm] directive failed', err); tavo.utils.toast('@记忆管理 执行异常'); });
-    return;
-  }
-
-  // model_api 模式：直接调用 AI 记忆代理
-  try {
-    state._pendingDirective = rawText;
-    tavo.set(NS, state, 'chat');
   } catch (e) {}
-  tavo.utils.toast('@记忆管理 指令处理中…（model_api 模式）');
+  // 运行记忆代理
+  tavo.utils.toast('@记忆管理 指令处理中…');
   runMemoryAgent(m[2] || '')
     .catch(err => { console.warn('[tmm] directive failed', err); tavo.utils.toast('@记忆管理 执行异常'); });
 });
@@ -1412,10 +1251,9 @@ function applyKeywordDirective(state, rawText) {
 
 // ============================================================================
 // 意图识别模式：从 tf_story.edit.intentMode 读取
-// 三个模式：
-//   - 'auto'     : keyword 优先；识别不出时自动 fallback 到 LLM（默认，兼容老行为）
-//   - 'keyword'  : 严格 keyword；只处理"加技能/物品/装备/HP"等确定性指令；识别不出报错
-//   - 'model_api': 直接走 LLM，让模型理解自然语言指令
+// 两个模式：
+//   - 'keyword' : 仅检测 @记忆管理 前缀（同步，无 LLM 调用）
+//   - 'llm'     : 调 LLM 将用户输入分为 memory_update / send / other（默认）
 // ============================================================================
 
 function getIntentMode() {
@@ -1431,9 +1269,9 @@ function getIntentMode() {
     }
     edit = edit || {};
     const m = edit.intentMode;
-    if (m === 'keyword' || m === 'model_api' || m === 'auto') return m;
-    return 'auto';
-  } catch (e) { return 'auto'; }
+    if (m === 'keyword' || m === 'llm') return m;
+    return 'llm';
+  } catch (e) { return 'llm'; }
 }
 
 _safeOnSide('tmm-refresh', async () => {

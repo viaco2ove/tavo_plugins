@@ -221,6 +221,7 @@ async function tfStoryJudge_checkChapterDone(messageContext) {
       progress.currentChapterIndex = nextIdx;
       progress.currentPhase = 0;
       progress.currentEvent = 0;
+      progress.completedPhases = [];
       progress.updatedAt = Date.now();
       setProgress(progress);
       return { done: true, result: 'completed', pendingChapterId: null, message: '故事已完结！' + (progress.sessionFreeMode ? ' 进入自由模式' : ''), llmResult, reason };
@@ -860,6 +861,7 @@ function defaultProgress() {
   return {
     currentChapterIndex: 0,
     completedChapters: [],
+    completedPhases: [],
     failedAttempts: 0,
     sessionFreeMode: false,
     storyCompleted: false,
@@ -970,6 +972,7 @@ async function judgeAndAdvance(messageContext) {
       progress.currentChapterIndex = nextIdx;
       progress.currentPhase = 0;
       progress.currentEvent = 0;
+      progress.completedPhases = [];
       progress.updatedAt = Date.now();
       setProgress(progress);
       syncChapterIndex(nextIdx);
@@ -985,6 +988,7 @@ async function judgeAndAdvance(messageContext) {
       progress.currentChapterIndex = nextIdx;
       progress.currentPhase = 0;
       progress.currentEvent = 0;
+      progress.completedPhases = [];
       progress.failedAttempts = 0;
       // 重新解析新章节 phases
       const nextCh = chapters[nextIdx];
@@ -1725,6 +1729,7 @@ async function manualChapterAdvance(chapters, idx, progress) {
     progress.currentChapterIndex = nextIdx;
     progress.currentPhase = 0;
     progress.currentEvent = 0;
+    progress.completedPhases = [];
     progress.updatedAt = Date.now();
     setProgress(progress);
     syncChapterIndex(nextIdx);
@@ -2009,99 +2014,135 @@ async function evaluateEventProgressByAi(chapter, progress, latestMessageContent
   }
 }
 
-// LLM 事件进度应用：替代 advanceEventProgress（对齐官方 applySessionUserEventProgress）
-// 返回 { advanced: true } 表示推进了，{ advanced: false } 表示未推进
+// =========================================================================
+// 事件进度推进（对齐 toonflow-game ChapterProgressEngine.ts）
+//
+// 核心逻辑：
+// 1. 跟踪已完成的 phase（progress.completedPhases 数组）
+// 2. 用户发言节点：用户说话即完成，自动跳到下一个 scene phase
+// 3. scene 节点：AI 判定 ended=true 时标记完成，推进到下一个 phase
+// 4. 跳过"非事件"phase
+// =========================================================================
+
+function _isPhaseCompleted(completedPhases, phaseName) {
+  return (completedPhases || []).includes(phaseName);
+}
+
+function _markPhaseCompleted(progress, phaseName) {
+  if (!progress.completedPhases) progress.completedPhases = [];
+  if (!progress.completedPhases.includes(phaseName)) {
+    progress.completedPhases.push(phaseName);
+  }
+}
+
+// 找下一个未完成的 phase（跳过"非事件"和已完成的）
+function _resolveNextPhase(phases, completedPhases, currentIndex) {
+  for (let i = currentIndex + 1; i < phases.length; i++) {
+    const p = phases[i];
+    const name = p.name || '';
+    // 跳过"非事件"段
+    if (/^非事件/.test(name)) continue;
+    // 跳过已完成的
+    if (_isPhaseCompleted(completedPhases, name)) continue;
+    return { phase: p, index: i };
+  }
+  return { phase: null, index: -1 };
+}
+
+// 判断当前 phase 是否为用户发言节点
+function _isUserPhase(phase) {
+  if (!phase || !phase.events) return false;
+  return phase.events.some(e => /用户发言/.test(e.name || ''));
+}
+
+// 对齐 toonflow applyAiEventProgressResolution
+// 返回 { advanced: boolean, enteredUserPhase?: boolean }
 async function applySessionUserEventProgress(chapter, progress, latestMessageContent, latestMessageRole, precomputedResolution) {
   const phases = progress.phases || [];
   if (!phases.length) return { advanced: false };
 
+  // 确保 completedPhases 数组存在
+  if (!progress.completedPhases) progress.completedPhases = [];
+
   let pi = Math.max(0, progress.currentPhase || 0);
   const phase = phases[pi];
-  const events = phase?.events || [];
-  let ei = Math.max(0, progress.currentEvent || 0);
-  const curEv = events[ei] || {};
-  const isUserPhase = /用户发言/.test(curEv.name || '');
+  if (!phase) return { advanced: false };
+
+  const phaseName = phase.name || '';
   const trimmed = (latestMessageContent || '').trim();
 
-  // user phase：用户发言即完成节点，规则推进，不调 AI
-  if (isUserPhase) {
-    console.log('[tf_story][event_progress] user phase，规则推进 ei=' + ei + ' -> ' + (ei + 1));
-    ei += 1;
-    // 消费后若是用户发言节点，继续跳过
-    while (ei < events.length && /用户发言/.test(events[ei].name || '')) ei += 1;
-    if (ei >= events.length) {
-      // 本 phase 完成
-      let np = pi + 1;
-      while (np < phases.length && /^非事件/.test(phases[np].name || '')) np++;
-      progress.currentPhase = np;
+  // ---- 用户发言节点：用户说话即完成，规则推进 ----
+  if (_isUserPhase(phase)) {
+    console.log('[tf_story][event_progress] 用户发言节点完成，标记 phase[' + pi + ']="' + phaseName + '" 完成');
+    _markPhaseCompleted(progress, phaseName);
+
+    // 找下一个 scene phase
+    const next = _resolveNextPhase(phases, progress.completedPhases, pi);
+    if (next.phase) {
+      progress.currentPhase = next.index;
       progress.currentEvent = 0;
-      const nEvents = (phases[np] && phases[np].events) || [];
-      let ne = 0;
-      while (ne < nEvents.length && /用户发言/.test(nEvents[ne].name || '')) ne++;
-      progress.currentEvent = ne;
+      console.log('[tf_story][event_progress] 推进到 phase[' + next.index + ']="' + (next.phase.name || '') + '"');
     } else {
-      progress.currentEvent = ei;
+      // 所有 phase 已完成
+      progress.currentPhase = phases.length;
+      progress.currentEvent = 0;
+      console.log('[tf_story][event_progress] 所有 phase 已完成');
     }
     progress.updatedAt = Date.now();
-    return { advanced: true };
+    return { advanced: true, enteredUserPhase: false };
   }
 
-  // 非 user phase：仅当 "." 或 forceAi 时才调 LLM
-  const shouldSkipAi = trimmed !== '.' && !precomputedResolution;
-  if (shouldSkipAi) {
-    console.log('[tf_story][event_progress] 非 user phase + 非 "." 快路径，事件不推进');
-    return { advanced: false };
+  // ---- scene 节点：需要 AI 判断是否完成 ----
+  // "." 快速跳过（对齐 toonflow "." 跳过指令）
+  if (trimmed === '.') {
+    console.log('[tf_story][event_progress] "." 跳过，标记 phase[' + pi + ']="' + phaseName + '" 完成');
+    _markPhaseCompleted(progress, phaseName);
+
+    const next = _resolveNextPhase(phases, progress.completedPhases, pi);
+    if (next.phase) {
+      progress.currentPhase = next.index;
+      progress.currentEvent = 0;
+      const enteredUser = _isUserPhase(next.phase);
+      console.log('[tf_story][event_progress] 推进到 phase[' + next.index + ']="' + (next.phase.name || '') + '"' + (enteredUser ? ' (等待用户)' : ''));
+      progress.updatedAt = Date.now();
+      return { advanced: true, enteredUserPhase: enteredUser };
+    } else {
+      progress.currentPhase = phases.length;
+      progress.currentEvent = 0;
+      progress.updatedAt = Date.now();
+      return { advanced: true, enteredUserPhase: false };
+    }
   }
 
-  console.log('[tf_story][event_progress] llm 事件进度开始');
-
-  // 调用 LLM 判断
+  // 调用 LLM 判断当前事件是否结束
   const resolution = precomputedResolution || await evaluateEventProgressByAi(chapter, progress, latestMessageContent, latestMessageRole);
   if (!resolution) {
-    // LLM 不可用，回退到 "." 跳过规则
-    if (trimmed === '.') {
-      ei += 1;
-      while (ei < events.length && /用户发言/.test(events[ei].name || '')) ei += 1;
-      if (ei >= events.length) {
-        let np = pi + 1;
-        while (np < phases.length && /^非事件/.test(phases[np].name || '')) np++;
-        progress.currentPhase = np;
-        progress.currentEvent = 0;
-        const nEvents = (phases[np] && phases[np].events) || [];
-        let ne = 0;
-        while (ne < nEvents.length && /用户发言/.test(nEvents[ne].name || '')) ne++;
-        progress.currentEvent = ne;
-      } else {
-        progress.currentEvent = ei;
-      }
-      progress.updatedAt = Date.now();
-      return { advanced: true };
-    }
+    console.log('[tf_story][event_progress] LLM 不可用，事件不推进');
     return { advanced: false };
   }
 
-  // LLM 判定 ended=true → 推进
   if (resolution.ended) {
-    console.log('[tf_story][event_progress] LLM ended=true，推进: ei=' + ei + ' -> ' + (ei + 1) + ' reason=' + (resolution.reason || '').slice(0, 80));
-    ei += 1;
-    while (ei < events.length && /用户发言/.test(events[ei].name || '')) ei += 1;
-    if (ei >= events.length) {
-      let np = pi + 1;
-      while (np < phases.length && /^非事件/.test(phases[np].name || '')) np++;
-      progress.currentPhase = np;
+    console.log('[tf_story][event_progress] AI 判定 ended=true: ' + (resolution.reason || '').slice(0, 80));
+    _markPhaseCompleted(progress, phaseName);
+
+    const next = _resolveNextPhase(phases, progress.completedPhases, pi);
+    if (next.phase) {
+      progress.currentPhase = next.index;
       progress.currentEvent = 0;
-      const nEvents = (phases[np] && phases[np].events) || [];
-      let ne = 0;
-      while (ne < nEvents.length && /用户发言/.test(nEvents[ne].name || '')) ne++;
-      progress.currentEvent = ne;
+      const enteredUser = _isUserPhase(next.phase);
+      console.log('[tf_story][event_progress] 推进到 phase[' + next.index + ']="' + (next.phase.name || '') + '"' + (enteredUser ? ' (等待用户)' : ''));
+      progress.updatedAt = Date.now();
+      return { advanced: true, enteredUserPhase: enteredUser };
     } else {
-      progress.currentEvent = ei;
+      progress.currentPhase = phases.length;
+      progress.currentEvent = 0;
+      console.log('[tf_story][event_progress] 所有 phase 已完成');
+      progress.updatedAt = Date.now();
+      return { advanced: true, enteredUserPhase: false };
     }
-    progress.updatedAt = Date.now();
-    return { advanced: true };
   }
 
-  console.log('[tf_story][event_progress] LLM ended=false，事件未推进: ' + (resolution.reason || '').slice(0, 80));
+  console.log('[tf_story][event_progress] AI 判定 ended=false，事件不推进: ' + (resolution.reason || '').slice(0, 80));
   return { advanced: false };
 }
 

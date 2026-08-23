@@ -251,42 +251,87 @@ function tf_voice_funs () {
 
 // ---------- 平台 API 调用 ----------
 
-// xiaomimimo: 克隆音色
-// 文档对齐 toonflow-game: POST /v1/audio/voice/clone 模型 mimo-v2.5-tts-voiceclone
-async function xiaomiCloneVoice(apiKey, audioUrl) {
-  vl('xiaomiCloneVoice: mimo-v2.5-tts-voiceclone');
-  const resp = await fetch('https://api.xiaomimimo.com/v1/audio/voice/clone', {
+// xiaomimimo: 无状态克隆+合成（单次请求，对齐 toonflow-game xiaomiMimoVoice.ts）
+// mimo-v2.5-tts-voiceclone: 参考音频以 base64 data URL 传入 audio.voice，直接返回合成音频
+// 无 voiceId 概念，每次请求都带完整参考音频
+async function xiaomiCloneAndTts(apiKey, text, referenceAudioBase64, mime) {
+  const audioData = 'data:' + (mime || 'audio/mpeg') + ';base64,' + referenceAudioBase64;
+  vl('xiaomiCloneAndTts: model=mimo-v2.5-tts-voiceclone text=' + text.slice(0, 30));
+  const resp = await fetch('https://api.xiaomimimo.com/v1/chat/completions', {
     method: 'POST',
     headers: {
-      'Authorization': 'Bearer ' + apiKey,
+      'api-key': apiKey,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
       model: 'mimo-v2.5-tts-voiceclone',
-      audio_url: audioUrl,
+      messages: [
+        { role: 'user', content: '' },
+        { role: 'assistant', content: text },
+      ],
+      audio: {
+        format: 'mp3',
+        voice: audioData,
+      },
     }),
   });
-  if (!resp.ok) throw new Error('xiaomimimo clone HTTP ' + resp.status);
+  if (!resp.ok) throw new Error('xiaomimimo clone+tts HTTP ' + resp.status);
   const data = await resp.json();
-  return data.voice_id || data.voiceId || data.id;
+  // 从 choices[0].message.audio.data 取 base64 音频
+  const audioBase64 = (data.choices && data.choices[0] && data.choices[0].message
+    && data.choices[0].message.audio && data.choices[0].message.audio.data) || '';
+  if (!audioBase64) throw new Error('xiaomimimo 未返回音频数据');
+  // 解码 base64 为 ArrayBuffer
+  const raw = audioBase64.includes(',') ? audioBase64.split(',').pop() : audioBase64;
+  const binaryStr = atob(raw);
+  const bytes = new Uint8Array(binaryStr.length);
+  for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
+  return bytes.buffer;
 }
 
-// xiaomimimo: 合成语音
-async function xiaomiTts(apiKey, voiceId, text) {
-  const resp = await fetch('https://api.xiaomimimo.com/v1/audio/speech', {
+// xiaomimimo: 纯 TTS（预置音色，无克隆）
+async function xiaomiTts(apiKey, voice, text) {
+  vl('xiaomiTts: model=mimo-v2.5-tts voice=' + voice);
+  const resp = await fetch('https://api.xiaomimimo.com/v1/chat/completions', {
     method: 'POST',
     headers: {
-      'Authorization': 'Bearer ' + apiKey,
+      'api-key': apiKey,
       'Content-Type': 'application/json',
     },
     body: JSON.stringify({
       model: 'mimo-v2.5-tts',
-      voice: voiceId,
-      input: text,
+      messages: [
+        { role: 'user', content: '' },
+        { role: 'assistant', content: text },
+      ],
+      audio: {
+        format: 'mp3',
+        voice: voice || 'mimo_default',
+      },
     }),
   });
   if (!resp.ok) throw new Error('xiaomimimo tts HTTP ' + resp.status);
-  return await resp.arrayBuffer();
+  const data = await resp.json();
+  const audioBase64 = (data.choices && data.choices[0] && data.choices[0].message
+    && data.choices[0].message.audio && data.choices[0].message.audio.data) || '';
+  if (!audioBase64) throw new Error('xiaomimimo tts 未返回音频数据');
+  const raw = audioBase64.includes(',') ? audioBase64.split(',').pop() : audioBase64;
+  const binaryStr = atob(raw);
+  const bytes = new Uint8Array(binaryStr.length);
+  for (let i = 0; i < binaryStr.length; i++) bytes[i] = binaryStr.charCodeAt(i);
+  return bytes.buffer;
+}
+
+// xiaomimimo: fetch audio URL → base64（供克隆用）
+async function fetchAudioAsBase64(audioUrl) {
+  const resp = await fetch(audioUrl);
+  if (!resp.ok) throw new Error('fetch audio failed HTTP ' + resp.status);
+  const buf = await resp.arrayBuffer();
+  let bytes = new Uint8Array(buf);
+  // 二进制转 base64
+  let binary = '';
+  for (let i = 0; i < bytes.length; i++) binary += String.fromCharCode(bytes[i]);
+  return btoa(binary);
 }
 
 // aliyun: 注册音色（voice-enrollment）
@@ -328,6 +373,19 @@ async function aliyunTts(apiKey, voiceId, text) {
   return data.output.audio.url;
 }
 
+// 从 files/global/xxx.wav 或 files/chat/xxx.wav 提取纯文件名和 scope
+// tavo.file.url() 只接受纯文件名 + scope
+function extractFileRef(path) {
+  if (!path) return { name: '', scope: 'global' };
+  const s = String(path);
+  const mGlobal = s.match(/files\/global\/(.+)$/);
+  if (mGlobal) return { name: mGlobal[1], scope: 'global' };
+  const mChat = s.match(/files\/chat\/(.+)$/);
+  if (mChat) return { name: mChat[1], scope: 'chat' };
+  // 已经是纯文件名，默认 global
+  return { name: s.replace(/^.*[\\/]/, ''), scope: 'global' };
+}
+
 // ---------- 逐句拆分（对齐 toonflow splitSpeechSegments） ----------
 // 按句号/感叹号/问号拆分，保留标点，保留动作描写小括号内的完整内容（不打断）
 function splitSpeechSegments(text) {
@@ -358,41 +416,66 @@ async function playTtsForSegments(charId, segments) {
   vl('[TTS] platform=' + platform + ' apiKey=' + (apiKey ? 'configured' : 'MISSING!'));
   if (!apiKey) { vw('未配置 API Key，跳过语音'); return; }
 
-  // 每次都先查音色文件——voiceId 必须由"该角色的音色文件"克隆出来
-  // 不能直接复用缓存的 voiceId（可能在错误上下文里被污染）
+  // 查音色文件
   const vf = tf_voice_funs().getVoiceFile(charId);
   vl('[TTS] voiceFile=' + JSON.stringify(vf));
   if (!vf || !vf.file) {
     vw('[TTS] 角色 ' + charId + ' 无音色文件，跳过');
     return;
   }
-  const audioUrl = tavo.file.url(vf.file, 'chat');
-  vl('[TTS] audioUrl=' + audioUrl);
+  const fileRef = extractFileRef(vf.file);
+  const fileUrl = tavo.file.url(fileRef.name, fileRef.scope);
+  vl('[TTS] fileUrl=' + fileUrl + ' fileName=' + fileRef.name + ' scope=' + fileRef.scope);
 
-  let voiceId = null;
-  const cached = tf_voice_funs().getVoiceId(charId);
-  if (cached && cached.platform === platform) {
-    voiceId = cached.voiceId;
-    vl('[TTS] voiceId from cache=' + voiceId);
-  } else {
+  if (platform === 'xiaomimimo') {
+    // xiaomimimo 无状态克隆：每次请求都带参考音频 base64
+    let referenceBase64 = null;
     try {
-      voiceId = (platform === 'aliyun')
-        ? await aliyunEnrollVoice(apiKey, audioUrl, 'tf_' + charId)
-        : await xiaomiCloneVoice(apiKey, audioUrl);
-      vl('[TTS] cloned voiceId=' + voiceId);
-      if (voiceId) {
-        tf_voice_funs().cacheVoiceId(charId, { voiceId: voiceId, platform: platform });
-      }
-    } catch(e) {
-      vw('[TTS] clone failed: ' + e.message);
-      throw e;
+      referenceBase64 = await fetchAudioAsBase64(fileUrl);
+    } catch (e) {
+      vw('[TTS] 获取参考音频 base64 失败: ' + e.message);
+      return;
     }
-  }
-
-  for (let i = 0; i < segments.length; i++) {
-    const segText = segments[i].slice(0, 200);
-    try {
-      if (platform === 'aliyun') {
+    // 逐句合成播放
+    for (let i = 0; i < segments.length; i++) {
+      const segText = segments[i].slice(0, 200);
+      try {
+        const buf = await xiaomiCloneAndTts(apiKey, segText, referenceBase64, 'audio/mpeg');
+        const blob = new Blob([buf], { type: 'audio/mpeg' });
+        const url = URL.createObjectURL(blob);
+        const audio = new Audio(url);
+        audio.onended = () => URL.revokeObjectURL(url);
+        await new Promise((resolve, reject) => {
+          audio.onended = resolve;
+          audio.onerror = reject;
+          audio.play().catch(reject);
+        });
+        vl('[逐句] 第' + (i + 1) + '/' + segments.length + '句播放完毕: ' + segText.slice(0, 20));
+      } catch (e) {
+        vw('[逐句] 第' + (i + 1) + '句 TTS 失败: ' + e.message);
+        break;
+      }
+    }
+  } else if (platform === 'aliyun') {
+    // aliyun: 有 voiceId 概念，先 enroll 再 TTS
+    let voiceId = null;
+    const cached = tf_voice_funs().getVoiceId(charId);
+    if (cached && cached.platform === 'aliyun') {
+      voiceId = cached.voiceId;
+    } else {
+      try {
+        voiceId = await aliyunEnrollVoice(apiKey, fileUrl, 'tf_' + charId);
+        if (voiceId) {
+          tf_voice_funs().cacheVoiceId(charId, { voiceId: voiceId, platform: 'aliyun' });
+        }
+      } catch (e) {
+        vw('[TTS] aliyun enroll 失败: ' + e.message);
+        throw e;
+      }
+    }
+    for (let i = 0; i < segments.length; i++) {
+      const segText = segments[i].slice(0, 200);
+      try {
         const audioUrl = await aliyunTts(apiKey, voiceId, segText);
         const audio = new Audio(audioUrl);
         await new Promise((resolve, reject) => {
@@ -400,23 +483,12 @@ async function playTtsForSegments(charId, segments) {
           audio.onerror = reject;
           audio.play();
         });
-      } else {
-        const buf = await xiaomiTts(apiKey, voiceId, segText);
-        const blob = new Blob([buf], { type: 'audio/mpeg' });
-        const url = URL.createObjectURL(blob);
-        const audio = new Audio(url);
-        audio.onended = () => URL.revokeObjectURL(url);
-        await new Promise((resolve, reject) => {
-          audio.onended = () => { resolve(); };
-          audio.onerror = (e) => { reject(e); };
-          audio.play().catch(reject);
-        });
+        vl('[逐句] 第' + (i + 1) + '/' + segments.length + '句播放完毕: ' + segText.slice(0, 20));
+      } catch (e) {
+        vw('[逐句] 第' + (i + 1) + '句 TTS 失败: ' + e.message);
+        tf_voice_funs().invalidateVoiceId(charId);
+        break;
       }
-      vl('[逐句] 第' + (i + 1) + '/' + segments.length + '句播放完毕: ' + segText.slice(0, 20));
-    } catch (e) {
-      vw('[逐句] 第' + (i + 1) + '句 TTS 失败: ' + e.message);
-      tf_voice_funs().invalidateVoiceId(charId);
-      break;
     }
   }
   vl('[逐句] 全部播放完毕 charId=' + charId);
@@ -531,36 +603,38 @@ window.tf_voice_stream = {
       const apiKey = cfg('voice_platform_apikey', '');
       if (!apiKey) return;
 
-      let voiceId = tf_voice_funs().getVoiceId(charId);
-      if (!voiceId) {
-        const vf = tf_voice_funs().getVoiceFile(charId);
-        if (!vf || !vf.file) return;
-        const audioUrl = tavo.file.url(vf.file, 'chat');
-        voiceId = (platform === 'aliyun')
-          ? await aliyunEnrollVoice(apiKey, audioUrl, 'tf_' + charId)
-          : await xiaomiCloneVoice(apiKey, audioUrl);
-        tf_voice_funs().cacheVoiceId(charId, voiceId);
-      }
-
+      const vf = tf_voice_funs().getVoiceFile(charId);
+      if (!vf || !vf.file) return;
       const segText = text.slice(0, 200);
-      if (platform === 'aliyun') {
-        const audioUrl = await aliyunTts(apiKey, voiceId, segText);
-        const audio = new Audio(audioUrl);
-        await new Promise((resolve, reject) => {
-          audio.onended = resolve;
-          audio.onerror = reject;
-          audio.play();
-        });
-      } else {
-        const buf = await xiaomiTts(apiKey, voiceId, segText);
+
+      if (platform === 'xiaomimimo') {
+        const fr = extractFileRef(vf.file);
+        const fileUrl = tavo.file.url(fr.name, fr.scope);
+        const referenceBase64 = await fetchAudioAsBase64(fileUrl);
+        const buf = await xiaomiCloneAndTts(apiKey, segText, referenceBase64, 'audio/mpeg');
         const blob = new Blob([buf], { type: 'audio/mpeg' });
         const url = URL.createObjectURL(blob);
         const audio = new Audio(url);
         audio.onended = () => URL.revokeObjectURL(url);
         await new Promise((resolve, reject) => {
-          audio.onended = () => { resolve(); };
-          audio.onerror = (e) => { reject(e); };
+          audio.onended = resolve;
+          audio.onerror = reject;
           audio.play().catch(reject);
+        });
+      } else if (platform === 'aliyun') {
+        let voiceId = tf_voice_funs().getVoiceId(charId);
+        if (!voiceId || !voiceId.voiceId) {
+          const fr = extractFileRef(vf.file);
+          const fileUrl = tavo.file.url(fr.name, fr.scope);
+          voiceId = await aliyunEnrollVoice(apiKey, fileUrl, 'tf_' + charId);
+          if (voiceId) tf_voice_funs().cacheVoiceId(charId, { voiceId, platform: 'aliyun' });
+        }
+        const audioUrl = await aliyunTts(apiKey, voiceId.voiceId || voiceId, segText);
+        const audio = new Audio(audioUrl);
+        await new Promise((resolve, reject) => {
+          audio.onended = resolve;
+          audio.onerror = reject;
+          audio.play();
         });
       }
       vl('[sentence] TTS完成 charId=' + charId + ' idx=' + index);

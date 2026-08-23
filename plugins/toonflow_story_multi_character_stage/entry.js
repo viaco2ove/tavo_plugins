@@ -474,9 +474,9 @@ function getIntentMode() {
   try {
     const edit = readDualScope(storyNs('edit'), storyNsGlobal('edit')) || {};
     const m = edit.intentMode;
-    if (m === 'keyword' || m === 'model_api' || m === 'auto') return m;
-    return 'auto';
-  } catch (e) { return 'auto'; }
+    if (m === 'keyword' || m === 'llm') return m;
+    return 'llm';
+  } catch (e) { return 'llm'; }
 }
 
 // ---------------------------------------------------------------------------
@@ -747,28 +747,8 @@ async function buildOrchestrationPrompt(userInput) {
     return '';
   })();
 
-  // 意图上下文（从 memory_manager 的意图识别注入编排 prompt）
-  // 让编排 Agent 知道当前轮的意图类型，辅助决策
-  const intentCtx = (() => {
-    const mode = getIntentMode();
-    if (mode === 'keyword') {
-      // keyword 模式：编排 Agent 只管正常编排，@记忆管理 指令已被 memory_manager 拦截
-      return '';
-    }
-    // model_api/auto 模式：注入意图分析结果（由编排插件自己先做意图识别）
-    const t = (userInput || '').trim();
-    const isDirective = /^@(记忆管理|记忆管理器|事件进度检测|下个?事件|下个?章节)/.test(t);
-    if (isDirective) {
-      // @记忆管理 / @事件进度 指令已被各插件拦截，编排只管正常流程
-      return '';
-    }
-    // 正常对话：简单意图推断
-    let intentNote = '';
-    if (/^(好|接受|开始|执行|创建|接取)/.test(t)) intentNote = '【意图提示】用户表达了接受/承诺任务意向';
-    else if (/退出|放弃|取消/.test(t)) intentNote = '【意图提示】用户表达了退出/放弃意向';
-    else if (/攻击|探索|交易|打开|使用/.test(t)) intentNote = '【意图提示】用户正在执行游戏行为';
-    return intentNote;
-  })();
+  // 意图上下文：@记忆管理 等指令已被 memory_manager 拦截，编排只管正常流程
+  const intentCtx = '';  // 简化：意图识别已由 memory_manager + mcs 的 classifyLLM 完成
 
   // 对齐 fixDB.prompts.ts: _PROMPT_STORY_ORCHESTRATOR_COMPACT
 const _PROMPT_ORCHESTRATOR_SYSTEM = `你是剧情编排师（极简版）。
@@ -1045,44 +1025,30 @@ tavo.plugin.on('input:beforeSend', async (event) => {
     return;
   }
 
-  // 指令类前缀由 memory-manager / event-manager 等指令插件独占处理；mcs 不应抢先 cancel
-  // 三种 intent 模式（读 tf_story.edit.intentMode，由 tmmIntent.getMode() 暴露）：
-  //   - 'keyword'   : 仅 keyword 同步判断；命中指令前缀 → return 让出
-  //   - 'auto'      : keyword 优先；keyword 不命中再调 LLM 判别（独立最小配置）；
-  //                   LLM 判别 intent=memory_update → return 让出
-  //   - 'model_api' : 直接调 LLM 判别；intent=memory_update → return 让出
-  // 若 memory-manager 未加载（tmmIntent 不存在），fallback 到 event-manager 已知前缀
+  // 意图识别（两层）：
+  // 1. keyword 层：classifyKeyword 同步检测 @记忆管理 前缀
+  // 2. llm 层：classifyLLM 调 LLM 分为 memory_update / send / other
+  // 如果 memory_update → return 让出给 memory_manager 处理；否则继续编排
   const userText = event.text || '';
   const userTextTrim = userText.trim();
   let isDirective = false;
   let intentResult = null;
   try {
     if (typeof window !== 'undefined' && window.tmmIntent) {
-      const mode = (typeof window.tmmIntent.getMode === 'function') ? window.tmmIntent.getMode() : 'auto';
-      if (mode === 'keyword') {
-        const r = window.tmmIntent.classifyKeyword(userText);
-        isDirective = !!(r && r.isDirective);
-        intentResult = r;
-      } else if (mode === 'auto') {
-        // 先 keyword 快路径
-        const r = window.tmmIntent.classifyKeyword(userText);
-        if (r && r.isDirective) {
-          isDirective = true;
-          intentResult = r;
-        } else if (typeof window.tmmIntent.classifyLLM === 'function') {
-          // keyword 未命中，再调 LLM（独立最小配置）
-          intentResult = await window.tmmIntent.classifyLLM(userText);
-          isDirective = intentResult && intentResult.intent === 'memory_update';
-        }
-      } else if (mode === 'model_api') {
-        if (typeof window.tmmIntent.classifyLLM === 'function') {
-          intentResult = await window.tmmIntent.classifyLLM(userText);
-          isDirective = intentResult && intentResult.intent === 'memory_update';
-        }
+      const mode = (typeof window.tmmIntent.getMode === 'function') ? window.tmmIntent.getMode() : 'llm';
+      // 1) keyword 层：@记忆管理 前缀 → 直接让出
+      const kr = window.tmmIntent.classifyKeyword(userText);
+      if (kr && kr.isDirective) {
+        isDirective = true;
+        intentResult = kr;
+      } else if (mode === 'llm' && typeof window.tmmIntent.classifyLLM === 'function') {
+        // 2) llm 层：调 LLM 识别意图
+        intentResult = await window.tmmIntent.classifyLLM(userText);
+        isDirective = intentResult && intentResult.intent === 'memory_update';
       }
     } else {
-      // memory-manager 未加载：fallback 到 event-manager 已知前缀
-      const FALLBACK_PREFIXES = ['@角色信息', '@事件未开始', '@下一章', '@上一章', '@事件进度检测', '@下个事件', '@下一个事件', '@下个章节', '@下一个章节'];
+      // memory-manager 未加载：fallback 检测已知指令前缀
+      const FALLBACK_PREFIXES = ['@记忆管理', '@记忆管理器', '@事件进度检测', '@下个事件', '@下一个事件', '@下个章节', '@下一个章节'];
       isDirective = FALLBACK_PREFIXES.some(p => userTextTrim.startsWith(p));
     }
   } catch (e) {
