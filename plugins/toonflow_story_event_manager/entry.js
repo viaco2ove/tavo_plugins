@@ -2056,10 +2056,16 @@ function _isPhaseCompleted(completedPhases, phaseName) {
   return (completedPhases || []).includes(phaseName);
 }
 
-function _markPhaseCompleted(progress, phaseName) {
+function _markPhaseCompleted(progress, phaseIdx, phaseName) {
   if (!progress.completedPhases) progress.completedPhases = [];
   if (!progress.completedPhases.includes(phaseName)) {
     progress.completedPhases.push(phaseName);
+  }
+  // 同步写到 completedEvents（面板读取此字段判断 [s]/[i]/[ ] 状态）
+  if (!progress.completedEvents) progress.completedEvents = [];
+  const marker = 'phase:' + phaseIdx;
+  if (!progress.completedEvents.includes(marker)) {
+    progress.completedEvents.push(marker);
   }
 }
 
@@ -2102,7 +2108,7 @@ async function applySessionUserEventProgress(chapter, progress, latestMessageCon
 
   if (resolution.ended) {
     console.log('[tf_story][event_progress] LLM ended=true: ' + (resolution.reason || '').slice(0, 80));
-    _markPhaseCompleted(progress, phaseName);
+    _markPhaseCompleted(progress, pi, phaseName);
 
     const next = _resolveNextPhase(phases, progress.completedPhases, pi);
     if (next.phase) {
