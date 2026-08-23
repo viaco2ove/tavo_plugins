@@ -2669,6 +2669,7 @@
             var pendingVoicePath = null;
 
             function readVar(name) {
+                // chat + global 双查，兼容被 reset 的情况
                 try {
                     var v = tavo.get(name, 'chat');
                     var guard = 0;
@@ -2676,7 +2677,16 @@
                         v = v.value;
                         guard++;
                     }
-                    return v;
+                    if (v && typeof v === 'object' && Object.keys(v).length) return v;
+                } catch (e) {}
+                try {
+                    var gv = tavo.get(name, 'global');
+                    var guard2 = 0;
+                    while (gv && typeof gv === 'object' && gv.found !== undefined && 'value' in gv && guard2 < 5) {
+                        gv = gv.value;
+                        guard2++;
+                    }
+                    return gv;
                 } catch (e) {
                     return null;
                 }
@@ -2696,9 +2706,10 @@
                 if (info) info.textContent = '角色: ' + name + ' (ID: ' + id + ')';
 
                 try {
-                    // 音色：{ "75": "files/chat/voice_75.wav" }
-                    var vfAll = readVar('tf_voice_files') || {};
-                    var voicePath = (typeof vfAll === 'object') ? (vfAll[String(id)] || '') : '';
+                    // 音色：{ "角色名": { mode, prompt, audioRef, enabled } }
+                    var vfAll = readVar('tf_character_voices') || {};
+                    var voiceEntry = (typeof vfAll === 'object') ? (vfAll[name] || null) : null;
+                    var voicePath = voiceEntry ? (voiceEntry.audioRef || '') : '';
                     if (voicePath) {
                         if (voiceStatus) voiceStatus.textContent = '已绑定: ' + voicePath;
                         if (voicePlayer) {
@@ -2814,21 +2825,21 @@
                         }
                         console.log('[role-config] 立绘: ' + pendingSpritePath);
                     }
-                    // 2. 音色：直接用返回的路径写入 tf_voice_files
+                    // 2. 音色：写入 tf_character_voices（统一格式）
                     if (pendingVoicePath) {
-                        var vfAll = readVar('tf_voice_files') || {};
+                        var vfAll = readVar('tf_character_voices') || {};
                         if (typeof vfAll !== 'object') vfAll = {};
-                        vfAll[String(charId)] = pendingVoicePath;
-                        tavo.set('tf_voice_files', vfAll, 'chat');
+                        vfAll[charName] = { mode: 'clone_voice', prompt: '', audioRef: pendingVoicePath, enabled: true };
+                        tavo.set('tf_character_voices', vfAll, 'chat');
                         try {
-                            tavo.set('tf_voice_files', vfAll, 'global');
+                            tavo.set('tf_character_voices', vfAll, 'global');
                         } catch (e) {
                         }
                         // 作废 voiceId
                         if (window.tf_voice && window.tf_voice.invalidateVoiceId) {
                             window.tf_voice.invalidateVoiceId(charId);
                         }
-                        console.log('[role-config] 音色: ' + pendingVoicePath);
+                        console.log('[role-config] 音色: ' + pendingVoicePath + ' (角色: ' + charName + ')');
                     }
                     closeRoleConfig();
                     tavo.utils.toast('保存成功');

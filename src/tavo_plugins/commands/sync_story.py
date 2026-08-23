@@ -276,7 +276,42 @@ def sync_story(client, story_dir, force=False, skip_sprite=False,
     else:
         echo("[PLUGIN] 第7步: 插件 [SKIP]")
 
+    # ---- 8. 写缓存：char_ids + persona_id + chat_id 持久化 ----
+    # 让 sync_story_json.py 下次能复用（reuse_ids），避免重复创建同名角色
+    _write_sync_cache(story_dir, char_ids, persona_id, cid, echo)
+
     echo(f"[DONE] 同步完成! chat_id={cid}")
+
+
+def _write_sync_cache(story_dir, char_ids, persona_id, chat_id, echo):
+    """把角色 ID 映射写到磁盘缓存，给下次同步复用。位置：story_sync_cache 配置项 > char_ids.json"""
+    cache_data = {
+        "char_ids": char_ids or {},
+        "persona_id": persona_id or "",
+        "chat_id": chat_id or "",
+    }
+    cache_path = None
+    # 优先用 story.json 里的 story_sync_cache 配置
+    story_json_path = os.path.join(story_dir, "story.json")
+    if os.path.isfile(story_json_path):
+        try:
+            with open(story_json_path, encoding="utf-8") as f:
+                sj = json.load(f)
+            cache_dir = sj.get("story_sync_cache", "")
+            if cache_dir:
+                cache_path = os.path.join(story_dir, cache_dir, "char_ids.json")
+        except Exception:
+            pass
+    # 兜底：写到 story_dir/char_ids.json
+    if not cache_path:
+        cache_path = os.path.join(story_dir, "char_ids.json")
+    try:
+        os.makedirs(os.path.dirname(cache_path), exist_ok=True)
+        with open(cache_path, "w", encoding="utf-8") as f:
+            json.dump(cache_data, f, ensure_ascii=False, indent=2)
+        echo(f"  [CACHE] char_ids 已写入: {cache_path} ({len(cache_data['char_ids'])} 角色)")
+    except Exception as e:
+        echo(f"  [WARN] 写缓存失败: {e}")
 
 
 # ---- 辅助函数 ----
@@ -331,6 +366,7 @@ def _sync_sprites(client, chat_id, char_ids, story_dir, config, echo, sprite_ids
         if name == persona_name:
             continue
         if not cid or not str(cid).isdigit():
+            echo(f"  [not isdigit] cid:{cid}")
             continue
         cid = int(cid)
         entry = {"id": cid, "name": name, "roleType": "npc", "fg": "", "bg": ""}
@@ -425,30 +461,68 @@ def _sync_sprites(client, chat_id, char_ids, story_dir, config, echo, sprite_ids
             client.variable_set(chat_id, "tf_sprite_fallback_bg", fb_path, scope=scope)
         echo(f"  [OK] tf_sprite_fallback_bg -> {fb_path}")
 
-    # ---- voice 文件同步：ex/avatars/name/voice.wav → files/chat/voice_{id}.wav → tf_voice_files ----
+    # ---- voice 文件同步：ex/avatars/<dir>/voice.wav → files/chat/voice_<dir>.wav → tf_character_voices ----
+    # 关键：key 用角色名（role.json 里的 name），不是目录名。
+    # 旁白的 voice.wav 实际放在"某男子"目录里，但 character_voices 的 key 必须是"旁白"，这样插件能查得到。
     voice_files = {}
     ex_avatars_dir = os.path.join(story_dir, "ex", "avatars")
+    # 加载 roles.json 索引：role.json 里的 files.voice 路径 → name
+    # roles.json 结构: {npc: [...], player: {...}, narrator: {...}}
+    roles_index = {}
+    roles_json_path = os.path.join(story_dir, "ex", "roles.json")
+    if os.path.isfile(roles_json_path):
+        try:
+            with open(roles_json_path, encoding="utf-8") as f:
+                roles_data = json.load(f)
+            for key in ("npc", "player", "narrator"):
+                v = roles_data.get(key)
+                if isinstance(v, list):
+                    for role in v:
+                        if role.get("name"):
+                            roles_index[role["name"]] = role
+                elif isinstance(v, dict) and v.get("name"):
+                    roles_index[v["name"]] = v
+        except Exception as e:
+            echo(f"  [WARN] roles.json 读取失败: {e}")
+
     if os.path.isdir(ex_avatars_dir):
-        for name, cid in use_ids.items():
-            if not cid or not str(cid).isdigit():
+        for dir_name in os.listdir(ex_avatars_dir):
+            ex_dir = os.path.join(ex_avatars_dir, dir_name)
+            if not os.path.isdir(ex_dir):
                 continue
-            cid_int = int(cid)
-            ex_dir = os.path.join(ex_avatars_dir, name)
-            voice_path = os.path.join(ex_dir, "voice.wav") if os.path.isdir(ex_dir) else None
-            if voice_path and os.path.isfile(voice_path):
-                dest = f"voice_{cid_int}.wav"
-                with open(voice_path, "rb") as f:
-                    b64 = base64.b64encode(f.read()).decode()
-                r = client.file_save(chat_id, dest, b64, scope="chat")
-                voice_path_tavo = r.get("path", "")
-                if voice_path_tavo:
-                    voice_files[str(cid_int)] = voice_path_tavo
-                    echo(f"  voice {name} -> {voice_path_tavo}")
+            voice_path = os.path.join(ex_dir, "voice.wav")
+            if not os.path.isfile(voice_path):
+                continue
+            # 找归属角色：role.json 里的 files.voice 指向此目录
+            char_key = None
+            for rname, role in roles_index.items():
+                fv = (role.get("files") or {}).get("voice", "") or ""
+                # fv 形如 "avatars\\某男子\\voice.wav"
+                if fv and ("/" + dir_name + "/voice.wav" in fv.replace("\\", "/")):
+                    char_key = rname
+                    break
+            if not char_key:
+                # 兜底：用目录名（兼容没有 roles.json 的情况）
+                char_key = dir_name
+            # 文件名：旁白等非数字 id 用 safe_name，普通角色用 cid
+            cid = use_ids.get(char_key, "") or use_ids.get(dir_name, "")
+            if cid and str(cid).isdigit():
+                dest = f"voice_{int(cid)}.wav"
+            else:
+                safe = "".join(c for c in char_key if c.isalnum() or c in ("_", "-")) or "narrator"
+                dest = f"voice_{safe}.wav"
+            with open(voice_path, "rb") as f:
+                b64 = base64.b64encode(f.read()).decode()
+            r = client.file_save(chat_id, dest, b64, scope="chat")
+            voice_path_tavo = r.get("path", "")
+            if voice_path_tavo:
+                voice_files[char_key] = {"mode": "clone_voice", "prompt": "", "audioRef": voice_path_tavo, "enabled": True}
+                echo(f"  voice {char_key} (from {dir_name}) -> {voice_path_tavo}")
     if voice_files:
         for scope in ["chat", "global"]:
-            echo(f"  [tavo_variable_set] scope:{scope} variable_key:tf_voice_files")
-            client.variable_set(chat_id, "tf_voice_files", voice_files, scope=scope)
-        echo(f"  [OK] tf_voice_files -> {len(voice_files)}")
+            echo(f"  [tavo_variable_set] scope:{scope} variable_key:tf_character_voices")
+            client.variable_set(chat_id, "tf_character_voices", voice_files, scope=scope)
+        echo(f"  [OK] tf_character_voices -> {len(voice_files)}")
 
 
 def _sync_chapters(client, chat_id, story_dir, config, echo):

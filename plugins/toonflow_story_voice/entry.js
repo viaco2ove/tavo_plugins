@@ -12,7 +12,7 @@
 // - 切换平台: 清空所有 voiceId（旧平台 id 在新平台无效）
 
 const VOICE_NS = 'tf_voice';          // voiceId 缓存 {byCharId: {...}}
-const VOICE_FILE_NS = 'tf_voice_files'; // 音色文件路径 {byCharId: {file, name, uploadedAt}}
+const VOICE_FILE_NS = 'tf_character_voices'; // 音色配置 {<charName>: {mode, prompt, audioRef, enabled}}
 
 // 日志时间戳
 const ts = () => {
@@ -79,8 +79,8 @@ function setVoiceCache(cache) {
 // 读音色文件绑定
 function getVoiceFiles() {
   const v = readVar(VOICE_FILE_NS);
-  if (v && typeof v === 'object' && v.byCharId) return v;
-  return { byCharId: {} };
+  if (v && typeof v === 'object') return v;
+  return {};
 }
 
 // ---------- 全局 API（供 panel / 其他插件调用） ----------
@@ -125,7 +125,7 @@ function tf_voice_funs () {
       // 绑定音色文件（角色配置弹窗保存时调用）
       bindVoiceFile: (charId, name, file) => {
         const files = getVoiceFiles();
-        files.byCharId[charId] = { name: name, file: file, uploadedAt: Date.now() };
+        files[name] = { mode: 'clone_voice', prompt: '', audioRef: file, enabled: true };
         writeVar(VOICE_FILE_NS, files, 'chat');
         // 文件变了，旧 voiceId 作废
         window.tf_voice().invalidateVoiceId(charId);
@@ -135,7 +135,14 @@ function tf_voice_funs () {
       // 读音色文件绑定
       getVoiceFile: (charId) => {
         const files = getVoiceFiles();
-        return files.byCharId[charId] || null;
+        // tf_character_voices 格式: {<charName>: {mode, prompt, audioRef, enabled}}
+        // charId 可能是角色名或ID，需要兼容
+        for (const [name, cfg] of Object.entries(files)) {
+          if (name === charId || cfg.charId === charId) {
+            return { file: cfg.audioRef, name: name, mode: cfg.mode };
+          }
+        }
+        return null;
       },
 
       // 切换平台时清空全部 voiceId

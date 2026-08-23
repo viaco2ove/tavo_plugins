@@ -22,6 +22,16 @@ function cfg(key, fb) {
   try { const v = tavo.plugin.config.get(key); return v === undefined || v === null ? fb : v; } catch(e) { return fb; }
 }
 
+let _chatId = null;
+function getChatId() {
+  if (_chatId) return _chatId;
+  try {
+    const chat = tavo.chat.current();
+    _chatId = chat && chat.id;
+  } catch(e) {}
+  return _chatId;
+}
+
 function readVar(name) {
   try {
     // 先 chat scope 再 global scope
@@ -29,6 +39,22 @@ function readVar(name) {
     try { raw = tavo.get(name, 'chat'); } catch(e) {}
     if (!raw) {
       try { raw = tavo.get(name, 'global'); } catch(e) {}
+    }
+    // 如果没找到，尝试带 chat_id 的版本（MCP同步脚本写入的格式）
+    // - tf_chapter_backgrounds_{chat_id}（BG_NS）
+    // - tf_story_{chat_id}.edit（name = 'tf_story.edit'）
+    if (!raw && (name === BG_NS || name === 'tf_story.edit')) {
+      const cid = getChatId();
+      if (cid) {
+        const nameWithId = (name === 'tf_story.edit')
+          ? ('tf_story_' + cid + '.edit')
+          : (name + '_' + cid);
+        try { raw = tavo.get(nameWithId, 'chat'); } catch(e) {}
+        if (!raw) {
+          try { raw = tavo.get(nameWithId, 'global'); } catch(e) {}
+        }
+        if (raw) sl('[sprite] readVar found with chat_id: ' + nameWithId);
+      }
     }
     sl('[sprite] readVar "' + name + '" raw=' + (raw ? JSON.stringify(raw).slice(0, 200) : 'null/undefined'));
     let v = raw;

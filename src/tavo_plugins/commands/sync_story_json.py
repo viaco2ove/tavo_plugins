@@ -201,12 +201,30 @@ def sync_from_story_json(client, story_json_path, force=False,
 
     # 3. 复用 sync_story 主流程
     from tavo_plugins.commands.sync_story import sync_story
-    reuse_ids_path = os.path.join(story_root, "char_ids.json")
+    # 读缓存：优先 story_sync_cache 配置项指定的目录，否则 story_root/char_ids.json
+    reuse_ids_path = None
+    try:
+        with open(story_json_path, encoding="utf-8") as f:
+            _sj = json.load(f)
+        cache_dir = _sj.get("story_sync_cache", "")
+        if cache_dir:
+            cand = os.path.join(story_root, cache_dir, "char_ids.json")
+            if os.path.isfile(cand):
+                reuse_ids_path = cand
+    except Exception:
+        pass
+    if not reuse_ids_path:
+        reuse_ids_path = os.path.join(story_root, "char_ids.json")
     reuse_map = None
     if os.path.isfile(reuse_ids_path):
         try:
             with open(reuse_ids_path, encoding="utf-8") as f:
-                reuse_map = json.load(f)
+                _cache = json.load(f)
+            # 兼容旧格式（dict 直接是 char_ids）和新格式 {char_ids, persona_id, chat_id}
+            if isinstance(_cache, dict) and "char_ids" in _cache:
+                reuse_map = _cache["char_ids"]
+            else:
+                reuse_map = _cache
             echo(f"  reuse IDs from: {reuse_ids_path}")
         except Exception:
             pass
