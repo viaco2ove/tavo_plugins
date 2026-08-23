@@ -972,7 +972,10 @@ async function runMemoryAgent(directive) {
       tavo.set(NS, state, 'chat');
       // 把动态参数补丁回流到 tmm_story，供信息面板/发言器展示实时数值与关键信息
       syncStoryDynamicCards();
-      const safetyLabel = safety.modifiedPatch ? '（safety 已修正）' : '（safety 通过）';
+      let safetyLabel = '（safety 通过）';
+      if(!safety){
+        safetyLabel = safety.modifiedPatch ? '（safety 已修正）' : '（safety 通过）';
+      }
       if (directive) tavo.utils.toast('@记忆管理 指令已执行 ' + safetyLabel);
     } else if (directive) {
       tavo.utils.toast('@记忆管理 指令解析失败');
