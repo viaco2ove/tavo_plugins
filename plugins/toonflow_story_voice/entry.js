@@ -77,8 +77,8 @@ function setVoiceCache(cache) {
 }
 
 // 读音色文件绑定
-function getVoiceFiles() {
-  let v = readVar(VOICE_FILE_NS, 'chat');
+function getVoiceFiles(scope) {
+  let v = readVar(VOICE_FILE_NS, scope);
   if (!v) v = readVar(VOICE_FILE_NS, 'global');
   if (v && typeof v === 'object') return v;
   return {};
@@ -131,11 +131,17 @@ function tf_voice_funs () {
       // 绑定音色文件（角色配置弹窗保存时调用）
       bindVoiceFile: (charId, name, file) => {
         const files = getVoiceFiles('global');
-        files[name] = { mode: 'clone_voice', prompt: '', audioRef: file, enabled: true };
-        writeVar(VOICE_FILE_NS, files, 'chat');
-        // 文件变了，旧 voiceId 作废
-        window.tf_voice().invalidateVoiceId(charId);
-        vl('bindVoiceFile charId=' + charId + ' file=' + file);
+        if(!files){
+          console.log('[API][voice] bindVoiceFile files is null')
+        }else {
+           files[name] = { mode: 'clone_voice', prompt: '', audioRef: file, enabled: true };
+          writeVar(VOICE_FILE_NS, files, 'chat');
+          writeVar(VOICE_FILE_NS, files, 'global');
+          // 文件变了，旧 voiceId 作废
+          window.tf_voice().invalidateVoiceId(charId);
+          vl('bindVoiceFile charId=' + charId + ' file=' + file);
+        }
+
       },
 
       // 读音色文件绑定
