@@ -35,7 +35,8 @@
       {
         "id": "tf-story-trigger",
         "src": "ui/story_panel.html",
-        "mount": "/chat/body/end"
+        "mount": "/chat/body/end",
+        "disabled": true
       }
     ],
     "sidebar": [
