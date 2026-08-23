@@ -1141,8 +1141,8 @@ function game_orchestration(userText,intentResult){
 
       // 触发 1: 章节判定 agent (LLM 辅助)
       try {
-        if (window.tfStoryJudge && typeof window.tfStoryJudge.checkChapterDone === 'function') {
-          const r = await window.tfStoryJudge.checkChapterDone({
+        if (window.tfStoryJudge && typeof window.tfStoryJudge.checkChapterDoneLLM === 'function') {
+          const r = await window.tfStoryJudge.checkChapterDoneLLM({
             content: userText || '',
             allMessages: '',
             messageCount: 0,

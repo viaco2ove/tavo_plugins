@@ -501,6 +501,7 @@ async function tfEventProgress_advance(messageContext) {
       progress.phasesAllCompleted = true;
     }
     // 写回进度摘要
+    console.log('[tf_story][event_advance] progress updated:', JSON.parse(progress));
     if (llmRes.progress_summary) progress.progressSummary = llmRes.progress_summary;
     if (llmRes.progress_facts && llmRes.progress_facts.length) {
       progress.progressFacts = [...(progress.progressFacts || []), ...llmRes.progress_facts].slice(-20);

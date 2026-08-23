@@ -393,18 +393,44 @@ async function llmCallDirect(prompt, options) {
   const temperature = opts.temperature ?? cfg.temperature ?? 0.3;
   const topP = opts.topP ?? cfg.topP ?? 0.5;
 
+  // prompt 可以是 string / [{role, content}] 消息数组 / {system, user} 对象
+  const isMessagesArray = Array.isArray(prompt);
+  const isSystemUserObj = !isMessagesArray && prompt && typeof prompt === 'object' && prompt.system !== undefined;
+
+  // 统一转成 messages 数组（如果需要）
+  function toMessages(p) {
+    if (Array.isArray(p)) return p;
+    if (p && typeof p === 'object' && p.system !== undefined) {
+      return [
+        { role: 'system', content: typeof p.system === 'string' ? p.system : JSON.stringify(p.system) },
+        { role: 'user', content: typeof p.user === 'string' ? p.user : JSON.stringify(p.user || '') },
+      ];
+    }
+    return [{ role: 'user', content: typeof p === 'string' ? p : JSON.stringify(p) }];
+  }
+  function toPromptString(p) {
+    if (typeof p === 'string') return p;
+    if (Array.isArray(p)) return p.map(m => (m.role === 'system' ? '[系统]\n' : '') + (typeof m.content === 'string' ? m.content : JSON.stringify(m.content))).join('\n\n');
+    if (p && typeof p === 'object' && p.system !== undefined) return (typeof p.system === 'string' ? '[系统]\n' + p.system : '') + '\n\n' + (typeof p.user === 'string' ? p.user : JSON.stringify(p.user || ''));
+    return String(p);
+  }
+
   // 有配置 apiKey + apiUrl + 有效适配器域名 → 走直接 fetch
   if (cfg.apiKey && cfg.apiUrl && isAdapterUrl(cfg.apiUrl)) {
-    const messages = [{ role: 'user', content: prompt }];
-    log('llmCallDirect: 走适配器 apiUrl=' + cfg.apiUrl + ' model=' + cfg.model + ' maxTokens=' + maxTokens);
+    // 统一转成 messages 数组传给适配器
+    const messages = toMessages(prompt);
+    log('llmCallDirect: 走适配器 apiUrl=' + cfg.apiUrl + ' model=' + cfg.model + ' maxTokens=' + maxTokens
+      + ' isMessagesArray=' + isMessagesArray + ' isSystemUserObj=' + isSystemUserObj);
     let rawText;
     try {
       rawText = await callAdapterDirect(messages, { ...cfg, maxTokens, temperature, topP });
     } catch (e) {
       warn('Adapter failed, fallback tavo.generate():', e.message);
+      // fallback 走 tavo.generate 需要 string
+      const promptStr = toPromptString(prompt);
       let raw;
       try {
-        raw = await tavo.generate(prompt, { context: false, settings: { maxCompletionTokens: maxTokens } });
+        raw = await tavo.generate(promptStr, { context: false, settings: { maxCompletionTokens: maxTokens } });
       } catch (e2) { warn('tavo.generate also failed:', e2.message); throw e2; }
       rawText = (raw || '').trim();
     }
@@ -413,11 +439,12 @@ async function llmCallDirect(prompt, options) {
     return stripped;
   }
 
-  // 无适配器配置 → 走 tavo.generate()
+  // 无适配器配置 → 走 tavo.generate()（需要 string）
+  const promptStr = toPromptString(prompt);
   log('llmCallDirect: 走 tavo.generate() model=' + cfg.model + ' maxTokens=' + maxTokens);
   let raw;
   try {
-    raw = await tavo.generate(prompt, {
+    raw = await tavo.generate(promptStr, {
       context: false,
       settings: { maxCompletionTokens: maxTokens },
     });
