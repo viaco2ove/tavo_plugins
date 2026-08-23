@@ -992,13 +992,16 @@ async function runMemoryAgent(directive) {
       // 安全审查（对齐 toonflow PROMPT_STORY_SAFETY）：拦截越权修改、注入、人设漂移、非法状态
       // reject → 不写 state；approve 但给了 modifiedPatch → 用修正版覆盖
       const preState = readChatVar(NS) || defaultState();
-      const safety = await runSafetyCheck(preState, parsed, pendingDirective);
-      if (safety.decision === 'reject' && isNeedSafe) {
-        console.warn('[tmm] safety rejected, skip write: ' + safety.reason);
-        tavo.utils.toast('@记忆管理 安全审查拒绝：' + (safety.reason || '无理由'));
-        return;
+      let finalPatch = preState;
+      if(isNeedSafe){
+        const safety = await runSafetyCheck(preState, parsed, pendingDirective);
+        if (safety.decision === 'reject' && isNeedSafe) {
+          console.warn('[tmm] safety rejected, skip write: ' + safety.reason);
+          tavo.utils.toast('@记忆管理 安全审查拒绝：' + (safety.reason || '无理由'));
+          return;
+        }
+        finalPatch = (safety.modifiedPatch && typeof safety.modifiedPatch === 'object') ? safety.modifiedPatch : parsed;
       }
-      const finalPatch = (safety.modifiedPatch && typeof safety.modifiedPatch === 'object') ? safety.modifiedPatch : parsed;
 
       const state = readChatVar(NS) || defaultState();
       if (finalPatch.summary) state.summary = String(finalPatch.summary).slice(0, 800);
