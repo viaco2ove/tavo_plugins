@@ -1042,17 +1042,15 @@ _safeOn('chat:opened', async () => {
   if (!readChatVar(NS)) {
     tavo.set(NS, defaultState(), 'chat');
   }
-  // 打开聊天：保护静态基准卡，重新生成展示层（动态参数从基准 + 持久化增量重新派生）
-  await initStory();
-  // 确保展示层 tmm_story 包含最新的动态数据（tmm 可能是刚初始化的空状态，
-  // 需要等下一轮记忆刷新后才能拿到真实数据；这里触发一次刷新让面板显示正确）
-  if (refreshing) return;
+  // 非阻塞：initStory 和 memory refresh 都不 await，避免阻塞 boot 等待路径
+  // boot 需要尽快完成，后续编排才能启动
   setTimeout(() => {
+    initStory().catch(e => console.warn('[tmm] initStory failed', e));
     if (!refreshing) {
-      console.log('[tmm] chat:opened: triggering initial memory refresh for panel sync');
+      console.log('[tmm] chat:opened: triggering initial memory refresh (non-blocking)');
       runMemoryAgent().catch(e => console.warn('[tmm] initial refresh failed', e));
     }
-  }, 500);
+  }, 100);
 });
 
 _safeOn('chat:updated', async () => {

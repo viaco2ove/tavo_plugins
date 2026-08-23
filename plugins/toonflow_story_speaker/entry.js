@@ -387,18 +387,18 @@ async function auto_orchestrate(data) {
 
 async function voice_gen_play(steamCharEntry,speechText){
      // 8. 流式完成后 - 调用 voice 插件生成 + 播放语音
-          console.log('[tf_speaker] 检查 voice 插件: charEntry=' + (steamCharEntry ? steamCharEntry.id : 'null') + ' tf_voice=' + (window.tf_voice ? 'exists' : 'MISSING') + ' playFor=' + (window.tf_voice && typeof window.tf_voice.playFor));
+          console.log('[tf_speaker] 检查 voice 插件: charEntry=' + (steamCharEntry ? steamCharEntry.id : 'null') + ' tf_voice=' + (window.tf_voice ? 'exists' : 'MISSING') + ' playFor=' + (window.tf_voice && typeof window.tf_voice().playFor));
           if (steamCharEntry && steamCharEntry.id && speechText && window.tf_voice) {
             try {
-              var vcfg = window.tf_voice.getConfig ? window.tf_voice.getConfig() : null;
+              var vcfg = window.tf_voice().getConfig ? window.tf_voice().getConfig() : null;
               console.log('[tf_speaker] voice config:', JSON.stringify(vcfg));
               if (vcfg && vcfg.auto_play !== false) {
-                if (typeof window.tf_voice.playFor === 'function') {
+                if (typeof window.tf_voice().playFor === 'function') {
                   console.log('[tf_speaker] 调用 tf_voice.playFor(' + steamCharEntry.id + ', ...)');
-                  window.tf_voice.playFor(steamCharEntry.id, speechText);
-                } else if (typeof window.tf_voice.speak === 'function') {
+                  window.tf_voice().playFor(steamCharEntry.id, speechText);
+                } else if (typeof window.tf_voice().speak === 'function') {
                   console.log('[tf_speaker] 调用 tf_voice.speak(' + steamCharEntry.id + ', ...)');
-                  window.tf_voice.speak(steamCharEntry.id, speechText);
+                  window.tf_voice().speak(steamCharEntry.id, speechText);
                 } else {
                   console.warn('[tf_speaker] voice.playFor 不可用');
                 }
@@ -414,18 +414,18 @@ async function voice_gen_play(steamCharEntry,speechText){
 }
 async function voice_gen_play_steam(steamCharEntry, speechText){
    // 8. 流式完成后 - 调用 voice 插件生成 + 播放语音
-          console.log('[tf_speaker][steam] 检查 voice 插件: charEntry=' + (steamCharEntry ? steamCharEntry.id : 'null') + ' tf_voice=' + (window.tf_voice ? 'exists' : 'MISSING') + ' playFor=' + (window.tf_voice && typeof window.tf_voice.playFor));
+          console.log('[tf_speaker][steam] 检查 voice 插件: charEntry=' + (steamCharEntry ? steamCharEntry.id : 'null') + ' tf_voice=' + (window.tf_voice ? 'exists' : 'MISSING') + ' playFor=' + (window.tf_voice && typeof window.tf_voice().playFor));
           if (steamCharEntry && steamCharEntry.id && speechText && window.tf_voice) {
             try {
-              var vcfg = window.tf_voice.getConfig ? window.tf_voice.getConfig() : null;
+              var vcfg = window.tf_voice().getConfig ? window.tf_voice().getConfig() : null;
               console.log('[tf_speaker][steam] voice config:', JSON.stringify(vcfg));
               if (vcfg && vcfg.auto_play !== false) {
-                if (typeof window.tf_voice.playFor === 'function') {
+                if (typeof window.tf_voice().playFor === 'function') {
                   console.log('[tf_speaker][steam] 调用 tf_voice.playFor(' + steamCharEntry.id + ', ...)');
-                  window.tf_voice.playFor(steamCharEntry.id, speechText);
-                } else if (typeof window.tf_voice.speak === 'function') {
+                  window.tf_voice().playFor(steamCharEntry.id, speechText);
+                } else if (typeof window.tf_voice().speak === 'function') {
                   console.log('[tf_speaker][steam] 调用 tf_voice.speak(' + steamCharEntry.id + ', ...)');
-                  window.tf_voice.speak(steamCharEntry.id, speechText);
+                  window.tf_voice().speak(steamCharEntry.id, speechText);
                 } else {
                   console.warn('[tf_speaker][steam] voice.playFor 不可用');
                 }
@@ -478,7 +478,7 @@ async function steam_speaker_writer(type, data){
         role: 'assistant',
         characterId: steamCharEntry ? steamCharEntry.id : undefined,
         characterName: steamRole,
-        content: '<div id="'+msg_div_id+'" class="tf-waiting">台词生成中</div><span  id="'+msg_div_id+'" class="tf-waiting-dots-blue">...</span>',
+        content: '<div id="'+msg_div_id+'" class="tf-waiting">台词生成中</div><span id="'+msg_div_waiting_id+'" class="tf-waiting-dots-blue">...</span>',
         hidden: false,
       };
       var steamMsg = null;
