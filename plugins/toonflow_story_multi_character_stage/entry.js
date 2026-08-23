@@ -623,6 +623,7 @@ async function buildOrchestrationPrompt(userInput) {
   const curEv = events[eventIdx] || {};
   const nextEv = events[eventIdx + 1] || null;
   const isUserNode = /用户发言|用户/.test(curEv.name || '');
+  const isUserPhase = events.some(e => /用户发言/.test(e.name || ''));
   // eventDigest.window: 章节内容中该事件前后的文字上下文（简化为前2行+后1行）
   const contentLines = (chapter?.content || '').split('\n').filter(l => l.trim());
   const eventLineIdx = contentLines.findIndex(l => (curEv.name && l.includes(curEv.name)) || l.includes(phase.name || ''));
@@ -689,6 +690,7 @@ async function buildOrchestrationPrompt(userInput) {
       title: chapter?.title || '未命名章节',
       directive: (chapter?.background || '').slice(0, 300),
       opening: (chapter?.openingLine || '').slice(0, 200),
+      completion_condition: chapter?.successCondition || null,
       condition: (storyStatus && storyStatus.chapterInfo && storyStatus.chapterInfo.condition) || null,
     },
     // 记忆上下文：角色参数卡（来自 memory_manager 维护的 tmm_story）
@@ -708,14 +710,44 @@ async function buildOrchestrationPrompt(userInput) {
     },
     roles: roles.map(r => ({ name: r.name, role_type: r.role_type })),
     wildcard_roles: wildcardRoles.map(w => ({ name: w.name, role_type: w.role_type })),
+    // 当前事件（对齐 toonflow current_event digest）
     current_event: {
       index: evDigest.index,
       kind: evDigest.kind,
+      flow: isUserPhase ? 'user_phase' : 'chapter_content',
       state: evDigest.state,
       summary: evDigest.summary || eventSummary,
       facts: evDigest.facts.length ? evDigest.facts : eventFacts,
       window: evDigest.window || '',
     },
+    // 当前进度（对齐 toonflow current_progress）
+    current_progress: {
+      phase_id: phase.name || '',
+      phase_index: phaseIdx,
+      stage_index: eventIdx,
+      total_stages: events.length,
+      user_node_status: isUserPhase ? 'waiting_input' : 'idle',
+      completed_events: progress.completedPhases || [],
+      user_speak_count: recentDialogue.filter(m => m.speaker === '用户').length,
+      user_speak_required: isUserNode ? true : null,
+    },
+    // 当前阶段（对齐 toonflow current_stage）
+    current_stage: {
+      index: eventIdx,
+      label: curEv.name || '事件',
+      kind: isUserNode ? 'user' : 'scene',
+      summary: curEv.name || '',
+      user_speak_required: isUserNode ? true : null,
+    },
+    // 下一阶段（对齐 toonflow next_stage）
+    next_stage: nextEv ? {
+      index: eventIdx + 1,
+      label: nextEv.name || '',
+      kind: /用户发言|用户/.test(nextEv.name || '') ? 'user' : 'scene',
+      summary: nextEv.name || '',
+    } : null,
+    // 下一事件提示（对齐 toonflow next_event）
+    next_event: nextEvInfo,
     turn_state: {
       can_player_speak: canPlayerSpeak,
       last_speaker: lastSpeaker,
@@ -1140,6 +1172,7 @@ function game_orchestration(userText,intentResult){
       //世界书关键词匹配到新的进行注入，非长柱的第二次编排时清除注入。
 
       // 2. 阶段一：编排器 → {speaker, role_type, motive, event_summary, evDigest, nextEvInfo, storyStatus, memCtx}
+      console.log("[game_orchestration] event_summary:", event_summary);
       const { system: orchSystem, user: orchUser, prompt: orchPrompt, evDigest, nextEvInfo, storyStatus, memCtx, chapterIdx, chapterTitle } = await buildOrchestrationPrompt(userText);
       console.log("[game_orchestration] orchPrompt:", orchPrompt);
       // ===== 全链路编排 TRACE =====
