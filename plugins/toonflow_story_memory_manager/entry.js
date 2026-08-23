@@ -994,7 +994,7 @@ async function runMemoryAgent(directive) {
       const safety = await runSafetyCheck(preState, parsed, pendingDirective);
       if (safety.decision === 'reject') {
         console.warn('[tmm] safety rejected, skip write: ' + safety.reason);
-        tavo.utils.toast('@记忆管理 安全审查拒绝：' + (safety.reason || '无理由'));
+        // tavo.utils.toast('@记忆管理 安全审查拒绝：' + (safety.reason || '无理由'));
         return;
       }
       const finalPatch = (safety.modifiedPatch && typeof safety.modifiedPatch === 'object') ? safety.modifiedPatch : parsed;
