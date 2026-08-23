@@ -261,6 +261,7 @@ def chat_update(http_url, token, chat_id, **kwargs):
     chat_dict = dict(kwargs)
     # 移除空值
     chat_dict = {k: v for k, v in chat_dict.items() if v is not None and v != ""}
+    print("  [chat] chat_update:",chat_dict)
     r = rpc(http_url, token, "tavo_chat_update", {"id": chat_id, "chat": chat_dict})
     return unwrap(r)
 
@@ -704,6 +705,8 @@ def sync_chat(http_url, token, config, char_ids, lorebook_id, persona_id, existi
             except (ValueError, TypeError):
                 pass
         return out
+
+    print("  [chat] sync_chat char_ids:",char_ids)
     char_id_list = to_int_list((char_ids or {}).values())
     lorebook_ids = [int(lorebook_id)] if lorebook_id and str(lorebook_id).isdigit() else []
     persona_int = int(persona_id) if persona_id and str(persona_id).isdigit() else None
@@ -712,6 +715,7 @@ def sync_chat(http_url, token, config, char_ids, lorebook_id, persona_id, existi
         char_id_list = [x for x in char_id_list if x != persona_int]
 
     def do_update(cid):
+        print("  [chat] do_update")
         if dry:
             print("  [chat] dry update id=%s name=%s" % (cid, chat_name))
             return
@@ -719,6 +723,7 @@ def sync_chat(http_url, token, config, char_ids, lorebook_id, persona_id, existi
             # 没有角色 ID 时不做 update，让 main 流程后面再绑
             print("  [chat] skip update (no characters yet, will rebind later)")
             return
+        print("  [chat] do_update  characterIds:", char_id_list)
         kwargs = {"name": chat_name, "responseMode": response_mode, "characterIds": char_id_list}
         if lorebook_ids:
             kwargs["lorebookIds"] = lorebook_ids
@@ -728,6 +733,7 @@ def sync_chat(http_url, token, config, char_ids, lorebook_id, persona_id, existi
         print("  [chat] update id=%s name=%s" % (cid, chat_name))
 
     def do_create():
+        print("  [chat] do_create")
         if dry:
             print("  [chat] dry create name=%s" % chat_name)
             return "dry-run"
@@ -1376,7 +1382,7 @@ def main():
         persona_name = config.get("persona", {}).get("name", "")
         char_id_list = [
             int(v) for k, v in char_ids.items()
-            if k != "旁白" and k != persona_name and v and str(v).isdigit()
+            if  k != persona_name and v and str(v).isdigit()
         ]
         lorebook_ids = [int(lorebook_id)] if lorebook_id and str(lorebook_id).isdigit() else []
         persona_int = int(persona_id) if persona_id and str(persona_id).isdigit() else None

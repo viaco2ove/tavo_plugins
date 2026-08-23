@@ -244,6 +244,7 @@ def sync_story(client, story_dir, force=False, skip_sprite=False,
         int(v) for k, v in char_ids.items()
         if k not in ( persona_name) and v and str(v).isdigit()
     ]
+    print("重绑群聊 char_id_list",char_id_list)
     lorebook_ids = [int(lorebook_id)] if lorebook_id and str(lorebook_id).isdigit() else []
     persona_int = int(persona_id) if persona_id and str(persona_id).isdigit() else None
     client.chat_update(

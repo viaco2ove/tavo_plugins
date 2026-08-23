@@ -85,7 +85,8 @@ function setVoiceCache(cache) {
 // 读音色文件绑定：chat scope → tf_character_voices，global scope → tf_character_voices_{chat_id}
 function getVoiceFiles(scope) {
   const globalNs = voiceFileNsGlobal();
-  console.log('[API][voice] getVoiceFiles scope=' + scope + ' chatKey=' + VOICE_FILE_NS + ' globalKey=' + globalNs);
+  console.log('[API][voice] getVoiceFiles scope=' + scope + ' chatKey=' + VOICE_FILE_NS
+      + ' globalKey=' + globalNs);
   // 先尝试 global scope
   let v = readVar(globalNs, 'global');
   if (v && typeof v === 'object') return v;
