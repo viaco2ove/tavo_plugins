@@ -1013,6 +1013,7 @@ async function judgeAndAdvance(messageContext) {
   // 替代纯 +1 规则的 advanceEventProgress
   const eventResult = await applySessionUserEventProgress(
     chapter, progress, messageContext.content || '', '用户'
+      ,true
   );
   console.log("[tf_story][judge] after event_progress: phase=" + progress.currentPhase + " ev=" + progress.currentEvent + " advanced=" + eventResult.advanced);
   // 事件推进结果必须落盘（即使章节未完成，面板也要显示最新 stage 状态）
@@ -2051,6 +2052,8 @@ async function applySessionUserEventProgress(chapter, progress, latestMessageCon
     console.log('[tf_story][event_progress] 非 user phase + 非 "." 快路径，事件不推进');
     return { advanced: false };
   }
+
+  console.log('[tf_story][event_progress] llm 事件进度开始');
 
   // 调用 LLM 判断
   const resolution = precomputedResolution || await evaluateEventProgressByAi(chapter, progress, latestMessageContent, latestMessageRole);

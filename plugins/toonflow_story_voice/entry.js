@@ -47,6 +47,7 @@ function readVar(name, scope) {
     let raw = null;
     try { raw = tavo.get(name, scope || 'chat'); } catch (e) {}
     if (!raw) { try { raw = tavo.get(name, 'global'); } catch (e) {} }
+
     let v = raw;
     let guard = 0;
     while (v && typeof v === 'object' && v.found !== undefined && 'value' in v && guard < 5) { v = v.value; guard++; }
@@ -78,6 +79,7 @@ function setVoiceCache(cache) {
 
 // 读音色文件绑定
 function getVoiceFiles(scope) {
+  console.log('[API][voice] getVoiceFiles scope=' + scope + ' key=' + VOICE_FILE_NS)
   let v = readVar(VOICE_FILE_NS, scope);
   if (!v) v = readVar(VOICE_FILE_NS, 'global');
   if (v && typeof v === 'object') return v;
@@ -134,7 +136,9 @@ function tf_voice_funs () {
         if(!files){
           console.log('[API][voice] bindVoiceFile files is null')
         }else {
-           files[name] = { mode: 'clone_voice', prompt: '', audioRef: file, enabled: true };
+          console.log('[API][voice] bindVoiceFile files ', JSON.stringify(files))
+          files[name] = { mode: 'clone_voice', prompt: '', audioRef: file, enabled: true };
+          console.log('[API][voice] bindVoiceFile files name:'+name, JSON.stringify(files[name]))
           writeVar(VOICE_FILE_NS, files, 'chat');
           writeVar(VOICE_FILE_NS, files, 'global');
           // 文件变了，旧 voiceId 作废
@@ -146,7 +150,10 @@ function tf_voice_funs () {
 
       // 读音色文件绑定
       getVoiceFile: (charId) => {
-        const c = getVoiceFiles('global');
+        const files = getVoiceFiles('global');
+        if(!files){
+          console.log('[API][voice] getVoiceFile files is null')
+        }
         // tf_character_voices 格式: {<charName>: {mode, prompt, audioRef, enabled, charId}}
         // charId 可能是: (1) 角色名 "旁白"/"红缥缈" (2) tavo 数字 ID "110" (3) narrator/npc 字符串
         const cidStr = String(charId);
