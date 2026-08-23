@@ -411,12 +411,11 @@ async function steam_speaker_writer(type, data){
         steamTargetWaitingDiv = document.getElementById(msg_div_waiting_id);
         msg_div_waiting_id
         if (!steamTargetDiv) {
-           // 没有就直接报错
+           // 没有就直接报错，并且返回！
            console.error("[tf_speaker][steam] steamTargetDiv not found, msg_div_id:", msg_div_id);
            return;
         }else {
           console.log("[tf_speaker][steam] steamTargetDiv:", steamTargetDiv.innerHTML);
-          return;
         }
         console.log("[tf_speaker][steam] steamTargetDiv=" + (steamTargetDiv ? 'found' : 'null'));
       } catch(e) {
