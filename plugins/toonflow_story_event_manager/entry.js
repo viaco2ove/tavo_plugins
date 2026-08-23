@@ -2405,7 +2405,7 @@ _safeOnSide('tf-story-reset', async () => {
         }
       } catch (e) {}
     };
-    console.log('[tf_story] ✅ window.tfStoryJudge 已注册');
+    //console.log('[tf_story] ✅ window.tfStoryJudge 已注册');
   } catch (e) {
     console.warn('[tf_story] window.tfStoryJudge 注册失败', e);
   }

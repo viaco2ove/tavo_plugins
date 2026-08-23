@@ -1208,7 +1208,7 @@ function game_orchestration(userText,intentResult){
       if (storyStatus) {
         const sp = storyStatus.progress || {};
         const ph = (sp.phases || [])[sp.currentPhase || 0];
-        const ev = (ph && (ph.events || []))[sp.currentEvent || 0];
+        const ev = ph ? ((ph.events || [])[sp.currentEvent || 0]) : null;
         console.log('[' + ts() + '] 🎭 [mcs] │ 📋 章节状态: ' + storyStatus.chapterStatus
           + ' | 第' + ((sp.currentChapterIndex||0)+1) + '章「' + (storyStatus.chapterInfo?.title||'') + '」'
           + ' | Phase=' + (sp.currentPhase||0) + '(' + (ph?.name||'') + ')'
@@ -1220,7 +1220,8 @@ function game_orchestration(userText,intentResult){
       try {
         const p = readDualScope(progressVarName(), progressVarNameGlobal()) || {};
         const ph = (p.phases || [])[p.currentPhase || 0] || {};
-        console.log('[' + ts() + '] 🎭 [mcs] 当前进度: 第' + ((p.currentChapterIndex || 0) + 1) + '章 phase=' + (p.currentPhase || 0) + '/' + (p.phases || []).length + ' event=' + (p.currentEvent || 0) + '/' + (ph.events || []).length + (p.sessionFreeMode ? ' [自由模式]' : ''));
+        const evs = ph.events || [];
+        console.log('[' + ts() + '] 🎭 [mcs] 当前进度: 第' + ((p.currentChapterIndex || 0) + 1) + '章 phase=' + (p.currentPhase || 0) + '/' + (p.phases || []).length + ' event=' + (p.currentEvent || 0) + '/' + evs.length + (p.sessionFreeMode ? ' [自由模式]' : ''));
       } catch (e) {}
 
       // 调试：判断走哪条 LLM 路径
