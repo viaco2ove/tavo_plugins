@@ -1061,28 +1061,33 @@ def sync_voices(http_url, token, chat_id, config, story_dir, char_ids, dry):
             print("  [voice] roles.json 读取失败: %s" % e)
 
     character_voices = {}
+    # 缓存已上传的文件路径：dir_name -> uploaded tavo path（同目录不重复上传）
+    _uploaded_cache = {}
 
-    # 遍历所有 ex/avatars 子目录（有 voice.wav 就处理）
-    for dir_name in os.listdir(ex_avatars):
-        char_dir = os.path.join(ex_avatars, dir_name)
-        if not os.path.isdir(char_dir):
+    def _resolve_voice_dir(role):
+        """从角色 roles.json 条目解析 voice.wav 所在目录名"""
+        fv = (role.get("files") or {}).get("voice", "") or ""
+        if fv:
+            fv_norm = fv.replace("\\", "/")
+            for part in fv_norm.split("/"):
+                pass
+            # 从路径中提取目录名：.../<dir_name>/voice.wav
+            parts = [p for p in fv_norm.split("/") if p]
+            if len(parts) >= 2 and parts[-1] == "voice.wav":
+                return parts[-2]
+        return None
+
+    # 1. 先处理 roles_index 里有 files.voice 指向的角色（每个角色独立绑定）
+    for char_name, role in roles_index.items():
+        voice_dir = _resolve_voice_dir(role)
+        if not voice_dir:
             continue
+        char_dir = os.path.join(ex_avatars, voice_dir)
         voice_path = os.path.join(char_dir, "voice.wav")
         if not os.path.isfile(voice_path):
             continue
 
-        # 找归属角色：role.json 里的 files.voice 指向此目录
-        char_name = None
-        for rname, role in roles_index.items():
-            fv = (role.get("files") or {}).get("voice", "") or ""
-            if fv and ("/" + dir_name + "/voice.wav" in fv.replace("\\", "/")):
-                char_name = rname
-                break
-        if not char_name:
-            # 兜底：用目录名（兼容没有 roles.json 的情况）
-            char_name = dir_name
-
-        # 读取该角色 role.json 拿 voiceMode / voicePromptText
+        # 读取该目录的 role.json 拿 voiceMode / voicePromptText
         char_role_json = os.path.join(char_dir, "role.json")
         voice_config = {}
         if os.path.isfile(char_role_json):
@@ -1100,31 +1105,90 @@ def sync_voices(http_url, token, chat_id, config, story_dir, char_ids, dry):
         else:
             voice_config = {"mode": "clone_voice", "prompt": "", "audioRef": "", "enabled": True}
 
-        # 上传 voice.wav
+        # 上传 voice.wav（同目录复用已上传路径，不重复上传）
         if not dry:
-            try:
-                with open(voice_path, "rb") as f:
-                    voice_b64 = base64.b64encode(f.read()).decode()
-                # 文件名：优先用 cid，没数字 cid（旁白等）才用 safe_name
+            if voice_dir in _uploaded_cache:
+                saved = _uploaded_cache[voice_dir]
+                voice_config["audioRef"] = saved
                 cid = char_ids.get(char_name, "")
-                if cid and str(cid).isdigit():
-                    dest = "voice_%d.wav" % int(cid)
-                else:
-                    safe = "".join(c for c in char_name if c.isalnum() or c in ("_", "-")) or "narrator"
-                    dest = "voice_%s.wav" % safe
-                result = rpc(http_url, token, "tavo_file_save", {
-                    "chatId": chat_id,
-                    "name": dest,
-                    "content": voice_b64,
-                    "options": {"scope": "global", "encoding": "base64"}
-                })
-                saved = unwrap(result).get("path", "")
-                if saved:
-                    voice_config["audioRef"] = saved
-                    voice_config["charId"] = str(cid) if cid else ""
-                    print("  [voice] [char] %s (id=%s, dir=%s) -> %s" % (char_name, cid, dir_name, saved))
-            except Exception as e:
-                print("  [voice] %s 上传失败: %s" % (char_name, e))
+                voice_config["charId"] = str(cid) if cid else ""
+                print("  [voice] [reuse] %s (id=%s, dir=%s) -> %s" % (char_name, cid, voice_dir, saved))
+            else:
+                try:
+                    with open(voice_path, "rb") as f:
+                        voice_b64 = base64.b64encode(f.read()).decode()
+                    cid = char_ids.get(char_name, "")
+                    if cid and str(cid).isdigit():
+                        dest = "voice_%d.wav" % int(cid)
+                    else:
+                        safe = "".join(c for c in char_name if c.isalnum() or c in ("_", "-")) or "narrator"
+                        dest = "voice_%s.wav" % safe
+                    result = rpc(http_url, token, "tavo_file_save", {
+                        "chatId": chat_id,
+                        "name": dest,
+                        "content": voice_b64,
+                        "options": {"scope": "global", "encoding": "base64"}
+                    })
+                    saved = unwrap(result).get("path", "")
+                    if saved:
+                        _uploaded_cache[voice_dir] = saved
+                        voice_config["audioRef"] = saved
+                        voice_config["charId"] = str(cid) if cid else ""
+                        print("  [voice] [char] %s (id=%s, dir=%s) -> %s" % (char_name, cid, voice_dir, saved))
+                except Exception as e:
+                    print("  [voice] %s 上传失败: %s" % (char_name, e))
+
+        if voice_config.get("audioRef") or voice_config.get("prompt"):
+            character_voices[char_name] = voice_config
+
+    # 2. 兜底：遍历目录，处理没有在 roles_index 中出现的角色（兼容无 roles.json）
+    for dir_name in os.listdir(ex_avatars):
+        char_dir = os.path.join(ex_avatars, dir_name)
+        if not os.path.isdir(char_dir):
+            continue
+        voice_path = os.path.join(char_dir, "voice.wav")
+        if not os.path.isfile(voice_path):
+            continue
+        # 跳过已在 roles_index 处理过的目录
+        if any(_resolve_voice_dir(r) == dir_name for _, r in roles_index.items()):
+            continue
+        # 兜底角色名 = 目录名
+        char_name = dir_name
+        if char_name in character_voices:
+            continue  # 已绑定，跳过
+
+        voice_config = {"mode": "clone_voice", "prompt": "", "audioRef": "", "enabled": True}
+        if not dry:
+            if dir_name in _uploaded_cache:
+                saved = _uploaded_cache[dir_name]
+                voice_config["audioRef"] = saved
+                cid = char_ids.get(char_name, "")
+                voice_config["charId"] = str(cid) if cid else ""
+                print("  [voice] [reuse-fallback] %s (dir=%s) -> %s" % (char_name, dir_name, saved))
+            else:
+                try:
+                    with open(voice_path, "rb") as f:
+                        voice_b64 = base64.b64encode(f.read()).decode()
+                    cid = char_ids.get(char_name, "")
+                    if cid and str(cid).isdigit():
+                        dest = "voice_%d.wav" % int(cid)
+                    else:
+                        safe = "".join(c for c in char_name if c.isalnum() or c in ("_", "-")) or "narrator"
+                        dest = "voice_%s.wav" % safe
+                    result = rpc(http_url, token, "tavo_file_save", {
+                        "chatId": chat_id,
+                        "name": dest,
+                        "content": voice_b64,
+                        "options": {"scope": "global", "encoding": "base64"}
+                    })
+                    saved = unwrap(result).get("path", "")
+                    if saved:
+                        _uploaded_cache[dir_name] = saved
+                        voice_config["audioRef"] = saved
+                        voice_config["charId"] = str(cid) if cid else ""
+                        print("  [voice] [fallback] %s (dir=%s) -> %s" % (char_name, dir_name, saved))
+                except Exception as e:
+                    print("  [voice] %s 上传失败: %s" % (char_name, e))
 
         if voice_config.get("audioRef") or voice_config.get("prompt"):
             character_voices[char_name] = voice_config

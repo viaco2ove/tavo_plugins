@@ -41,6 +41,7 @@ const _safeOnSide = (name, fn) => {
 };
 
 const NS = 'tmm';
+let isNeedSafe=false;
 let refreshing = false;
 
 // ============================================================
@@ -992,9 +993,9 @@ async function runMemoryAgent(directive) {
       // reject → 不写 state；approve 但给了 modifiedPatch → 用修正版覆盖
       const preState = readChatVar(NS) || defaultState();
       const safety = await runSafetyCheck(preState, parsed, pendingDirective);
-      if (safety.decision === 'reject') {
+      if (safety.decision === 'reject' && isNeedSafe) {
         console.warn('[tmm] safety rejected, skip write: ' + safety.reason);
-        // tavo.utils.toast('@记忆管理 安全审查拒绝：' + (safety.reason || '无理由'));
+        tavo.utils.toast('@记忆管理 安全审查拒绝：' + (safety.reason || '无理由'));
         return;
       }
       const finalPatch = (safety.modifiedPatch && typeof safety.modifiedPatch === 'object') ? safety.modifiedPatch : parsed;
@@ -1241,8 +1242,10 @@ _safeOn('input:beforeSend', async (event) => {
       if (result.addedEquipment.length) parts.push('装备+' + result.addedEquipment.length);
       tavo.utils.toast('@记忆管理 已更新：' + (parts.join(' · ') || '状态'));
     } else {
-      tavo.utils.toast('@记忆管理（keyword 模式）：未识别出明确指令；如要自然语言语义请设 intentMode=model_api/auto');
+      runMemoryAgent(m[2] || '');
+      // tavo.utils.toast('@记忆管理（keyword 模式）：未识别出明确指令；如要自然语言语义请设 intentMode=model_api/auto');
     }
+
     return;
   }
 
