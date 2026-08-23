@@ -128,7 +128,7 @@ function tfStoryJudge_checkAndAdvance(messageContext) {
   }
 }
 
-// LLM 辅助章节判定：异步调用 LLM 评估条件
+// LLM 为主章节判定：异步调用 LLM 评估条件
 async function tfStoryJudge_checkChapterDoneLLM(messageContext) {
   try {
     const progress = getProgress();

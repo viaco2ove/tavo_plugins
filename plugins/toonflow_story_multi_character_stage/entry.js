@@ -1139,7 +1139,7 @@ function game_orchestration(userText,intentResult){
         console.warn('[' + ts() + '] 🎭 [mcs] 记忆刷新调用失败', e);
       }
 
-      // 触发 1: 章节判定 agent (LLM 辅助)
+      // 触发 1: 章节判定 agent (LLM 为主)
       try {
         if (window.tfStoryJudge && typeof window.tfStoryJudge.checkChapterDoneLLM === 'function') {
           const r = await window.tfStoryJudge.checkChapterDoneLLM({
@@ -1151,7 +1151,7 @@ function game_orchestration(userText,intentResult){
         }
       } catch (e) { console.warn('[' + ts() + '] [mcs] 章节判定失败', e); }
 
-      // 触发 2: 事件进度推进 (LLM 辅助，对齐 agent_story_event_progress)
+      // 触发 2: 事件进度推进 (LLM 为主，对齐 agent_story_event_progress)
       try {
         if (window.tfEventProgress && typeof window.tfEventProgress.advance === 'function') {
           const ep = await window.tfEventProgress.advance({
