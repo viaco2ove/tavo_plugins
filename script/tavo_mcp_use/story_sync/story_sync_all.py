@@ -1034,6 +1034,7 @@ def sync_voices(http_url, token, chat_id, config, story_dir, char_ids, dry):
     关键：key 用角色名（不是目录名），旁白的 voice.wav 实际放在"某男子"目录，但 character_voices 的 key 必须是"旁白"。
     """
     print("\n=== 同步音色文件 ===")
+    print("\n 同步音色文件 char_ids:",char_ids)
     ex_avatars = os.path.join(story_dir, "ex", "avatars")
     if not os.path.isdir(ex_avatars):
         print("  [voice] ex/avatars 目录不存在，跳过")
@@ -1047,6 +1048,7 @@ def sync_voices(http_url, token, chat_id, config, story_dir, char_ids, dry):
         try:
             with open(roles_json_path, encoding="utf-8") as f:
                 roles_data = json.load(f)
+            print("  [voice] roles_data:",roles_data)
             for key in ("npc", "player", "narrator"):
                 v = roles_data.get(key)
                 if isinstance(v, list):
@@ -1120,7 +1122,7 @@ def sync_voices(http_url, token, chat_id, config, story_dir, char_ids, dry):
                 if saved:
                     voice_config["audioRef"] = saved
                     voice_config["charId"] = str(cid) if cid else ""
-                    print("  [voice] %s (id=%s, dir=%s) -> %s" % (char_name, cid, dir_name, saved))
+                    print("  [voice] [char] %s (id=%s, dir=%s) -> %s" % (char_name, cid, dir_name, saved))
             except Exception as e:
                 print("  [voice] %s 上传失败: %s" % (char_name, e))
 
