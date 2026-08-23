@@ -1478,7 +1478,7 @@ _safeOn('input:beforeSend', async (event) => {
   const text = String((event && event.text) || '').trim();
   (function clearInputNow() {
     try {
-      tavo.input.set('')
+      if (typeof tavo.input?.set === 'function') tavo.input.set('')
       const candidates = document.querySelectorAll('textarea, [contenteditable="true"], input[type="text"]');
       let cleared = false;
       candidates.forEach(el => {

@@ -43,6 +43,43 @@ const _safeOnSide = (name, fn) => {
 const NS = 'tmm';
 let refreshing = false;
 
+// ============================================================
+// JSON 提取工具：括号计数法（正确处理嵌套 {}，不被贪婪匹配误导）
+// ============================================================
+function extractJson(text) {
+  const s = String(text || '').trim();
+  // 1. 剥除 markdown 代码块围栏
+  const fence = s.match(/```(?:json)?\s*([\s\S]*?)```/);
+  const body = fence ? fence[1].trim() : s;
+  // 2. 找第一个 {
+  const start = body.indexOf('{');
+  if (start < 0) return null;
+  // 3. 括号计数法：从第一个 { 开始，逐字符匹配到配对的 }
+  let depth = 0;
+  let end = -1;
+  for (let i = start; i < body.length; i++) {
+    const ch = body[i];
+    if (ch === '{') depth++;
+    else if (ch === '}') {
+      depth--;
+      if (depth === 0) { end = i; break; }
+    }
+  }
+  if (end < 0) return null;
+  const jsonText = body.slice(start, end + 1);
+  try {
+    return JSON.parse(jsonText);
+  } catch (e) {
+    // 4. JSON.parse 失败时，尝试正则提取（兜底）
+    const m = body.match(/"summary"\s*:\s*"([^"]*)"/);
+    if (m) {
+      // 构造最小有效 JSON
+      return { summary: m[1], facts: [], tags: [], player_card_patch: {}, npc_card_patches: {}, dynamic_world_global_background: '' };
+    }
+    return null;
+  }
+}
+
 // 严格对齐 toonflow-game-app/src/lib/fixDB.prompts.ts 的 _PROMPT_STORY_MEMORY
 const MEMORY_RULES = `你是记忆管理器。
 你负责管理整个故事的长期记忆，不只更新剧情摘要，还要维护角色动态参数卡。
@@ -578,44 +615,57 @@ async function buildCharactersFromChat(chat) {
 
 // 构建 / 修复静态基准卡（写入 STATIC_NS）。
 // force=true：仅在"新增角色"上重建，已有角色卡受保护不被覆盖（防止 description 重解析把静态参数清空）。
-async function buildStaticStory(force) {
-  try {
-    if (!tavo.chat || !tavo.chat.current) return null;
-    const chat = await tavo.chat.current();
-    if (!chat) return null;
-    // 设置当前 chatId
-    _tmmChatId = chat.id;
-    const books = chat.lorebooks || [];
-    let synopsis = chat.description || chat.synopsis || '';
-    if (!synopsis && books[0] && books[0].entries && books[0].entries[0]) {
-      synopsis = books[0].entries[0].content || '';
+async function buildStaticStory(force, maxRetries) {
+  maxRetries = maxRetries || 3;
+  for (let i = 1; i <= maxRetries; i++) {
+    try {
+      if (!tavo.chat || !tavo.chat.current) return null;
+      const chat = await tavo.chat.current();
+      if (!chat) {
+        if (i < maxRetries) { await new Promise(r => setTimeout(r, 600)); continue; }
+        return null;
+      }
+      // 设置当前 chatId
+      _tmmChatId = chat.id;
+      const books = chat.lorebooks || [];
+      let synopsis = chat.description || chat.synopsis || '';
+      if (!synopsis && books[0] && books[0].entries && books[0].entries[0]) {
+        synopsis = books[0].entries[0].content || '';
+      }
+      // 角色解析健壮化：任一角色拉取/解析失败不影响整体，缺省空数组也要写基准卡
+      let characters = [];
+      try { characters = await buildCharactersFromChat(chat); } catch (e) {
+        console.warn('[tmm] buildCharactersFromChat failed', e);
+        characters = [];
+      }
+      // 受保护合并：保留已有角色卡，只补建新角色（优先读 global 防 reset）
+      const prev = (force ? (readStaticStory() || {}) : null);
+      const prevById = {};
+      (prev && prev.characters || []).forEach(c => { if (c && c.id) prevById[c.id] = c; });
+      const merged = characters.map(c => prevById[c.id] || c);
+      const staticStory = {
+        name: chat.name || '故事信息',
+        synopsis: scalarText(synopsis).slice(0, 1200),
+        characters: merged,
+      };
+      // 静态基准卡必须写 global scope 才能抗 tavo_chat_reset！
+      // chat scope 在 reset 时被清空，导致角色参数卡全部消失。
+      const staticName = tmmNs('story_static');
+      try { tavo.set(staticName, staticStory, 'global'); } catch (e) {}
+      try { tavo.set(staticName, staticStory, 'chat'); } catch (e) {}
+      return staticStory;
+    } catch (e) {
+      const msg = (e && e.message) || String(e);
+      const retriable = /not ready|try again|internal error|could not complete/i.test(msg);
+      if (!retriable || i === maxRetries) {
+        console.warn('[tmm] buildStaticStory failed (no more retries)', msg);
+        return null;
+      }
+      console.warn('[tmm] buildStaticStory retry ' + i + '/' + maxRetries + ': ' + msg);
+      await new Promise(r => setTimeout(r, 600));
     }
-    // 角色解析健壮化：任一角色拉取/解析失败不影响整体，缺省空数组也要写基准卡
-    let characters = [];
-    try { characters = await buildCharactersFromChat(chat); } catch (e) {
-      console.warn('[tmm] buildCharactersFromChat failed', e);
-      characters = [];
-    }
-    // 受保护合并：保留已有角色卡，只补建新角色（优先读 global 防 reset）
-    const prev = (force ? (readStaticStory() || {}) : null);
-    const prevById = {};
-    (prev && prev.characters || []).forEach(c => { if (c && c.id) prevById[c.id] = c; });
-    const merged = characters.map(c => prevById[c.id] || c);
-    const staticStory = {
-      name: chat.name || '故事信息',
-      synopsis: scalarText(synopsis).slice(0, 1200),
-      characters: merged,
-    };
-    // 静态基准卡必须写 global scope 才能抗 tavo_chat_reset！
-    // chat scope 在 reset 时被清空，导致角色参数卡全部消失。
-    const staticName = tmmNs('story_static');
-    try { tavo.set(staticName, staticStory, 'global'); } catch (e) {}
-    try { tavo.set(staticName, staticStory, 'chat'); } catch (e) {}
-    return staticStory;
-  } catch (e) {
-    console.warn('[tmm] buildStaticStory failed', e);
-    return null;
   }
+  return null;
 }
 
 // 读取静态基准卡：优先 chat scope，回退 global scope（global 在 reset 后仍能恢复）
@@ -632,21 +682,34 @@ function readStaticStory() {
 // 打开聊天时：保护静态基准卡（STATIC_NS），重新生成展示层 tmm_story。
 // 动态参数（hp/mp/level 等增量）从「静态基准 + 持久化增量 tmm.cards」重新派生，
 // 而不是被清空成空白——即"重新生成而非清空"。
-async function initStory() {
-  try {
-    // 优先读 chat scope，reset 后 chat 为空则回退 global scope
-    let staticStory = readStaticStory();
-    if (!staticStory || !staticStory.characters || !staticStory.characters.length) {
-      staticStory = await buildStaticStory(false);
+async function initStory(maxRetries) {
+  maxRetries = maxRetries || 4;
+  let lastErr = null;
+  for (let i = 1; i <= maxRetries; i++) {
+    try {
+      // 优先读 chat scope，reset 后 chat 为空则回退 global scope
+      let staticStory = readStaticStory();
+      if (!staticStory || !staticStory.characters || !staticStory.characters.length) {
+        staticStory = await buildStaticStory(false);
+      }
+      if (!staticStory) return;
+      // 展示层 = 静态基准的深拷贝，立即生效
+      const display = JSON.parse(JSON.stringify(staticStory));
+      tavo.set(tmmNs('story'), display, 'chat');
+      // 把持久化的动态增量立刻合并回来，避免展示层短暂空白/清零
+      syncStoryDynamicCards();
+      return;
+    } catch (e) {
+      lastErr = e;
+      const msg = (e && e.message) || String(e);
+      const retriable = /not ready|try again|internal error|could not complete/i.test(msg);
+      if (!retriable || i === maxRetries) {
+        console.warn('[tmm] initStory failed (no more retries)', msg);
+        return;
+      }
+      console.warn('[tmm] initStory retry ' + i + '/' + maxRetries + ': ' + msg);
+      await new Promise(r => setTimeout(r, 800));
     }
-    if (!staticStory) return;
-    // 展示层 = 静态基准的深拷贝，立即生效
-    const display = JSON.parse(JSON.stringify(staticStory));
-    tavo.set(tmmNs('story'), display, 'chat');
-    // 把持久化的动态增量立刻合并回来，避免展示层短暂空白/清零
-    syncStoryDynamicCards();
-  } catch (e) {
-    console.warn('[tmm] initStory failed', e);
   }
 }
 
@@ -901,8 +964,8 @@ async function runMemoryAgent(directive) {
 
     let parsed = null;
     try {
-      const jsonMatch = raw && raw.match(/\{[\s\S]*\}/);
-      if (jsonMatch) parsed = JSON.parse(jsonMatch[0]);
+      // 用括号计数法正确提取 JSON（避免 regex /\{[\s\S]*\}/ 贪婪匹配多余内容）
+      parsed = extractJson(raw);
     } catch (e) {
       console.warn('[tmm] parse failed', e);
     }
@@ -1128,7 +1191,7 @@ _safeOn('input:beforeSend', async (event) => {
   // 0) 立即同步清空输入框（优先于任何 async 操作，防止用户看到"发送中"还有文字）
   (function clearInputNow() {
     try {
-      tavo.input.set('')
+      if (typeof tavo.input?.set === 'function') tavo.input.set('')
       const candidates = document.querySelectorAll('textarea, [contenteditable="true"], input[type="text"]');
       let cleared = false;
       candidates.forEach(el => {

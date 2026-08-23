@@ -316,7 +316,7 @@ tavo.plugin.on('chat:opened', () => {
 tavo.plugin.onSidebarAction('tf-sprite-toggle', () => {
   try {
     const cur = tavo.plugin.config.get('enabled');
-    tavo.plugin.config.set('enabled', cur ? false : true);
+    if (typeof tavo.plugin?.config?.set === 'function') tavo.plugin.config.set('enabled', cur ? false : true);
     tavo.utils.toast(cur ? '立绘已关闭' : '立绘已开启');
     updateSprite(getSpeaker());
   } catch(e) { tavo.utils.toast('切换失败'); }

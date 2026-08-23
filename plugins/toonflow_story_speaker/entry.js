@@ -322,11 +322,44 @@ async function tf_speaker(type, data) {
     try {
       await tavo.message.append(speakerAppendOpts);
       console.log('[tf_speaker][opening] 已写入开场白: ' + speakerAppendOpts.characterId + ":" + role + ':' + text.slice(0, 40));
+      auto_orchestrate(data);
     } catch (e) {
       console.warn('[tf_speaker][opening] 写入开场白失败', e);
     }
   }else if ('append_message_steam' == type ){
-    // 流式输出台词：speaker 自己调用 LLM 生成台词（不依赖 mcs 二次生成）
+      await steam_speaker_writer(type, data);
+  }
+  else if (type === 'append_message'){
+    try {
+      await tavo.message.append(data);
+      auto_orchestrate(data)
+    } catch (e) {
+      console.warn('[tf_speaker][append_message] 写入台词白失败', e);
+    }
+  }
+
+
+}
+
+async function auto_orchestrate(data) {
+    try {
+    console.log('[' + ts() + '] ⏸ [speaker] 准备生成语音');
+    // await_user 处理
+    if (data && data.awaitUser === true) {
+      console.log('[' + ts() + '] ⏸ [speaker] await_user=true → 停止生成，等待用户输入');
+      try { tavo.set(ORCH_FLAG, false, 'chat'); } catch (e) {}
+      return;
+    }
+    // 触发下一轮编排
+    console.log('[tf_speaker][orchestrate][steam] → 继续编排，auto_orchestrate');
+    if (window.tf_story_emit) window.tf_story_emit('auto_orchestrate', {});
+  } catch (e) {
+    console.warn('[tf_speaker] auto_orchestrate失败', e);
+  }
+}
+
+async function steam_speaker_writer(type, data){
+      // 流式输出台词：speaker 自己调用 LLM 生成台词（不依赖 mcs 二次生成）
     console.log("[tf_speaker][steam] 收到流式台词委托 speaker=" + (data&&data.speaker) + " motive=" + (data&&data.motive));
     // 编排锁：防止多轮 auto_orchestrate 并发抢占
     if (_orchBusy) {
@@ -365,9 +398,23 @@ async function tf_speaker(type, data) {
         hidden: false,
       };
       var steamMsg = null;
+      var steamTargetDiv = null;
       try {
         steamMsg = await tavo.message.append(steamAppendOpts);
+        // 等待500毫秒
+        await new Promise(resolve => setTimeout(resolve, 500));
         console.log("[tf_speaker][steam] 已 append 占位 msgId=" + (steamMsg && steamMsg.id) + " divId=" + msg_div_id);
+        // 保存 div 引用（不依赖 getElementById，Tavo markdown 渲染器可能移除 id 属性）
+        steamTargetDiv = document.getElementById(msg_div_id);
+        if (!steamTargetDiv) {
+           // 没有就直接报错
+           console.error("[tf_speaker][steam] steamTargetDiv not found, msg_div_id:", msg_div_id);
+           return;
+        }else {
+          console.log("[tf_speaker][steam] steamTargetDiv:", steamTargetDiv.innerHTML);
+          return;
+        }
+        console.log("[tf_speaker][steam] steamTargetDiv=" + (steamTargetDiv ? 'found' : 'null'));
       } catch(e) {
         console.warn("[tf_speaker][steam] append 占位失败", e);
         throw e;
@@ -390,9 +437,8 @@ async function tf_speaker(type, data) {
       speechText = (speechText || '').replace(/<thinking>[\s\S]*?<\/thinking>/gi, '').replace(/^["']|["']$/g, '').trim();
 
       // 6. 切换到黄色 "..." 等待效果，表示语音生成和播放中
-      var targetDiv = document.getElementById(msg_div_id);
-      if (targetDiv) {
-        targetDiv.innerHTML = '<span class="tf-waiting-dots-yellow">语音生成和播放中...</span>';
+      if (steamTargetDiv) {
+        steamTargetDiv.innerHTML = '<span class="tf-waiting-dots-yellow">语音生成和播放中...</span>';
       }
 
       // 7. 流式输出：直接操作 DOM，每 50ms 填充一个字符
@@ -402,16 +448,15 @@ async function tf_speaker(type, data) {
         if (steamCharIdx >= speechText.length) {
           clearInterval(steamInterval);
           // 流式完成：移除等待效果，替换为光标
-          var targetDiv = document.getElementById(msg_div_id);
-          if (targetDiv) {
-            targetDiv.innerHTML = '<span class="tf_steam_cursor">|</span>';
+          if (steamTargetDiv) {
+            steamTargetDiv.innerHTML = '<span class="tf_steam_cursor">|</span>';
           }
           // 完成后添加 thinking 折叠块
           try {
             if (steamThinking) {
               var esc = steamThinking.replace(/<\/div>/gi, '&lt;/div&gt;');
               var block = '<div style="cursor:pointer;color:#888;font-size:0.85em" onclick="var d=this.getElementsByTagName(\'div\')[0];d.style.display=d.style.display==\'none\'?\'block\':\'none\'">💭 思考（点击展开）<div style="display:none;padding:8px 0;color:#666">' + esc + '</div></div>';
-              if (targetDiv) targetDiv.insertAdjacentHTML('beforebegin', block);
+              if (steamTargetDiv) steamTargetDiv.insertAdjacentHTML('beforebegin', block);
             }
           } catch(e) {}
           console.log("[tf_speaker][steam] 流式输出完成 len=" + speechText.length);
@@ -446,14 +491,14 @@ async function tf_speaker(type, data) {
           }
           // 9. 触发下一轮 NPC 编排
           if (window.tf_story_emit) window.tf_story_emit('auto_orchestrate', {});
+          auto_orchestrate(data)
           return;
         }
         // 直接填充到 div
         var renderedText = speechText.slice(0, steamCharIdx + chunkSize);
         steamCharIdx += chunkSize;
-        var targetDiv = document.getElementById(msg_div_id);
-        if (targetDiv) {
-          targetDiv.innerHTML = renderedText + '<span class="tf_steam_cursor">|</span>';
+        if (steamTargetDiv) {
+          steamTargetDiv.innerHTML = renderedText + '<span class="tf_steam_cursor">|</span>';
         }
       }, 50);
 
@@ -464,29 +509,6 @@ async function tf_speaker(type, data) {
       // 释放编排锁，让下一轮编排可以进入
       _orchBusy = false;
     }
-  }
-  else if (type === 'append_message'){
-    try {
-      await tavo.message.append(data);
-    } catch (e) {
-      console.warn('[tf_speaker][append_message] 写入台词白失败', e);
-    }
-  }
-
-  try {
-    console.log('[' + ts() + '] ⏸ [speaker] 准备生成语音');
-    // await_user 处理
-    if (data && data.awaitUser === true) {
-      console.log('[' + ts() + '] ⏸ [speaker] await_user=true → 停止生成，等待用户输入');
-      try { tavo.set(ORCH_FLAG, false, 'chat'); } catch (e) {}
-      return;
-    }
-    // 触发下一轮编排
-    console.log('[tf_speaker][orchestrate][steam] → 继续编排，auto_orchestrate');
-    if (window.tf_story_emit) window.tf_story_emit('auto_orchestrate', {});
-  } catch (e) {
-    console.warn('[tf_speaker] auto_orchestrate失败', e);
-  }
 }
 
 
@@ -519,9 +541,9 @@ tavo.plugin.on('generation:prepare', async (event) => {
   }
 });
 
-tavo.plugin.on('generation:success', async () => { try { tavo.set(ORCH_FLAG, false, 'chat'); _orchBusy = false; } catch (e) { _orchBusy = false; } });
-tavo.plugin.on('generation:error', async () => { try { tavo.set(ORCH_FLAG, false, 'chat'); _orchBusy = false; } catch (e) { _orchBusy = false; } });
-tavo.plugin.on('generation:cancelled', async () => { try { tavo.set(ORCH_FLAG, false, 'chat'); _orchBusy = false; } catch (e) { _orchBusy = false; } });
+tavo.plugin.on('generation:success', async () => { try { tavo.set(ORCH_FLAG, false, 'chat'); } catch (e) {} });
+tavo.plugin.on('generation:error', async () => { try { tavo.set(ORCH_FLAG, false, 'chat'); } catch (e) {} });
+tavo.plugin.on('generation:cancelled', async () => { try { tavo.set(ORCH_FLAG, false, 'chat'); } catch (e) {} });
 
 // 侧边栏：测试生成一句当前角色台词（隐藏消息）
 tavo.plugin.onSidebarAction('speaker-test', async () => {

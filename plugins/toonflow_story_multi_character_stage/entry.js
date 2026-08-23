@@ -37,6 +37,7 @@ function readChatVar(name) {
 //   chat scope  → tf_story（不带 chat_id）
 //   global scope → tf_story_{chat_id}（带 chat_id）
 let _mcsChatId = null;
+let _mcsBusy = false; // 编排锁：防止 orchestrator 并发抢占
 function storyNs(name) { return 'tf_story.' + name; }
 function storyNsGlobal(name) {
   return _mcsChatId ? ('tf_story_' + _mcsChatId + '.' + name) : ('tf_story.' + name);
@@ -926,7 +927,7 @@ tavo.plugin.on('input:beforeSend', async (event) => {
 
   (function clearInputNow() {
     try {
-      tavo.input.set('')
+      if (typeof tavo.input?.set === 'function') tavo.input.set('')
       const candidates = document.querySelectorAll('textarea, [contenteditable="true"], input[type="text"]');
       let cleared = false;
       candidates.forEach(el => {
@@ -1012,6 +1013,12 @@ tavo.plugin.on('input:beforeSend', async (event) => {
 function game_orchestration(userText,intentResult){
 
 
+  // 编排锁：防止多个 auto_orchestrate 并发抢占
+  if (_mcsBusy) {
+    console.log('[' + ts() + '] 🎭 [mcs] 编排锁占用，跳过: userText=' + (userText||'').slice(0,20));
+    return;
+  }
+  _mcsBusy = true;
   // 后台异步执行编排 + 发言（不阻塞 handler）
   (async () => {
     try {
@@ -1295,6 +1302,7 @@ function game_orchestration(userText,intentResult){
     } catch (e) {
       console.error('[' + ts() + '] ❌ [mcs] 后台编排异常:', e);
     } finally {
+      _mcsBusy = false;
       try { tavo.set(ORCH_FLAG, false, 'chat'); } catch (e) {}
     }
   })();
