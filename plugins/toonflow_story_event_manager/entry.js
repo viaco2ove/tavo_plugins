@@ -209,6 +209,7 @@ async function tfStoryJudge_checkChapterDone(messageContext) {
       finalResult = llmResult.result || 'continue';
       reason = llmResult.reason || 'llm';
     }
+    //result: string - 只能是 "continue" /"guide"/ "success" / "failed"
     console.log('[tf_story][mcs_api] checkChapterDone result', finalResult, reason, llmResult)
     if (finalResult !== 'done' && finalResult !== 'success') {
       return { done: false, result: 'continue', pendingChapterId: null, message: '', llmResult, reason };
