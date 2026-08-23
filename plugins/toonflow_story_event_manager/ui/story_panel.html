@@ -1954,7 +1954,6 @@
             }
 
             function eventsHtml() {
-                // 先取章节目标（当前章节 successCondition，conditionVisible=false 时显示星号）
                 var _prog = getProgressState();
                 var _chapters = (_edit && _edit.chapters) || [];
                 var _curIdx = Math.max(0, Math.min(_prog.currentChapterIndex || 0, Math.max(_chapters.length - 1, 0)));
@@ -1971,67 +1970,81 @@
                 var curCh = chapters[curIdx] || {};
                 var cond = (curCh.conditionVisible === false) ? '*****' : (curCh.successCondition || '');
 
-                // 顶部：当前事件目标（当前事件的 stage 链，带状态标记）
+                // 解析 phase / event 结构
                 var phases = parseChapterPhases(curCh.content || '');
                 var curPhaseIdx = Math.max(0, prog.currentPhase || 0);
                 var curStageIdx = Math.max(0, prog.currentEvent || 0);
-                var curPhase = phases[curPhaseIdx];
-                if (curPhase && curPhase.events && curPhase.events.length) {
-                    var stageChain = curPhase.events.map(function (ev, ei) {
-                        var st = ei < curStageIdx ? 's' : (ei === curStageIdx ? 'i' : '');
-                        return '[' + st + ']' + ev.name;
-                    }).join(' -> ');
-                    h += '<div class="tf-card__text">当前事件目标：' + esc(stageChain) + '</div>';
+                // 越界保护：currentPhase >= phases.length 表示所有 phase 都完成
+                if (phases.length > 0 && curPhaseIdx > phases.length) curPhaseIdx = phases.length;
+
+                // 已完成事件索引
+                var completedEvents = {};
+                (prog.completedEvents || []).forEach(function (id) { completedEvents[id] = true; });
+
+                // 状态文本映射（对齐 toonflow runtimeEventStatusLabel）
+                function statusLabel(st) {
+                    if (st === 'completed') return '已完成';
+                    if (st === 'waiting_input') return '等待用户';
+                    if (st === 'active') return '进行中';
+                    return '未开始';
+                }
+                function statusColor(st) {
+                    if (st === 'completed') return '#4ade80';
+                    if (st === 'waiting_input') return '#fbbf24';
+                    if (st === 'active') return '#fbbf24';
+                    return 'rgba(220,238,255,.45)';
                 }
 
-                // 扁平事件列表（对齐 Toonflow chapterOutlineEventItems：## Phase = 一条事件）
-                var completedEvents = {};
-                ((prog.completedEvents || []) || []).forEach(function (id) {
-                    completedEvents[id] = true;
-                });
-                var currentPhaseId = 'phase:' + curPhaseIdx;
-
-                var h2 = '';
-                var hasVisible = false;
+                // 计算当前每个 phase 的状态（对齐 toonflow chapterOutlineEventItems）
+                var phaseItems = [];
                 phases.forEach(function (phase, pi) {
                     if (/^非事件/.test(phase.name)) return; // 非事件段不进列表
-                    hasVisible = true;
-                    var isCurrent = (pi === curPhaseIdx) && !completedEvents['phase:' + pi];
-                    var isCompleted = completedEvents['phase:' + pi] === true || pi < curPhaseIdx;
-                    var statusLabel = isCompleted ? '已完成' : (isCurrent ? '进行中' : '未开始');
-                    var statusColor = isCompleted ? '#4ade80' : (isCurrent ? '#fbbf24' : 'rgba(220,238,255,.45)');
-                    // 事件摘要：stage 链（带状态标记）
-                    var chain = (phase.events || []).map(function (ev, ei) {
-                        var st = '';
-                        if (isCompleted) st = 's';
-                        else if (isCurrent) st = ei < curStageIdx ? 's' : (ei === curStageIdx ? 'i' : '');
-                        return '[' + st + ']' + ev.name;
-                    }).join(' -> ');
+                    var phaseMarker = 'phase:' + pi;
+                    var isCompleted = !!completedEvents[phaseMarker] || pi < curPhaseIdx;
+                    var isCurrent = pi === curPhaseIdx && !isCompleted;
+                    var st = isCompleted ? 'completed' : (isCurrent ? (prog.eventStatus || 'active') : 'idle');
+                    // 生成 stage 链 [i]stage1 → [s]stage2 → [ ]stage3
+                    var eventsArr = phase.events || [];
+                    var chain = eventsArr.map(function (ev, ei) {
+                        var mark = '';
+                        if (isCompleted) mark = 's';
+                        else if (isCurrent) mark = ei < curStageIdx ? 's' : (ei === curStageIdx ? 'i' : '');
+                        return '[' + mark + ']' + ev.name;
+                    }).join(' → ');
+                    phaseItems.push({
+                        index: pi,
+                        kind: isCurrent ? 'user' : 'scene',
+                        flow: 'chapter_content',
+                        status: st,
+                        summary: chain || phase.name || ('事件 ' + (pi + 1)),
+                    });
+                });
 
-                    h2 += '<div class="tf-event-item"' + (isCurrent ? ' style="border-color:rgba(124,179,255,.45);"' : '') + '>'
+                // 渲染 phase 列表（对齐 toonflow play-event-item）
+                var h2 = '';
+                phaseItems.forEach(function (item) {
+                    h2 += '<div class="tf-event-item"' + (item.status === 'active' || item.status === 'waiting_input' ? ' style="border-color:rgba(124,179,255,.45);"' : '') + '>'
                         + '<div class="tf-event-item__head">'
-                        + '<span class="tf-event-item__index">事件 ' + (pi + 1) + '</span>'
-                        + '<span class="tf-event-item__meta" style="color:' + statusColor + ';">章节内容 · 场景事件 · ' + statusLabel + '</span>'
+                        + '<span class="tf-event-item__index">事件 ' + (item.index + 1) + '</span>'
+                        + '<span class="tf-event-item__meta" style="color:' + statusColor(item.status) + ';">章节内容 · ' + (item.kind === 'user' ? '用户互动' : '场景事件') + ' · ' + statusLabel(item.status) + '</span>'
                         + '</div>'
-                        + '<div class="tf-event-item__summary">' + esc(chain || phase.name) + '</div>'
+                        + '<div class="tf-event-item__summary">' + esc(item.summary) + '</div>'
                         + '</div>';
                 });
 
-                // 末尾固定事件：结束条件检查（对齐 Toonflow chapter_ending_check）
+                // 末尾固定事件：结束条件检查（对齐 toonflow chapter_ending_check）
                 if (cond) {
-                    var endActive = phases.length && curPhaseIdx >= phases.length;
+                    var endActive = phases.length > 0 && curPhaseIdx >= phases.length;
                     h2 += '<div class="tf-event-item">'
                         + '<div class="tf-event-item__head">'
-                        + '<span class="tf-event-item__index">事件 ' + (phases.length + 1) + '</span>'
-                        + '<span class="tf-event-item__meta" style="color:rgba(191,219,254,.85);">结束条件检查 · 固定事件</span>'
+                        + '<span class="tf-event-item__index">事件 ' + (phaseItems.length + 1) + '</span>'
+                        + '<span class="tf-event-item__meta" style="color:rgba(191,219,254,.85);">结束条件检查 · 固定事件 · ' + (endActive ? statusLabel(prog.eventStatus || 'active') : '未开始') + '</span>'
                         + '</div>'
                         + '<div class="tf-event-item__summary">结束条件：' + esc(cond) + '</div>'
-                        + '<div class="tf-event-item__facts"> 事实：成功条件：' + esc(cond) + '</div>'
                         + '</div>';
-                    hasVisible = true;
                 }
 
-                if (hasVisible) {
+                if (phaseItems.length || cond) {
                     h += '<div class="tf-event-list">' + h2 + '</div>';
                 } else {
                     h += '<div class="tf-card__text" style="color:rgba(220,238,255,.5);">当前章节事件尚未生成。</div>';

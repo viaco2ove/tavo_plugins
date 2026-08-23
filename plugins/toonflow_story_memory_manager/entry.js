@@ -41,7 +41,6 @@ const _safeOnSide = (name, fn) => {
 };
 
 const NS = 'tmm';
-let isNeedSafe=false;
 let refreshing = false;
 
 // ============================================================
@@ -287,8 +286,10 @@ const STORY_SAFETY_PROMPT = `你是 AI 故事安全审查器。你只对即将�
 function isSafetyEnabled() {
   try {
     const v = tavo.plugin.config.get('enableSafety');
-    return v === undefined || v === null ? true : !!v;
-  } catch (e) { return true; }
+    // undefined/null → 默认关闭（直接让 LLM 改记忆/参数，不做安全审查）
+    if (v === undefined || v === null) return false;
+    return !!v;
+  } catch (e) { return false; }
 }
 
 async function runSafetyCheck(currentState, parsed, directive) {
@@ -684,6 +685,7 @@ function getConfig() {
   const kw = kwRaw.split(',').map(s => s.trim()).filter(Boolean);
   return {
     enabled: get('enabled', true) !== false,
+    safetyEnabled: get('safetyEnabled', true) !== false,
     refreshInterval: Number(get('refreshInterval', 3)) || 3,
     dialogueWindow: Number(get('dialogueWindow', 12)) || 12,
     factCap: Number(get('factCap', 12)) || 12,
@@ -905,6 +907,7 @@ async function runMemoryAgent(directive) {
       }
     }
     console.log('[tmm] runMemoryAgent: LLM returned, len=' + (raw ? raw.length : 0));
+     console.log('[tmm] runMemoryAgent: LLM returned raw:' ,raw );
 
     let parsed = null;
     try {
@@ -932,9 +935,12 @@ async function runMemoryAgent(directive) {
       // reject → 不写 state；approve 但给了 modifiedPatch → 用修正版覆盖
       const preState = readChatVar(NS) || defaultState();
       let finalPatch = preState;
-      if(isNeedSafe){
-        const safety = await runSafetyCheck(preState, parsed, pendingDirective);
-        if (safety.decision === 'reject' && isNeedSafe) {
+      let safety = null;
+      const cfg = getConfig();
+      const safetyOn = (cfg.safetyEnabled !== false);
+      if(safetyOn){
+        safety = await runSafetyCheck(preState, parsed, pendingDirective);
+        if (safety.decision === 'reject' && safetyOn) {
           console.warn('[tmm] safety rejected, skip write: ' + safety.reason);
           tavo.utils.toast('@记忆管理 安全审查拒绝：' + (safety.reason || '无理由'));
           return;
@@ -972,8 +978,8 @@ async function runMemoryAgent(directive) {
       tavo.set(NS, state, 'chat');
       // 把动态参数补丁回流到 tmm_story，供信息面板/发言器展示实时数值与关键信息
       syncStoryDynamicCards();
-      let safetyLabel = '（safety 通过）';
-      if(!safety){
+      let safetyLabel = '';
+      if (safetyOn && safety) {
         safetyLabel = safety.modifiedPatch ? '（safety 已修正）' : '（safety 通过）';
       }
       if (directive) tavo.utils.toast('@记忆管理 指令已执行 ' + safetyLabel);

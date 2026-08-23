@@ -200,6 +200,7 @@ async function tfStoryJudge_checkChapterDone(messageContext) {
       llmResult = await _llmJudgeChapter(chapter, cond, ctx);
     }
 
+    console.log('[tf_story][mcs_api] checkChapterDone start')
     let finalResult = 'continue';
     let reason = '';
     if (ruleMatched) {
@@ -208,9 +209,11 @@ async function tfStoryJudge_checkChapterDone(messageContext) {
       finalResult = llmResult.result || 'continue';
       reason = llmResult.reason || 'llm';
     }
+    console.log('[tf_story][mcs_api] checkChapterDone result', finalResult, reason, llmResult)
     if (finalResult !== 'done' && finalResult !== 'success') {
       return { done: false, result: 'continue', pendingChapterId: null, message: '', llmResult, reason };
     }
+
 
     // 章节完成！
     const nextIdx = idx + 1;
@@ -318,6 +321,7 @@ async function _llmJudgeChapter(chapter, cond, ctx) {
     console.warn('[tf_story][judge_llm] 调用失败:', e.message);
     return { result: 'continue', reason: 'llm_error:' + e.message };
   }
+  console.warn('[tf_story][judge_llm] raw:',raw);
   return _parseJudgeResponse(raw);
 }
 
@@ -482,6 +486,8 @@ async function tfEventProgress_advance(messageContext) {
       progress.phases = parseProgress(chapter.content || '');
       progress.currentPhase = 0;
       progress.currentEvent = 0;
+      progress.completedEvents = [];
+      progress.completedPhases = [];
       progress.chaptersKey = chapters.length + ':' + idx;
     }
     const phases = progress.phases || [];
@@ -491,22 +497,33 @@ async function tfEventProgress_advance(messageContext) {
     const llmRes = await _llmJudgeEventProgress(progress, chapters, recentDialogue);
     if (!llmRes || !llmRes.ended) return { advanced: false, reason: (llmRes && llmRes.reason) || 'not_ended' };
 
-    // 推进：当前 event 完成 → 移到下一个 event / phase
+    // 推进：对齐 applySessionUserEventProgress 的 completedEvents 标记逻辑
     const phaseIdx = progress.currentPhase || 0;
     const eventIdx = progress.currentEvent || 0;
     const curPhase = phases[phaseIdx] || {};
     const events = curPhase.events || [];
+    const phaseName = curPhase.name || '';
+    if (!progress.completedPhases) progress.completedPhases = [];
+    if (!progress.completedEvents) progress.completedEvents = [];
+    // 标记当前 event 完成
+    const eventMarker = 'phase:' + phaseIdx + ':event:' + eventIdx;
+    if (!progress.completedEvents.includes(eventMarker)) progress.completedEvents.push(eventMarker);
     if (eventIdx + 1 < events.length) {
       progress.currentEvent = eventIdx + 1;
     } else if (phaseIdx + 1 < phases.length) {
+      // 当前 phase 完成
+      const phaseMarker = 'phase:' + phaseIdx;
+      if (!progress.completedEvents.includes(phaseMarker)) progress.completedEvents.push(phaseMarker);
+      if (phaseName && !progress.completedPhases.includes(phaseName)) progress.completedPhases.push(phaseName);
       progress.currentPhase = phaseIdx + 1;
       progress.currentEvent = 0;
     } else {
-      // 所有 event/phase 都完成 → 标记等章节判定
+      // 所有 event/phase 都完成
+      const phaseMarker = 'phase:' + phaseIdx;
+      if (!progress.completedEvents.includes(phaseMarker)) progress.completedEvents.push(phaseMarker);
+      if (phaseName && !progress.completedPhases.includes(phaseName)) progress.completedPhases.push(phaseName);
       progress.phasesAllCompleted = true;
     }
-    // 写回进度摘要
-    console.log('[tf_story][event_advance] progress updated:', JSON.parse(progress));
     if (llmRes.progress_summary) progress.progressSummary = llmRes.progress_summary;
     if (llmRes.progress_facts && llmRes.progress_facts.length) {
       progress.progressFacts = [...(progress.progressFacts || []), ...llmRes.progress_facts].slice(-20);
@@ -1041,7 +1058,8 @@ async function judgeAndAdvance(messageContext) {
   } else {
     console.log("[tf_story][judge] LLM 章节判定不可用，默认 continue");
   }
-
+  console.log("[tf_story][judge] LLM 章节判定不可用，默认 outcome:",outcome);
+   //result: string - 只能是 "continue" /"guide"/ "success" / "failed"
   if (outcome.result === 'continue') return;
 
   if (outcome.result === 'failed') {
@@ -1053,6 +1071,16 @@ async function judgeAndAdvance(messageContext) {
     return;
   }
 
+  //result: string - 只能是 "continue" /"guide"/ "success" / "failed"
+  // 只有成功是下一个章节
+  if (outcome.result === 'guide') {
+     //最后一个章节事件需要引导，不是就不需要
+     return;
+  }
+  // 只有成功是下一个章节
+  if (outcome.result !== 'success') {
+     return;
+  }
   // success
   if (!progress.completedChapters.includes(idx)) progress.completedChapters.push(idx);
 
@@ -2319,6 +2347,7 @@ async function evaluateChapterOutcomeByAi(chapter, progress, latestMessageConten
       console.log('[tf_story]    guide_summary=' + (obj.guide_summary || '').slice(0, 80));
       console.log('[tf_story]    guide_facts=' + JSON.stringify((obj.guide_facts||[]).slice(0,3)));
     }
+    console.log('[tf_story][chapter_judge] LLM 调用 obj:', obj)
     return {
       result: obj.result || 'continue',
       matched_rule: obj.matched_rule || null,
