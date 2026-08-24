@@ -277,7 +277,7 @@ tavo.plugin.on('chat:opened', async function() {
 });
 async function tf_speaker(type, data) {
 
-  console.log('[window.tf_story_on] [tf_speaker] ', type);
+  console.log('[speaker][window.tf_story_on] [tf_speaker] ', type);
   var cfg;
   try {
     cfg = getConfig();
@@ -289,7 +289,7 @@ async function tf_speaker(type, data) {
 
   // 编排锁：防止 auto_orchestrate 并发抢占（同一轮编排内多次 emit 事件）
   if (_orchBusy) {
-    console.log('[tf_speaker][LOCK] 编排锁占用，跳过: ' + type);
+    console.log('[speaker][tf_speaker][LOCK] 编排锁占用，跳过: ' + type);
     return;
   }
 
@@ -297,10 +297,10 @@ async function tf_speaker(type, data) {
     var role = (data && data.role) || '旁白';
     var text = (data && data.text) || '';
     if (!text) {
-      console.log('[tf_speaker][opening] text 为空，跳过');
+      console.log('[speaker][tf_speaker][opening] text 为空，跳过');
       return;
     }
-    console.log('[tf_speaker][opening] 收到开场白委托 role=' + role + ' text=' + text.slice(0, 40));
+    console.log('[speaker][tf_speaker][opening] 收到开场白委托 role=' + role + ' text=' + text.slice(0, 40));
     // 查找角色 id
     var charEntry = null;
     try {
@@ -309,7 +309,7 @@ async function tf_speaker(type, data) {
 
       if (chars != null) {
         chars.forEach(el => {
-          console.log('[window.tf_story_on] [tf_speaker] chars ', el.name, el.id);
+          console.log('[speaker][window.tf_story_on] [tf_speaker] chars ', el.name, el.id);
         });
       }
 
@@ -328,7 +328,7 @@ async function tf_speaker(type, data) {
       // 兜底：tavo chat.characters 可能不包含 narrator
       if (!charEntry && role) {
         charEntry = { id: role, name: role, roleType: (role === '旁白' || role === 'narrator') ? 'narrator' : 'npc' };
-        console.log('[tf_speaker][opening] charEntry fallback by name: ' + role);
+        console.log('[speaker][tf_speaker][opening] charEntry fallback by name: ' + role);
       }
     } catch (e) {
     }
@@ -341,15 +341,15 @@ async function tf_speaker(type, data) {
     };
     if (charEntry && charEntry.id !== undefined) {
       speakerAppendOpts.characterId = charEntry.id;
-      console.log('[tf_speaker][opening] speakerAppendOpts charEntry: ' + charEntry.name);
+      console.log('[speaker][tf_speaker][opening] speakerAppendOpts charEntry: ' + charEntry.name);
     }
     try {
       await tavo.message.append(speakerAppendOpts);
-      console.log('[tf_speaker][opening] 已写入开场白: ' + speakerAppendOpts.characterId + ":" + role + ':' + text.slice(0, 40));
+      console.log('[speaker][tf_speaker][opening] 已写入开场白: ' + speakerAppendOpts.characterId + ":" + role + ':' + text.slice(0, 40));
       voice_gen_play(charEntry, text);
       await auto_orchestrate(data);
     } catch (e) {
-      console.warn('[tf_speaker][opening] 写入开场白失败', e);
+      console.warn('[speaker][tf_speaker][opening] 写入开场白失败', e);
     }
   }else if ('append_message_steam' == type ){
       await steam_speaker_writer(type, data);
@@ -360,7 +360,7 @@ async function tf_speaker(type, data) {
       voice_gen_play(findCharEntryById(data.characterId), text);
       await auto_orchestrate(data)
     } catch (e) {
-      console.warn('[tf_speaker][append_message] 写入台词白失败', e);
+      console.warn('[speaker][tf_speaker][append_message] 写入台词白失败', e);
     }
   }
 
@@ -375,7 +375,7 @@ async function findCharEntryById(id) {
 
     if (chars != null) {
       chars.forEach(el => {
-        console.log('[window.tf_story_on] [tf_speaker] chars ', el.name, el.id);
+        console.log('[speaker][window.tf_story_on] [tf_speaker] chars ', el.name, el.id);
       });
     }
 
@@ -397,70 +397,70 @@ async function auto_orchestrate(data) {
     await new Promise(resolve => setTimeout(resolve, 100));
     // await_user 处理
     if (data && data.awaitUser === true) {
-      console.log('[' + ts() + '] ⏸ [speaker] await_user=true → 停止生成，等待用户输入');
+      console.log('[speaker][' + ts() + '] ⏸ [speaker] await_user=true → 停止生成，等待用户输入');
       try { tavo.set(ORCH_FLAG, false, 'chat'); } catch (e) {}
       return;
     }
     // 触发下一轮编排
-    console.log('[tf_speaker][orchestrate][steam] → 继续编排，auto_orchestrate');
+    console.log('[speaker][tf_speaker][orchestrate][steam] → 继续编排，auto_orchestrate');
     if (window.tf_story_emit) window.tf_story_emit('auto_orchestrate', {});
   } catch (e) {
-    console.warn('[tf_speaker] auto_orchestrate失败', e);
+    console.warn('[speaker][tf_speaker] auto_orchestrate失败', e);
   }
 }
 
 async function voice_gen_play(steamCharEntry,speechText){
      // 8. 流式完成后 - 调用 voice 插件生成 + 播放语音
-          console.log('[tf_speaker] 检查 voice 插件: charEntry=' + (steamCharEntry ? steamCharEntry.id : 'null') + ' tf_voice=' + (window.tf_voice ? 'exists' : 'MISSING') + ' playFor=' + (window.tf_voice && typeof window.tf_voice().playFor));
+          console.log('[speaker][tf_speaker] 检查 voice 插件: charEntry=' + (steamCharEntry ? steamCharEntry.id : 'null') + ' tf_voice=' + (window.tf_voice ? 'exists' : 'MISSING') + ' playFor=' + (window.tf_voice && typeof window.tf_voice().playFor));
           if (steamCharEntry && steamCharEntry.id && speechText && window.tf_voice) {
             try {
               var vcfg = window.tf_voice().getConfig ? window.tf_voice().getConfig() : null;
-              console.log('[tf_speaker] voice config:', JSON.stringify(vcfg));
+              console.log('[speaker][tf_speaker] voice config:', JSON.stringify(vcfg));
               if (vcfg && vcfg.auto_play !== false) {
                 if (typeof window.tf_voice().playFor === 'function') {
-                  console.log('[tf_speaker] 调用 tf_voice.playFor(' + steamCharEntry.id + ', ...)');
+                  console.log('[speaker][tf_speaker] 调用 tf_voice.playFor(' + steamCharEntry.id + ', ...)');
                   window.tf_voice().playFor(steamCharEntry.id, speechText);
                 } else if (typeof window.tf_voice().speak === 'function') {
-                  console.log('[tf_speaker] 调用 tf_voice.speak(' + steamCharEntry.id + ', ...)');
+                  console.log('[speaker][tf_speaker] 调用 tf_voice.speak(' + steamCharEntry.id + ', ...)');
                   window.tf_voice().speak(steamCharEntry.id, speechText);
                 } else {
-                  console.warn('[tf_speaker] voice.playFor 不可用');
+                  console.warn('[speaker][tf_speaker] voice.playFor 不可用');
                 }
               } else {
-                console.log('[tf_speaker] auto_play=false，跳过语音');
+                console.log('[speaker][tf_speaker] auto_play=false，跳过语音');
               }
             } catch (e) {
-              console.warn('[tf_speaker] TTS 触发失败', e);
+              console.warn('[speaker][tf_speaker] TTS 触发失败', e);
             }
           } else {
-            console.warn('[tf_speaker] voice 跳过: charEntry=' + (steamCharEntry ? steamCharEntry.id : 'null') + ' text=' + (speechText ? speechText.length : 0));
+            console.warn('[speaker][tf_speaker] voice 跳过: charEntry=' + (steamCharEntry ? steamCharEntry.id : 'null') + ' text=' + (speechText ? speechText.length : 0));
           }
 }
 async function voice_gen_play_steam(steamCharEntry, speechText){
    // 8. 流式完成后 - 调用 voice 插件生成 + 播放语音
-          console.log('[tf_speaker][steam] 检查 voice 插件: charEntry=' + (steamCharEntry ? steamCharEntry.id : 'null') + ' tf_voice=' + (window.tf_voice ? 'exists' : 'MISSING') + ' playFor=' + (window.tf_voice && typeof window.tf_voice().playFor));
+          console.log('[speaker][tf_speaker][steam] 检查 voice 插件: charEntry=' + (steamCharEntry ? steamCharEntry.id : 'null') + ' tf_voice=' + (window.tf_voice ? 'exists' : 'MISSING') + ' playFor=' + (window.tf_voice && typeof window.tf_voice().playFor));
           if (steamCharEntry && steamCharEntry.id && speechText && window.tf_voice) {
             try {
               var vcfg = window.tf_voice().getConfig ? window.tf_voice().getConfig() : null;
-              console.log('[tf_speaker][steam] voice config:', JSON.stringify(vcfg));
+              console.log('[speaker][tf_speaker][steam] voice config:', JSON.stringify(vcfg));
               if (vcfg && vcfg.auto_play !== false) {
                 if (typeof window.tf_voice().playFor === 'function') {
-                  console.log('[tf_speaker][steam] 调用 tf_voice.playFor(' + steamCharEntry.id + ', ...)');
+                  console.log('[speaker][tf_speaker][steam] 调用 tf_voice.playFor(' + steamCharEntry.id + ', ...)');
                   window.tf_voice().playFor(steamCharEntry.id, speechText);
                 } else if (typeof window.tf_voice().speak === 'function') {
-                  console.log('[tf_speaker][steam] 调用 tf_voice.speak(' + steamCharEntry.id + ', ...)');
+                  console.log('[speaker][tf_speaker][steam] 调用 tf_voice.speak(' + steamCharEntry.id + ', ...)');
                   window.tf_voice().speak(steamCharEntry.id, speechText);
                 } else {
-                  console.warn('[tf_speaker][steam] voice.playFor 不可用');
+                  console.warn('[speaker][tf_speaker][steam] voice.playFor 不可用');
                 }
               } else {
-                console.log('[tf_speaker][steam] auto_play=false，跳过语音');
+                console.log('[speaker][tf_speaker][steam] auto_play=false，跳过语音');
               }
             } catch (e) {
-              console.warn('[tf_speaker][steam] TTS 触发失败', e);
+              console.warn('[speaker][tf_speaker][steam] TTS 触发失败', e);
             }
           } else {
-            console.warn('[tf_speaker][steam] voice 跳过: charEntry=' + (steamCharEntry ? steamCharEntry.id : 'null') + ' text=' + (speechText ? speechText.length : 0));
+            console.warn('[speaker][tf_speaker][steam] voice 跳过: charEntry=' + (steamCharEntry ? steamCharEntry.id : 'null') + ' text=' + (speechText ? speechText.length : 0));
           }
           await new Promise(resolve => setTimeout(resolve, 500));
 
@@ -489,7 +489,7 @@ async function steam_speaker_writer(type, data){
 var steamCharEntry = null;
       var steamChat = await tavo.chat.current();
       var steamChars = (steamChat && steamChat.characters) || [];
-      console.log('[tf_speaker][steam] chat.characters count=' + steamChars.length + ' names=' + JSON.stringify(steamChars.map(function(c){ return c.name; })));
+      console.log('[speaker][tf_speaker][steam] chat.characters count=' + steamChars.length + ' names=' + JSON.stringify(steamChars.map(function(c){ return c.name; })));
       var steamFindChar = function(name) {
         return steamChars.find(function(c){ return c.name === name; })
           || (name === '旁白' || name === 'narrator' ? steamChars.find(function(c){ return c.name === '旁白'; }) : null);
@@ -499,12 +499,12 @@ var steamCharEntry = null;
       // 直接按 steamRole 字符串当 charId，让 voice_gen_play → getVoiceFile(charId) 按名查 tf_character_voices
       if (!steamCharEntry && steamRole) {
         steamCharEntry = { id: steamRole, name: steamRole, roleType: (steamRole === '旁白' || steamRole === 'narrator') ? 'narrator' : 'npc' };
-        console.log('[tf_speaker][steam] charEntry fallback by name: ' + steamRole);
+        console.log('[speaker][tf_speaker][steam] charEntry fallback by name: ' + steamRole);
       } else if (steamCharEntry) {
         // 优先用数字 ID（让 voice 插件按 charId 命中 tf_character_voices.charId 字段）
         // 但 steam 流程的 charId 还是设成 name（voice 插件 getVoiceFile 会双匹配）
         // 这里保持 steamCharEntry.id 原值（数字 ID）
-        console.log('[tf_speaker][steam] charEntry found: id=' + steamCharEntry.id + ' name=' + steamCharEntry.name);
+        console.log('[speaker][tf_speaker][steam] charEntry found: id=' + steamCharEntry.id + ' name=' + steamCharEntry.name);
       }
 
       // 2. 生成唯一 div id
@@ -631,7 +631,7 @@ var steamCharEntry = null;
 tavo.plugin.on('generation:prepare', async (event) => {
   // 编排锁：防止上一轮 append_message_steam 的 LLM 流被新一轮 generation:prepare 抢占
   if (_orchBusy) {
-    console.log('[speaker][gen:prepare] 编排锁占用，跳过生成');
+    console.log('[speaker][speaker][gen:prepare] 编排锁占用，跳过生成');
     try { event.text = ''; } catch (e) {}
     return;
   }
@@ -652,7 +652,7 @@ tavo.plugin.on('generation:prepare', async (event) => {
     block += '## 在场角色当前状态\n' + (cast || '（无）') + '\n';
     event.text = block + '\n---\n' + (event.text || '');
   } catch (e) {
-    console.warn('[tf_speaker] prepare failed', e);
+    console.warn('[speaker][tf_speaker] prepare failed', e);
   }
 });
 
@@ -701,8 +701,8 @@ tavo.plugin.onSidebarAction('speaker-char', async () => {
     }
     await tavo.message.append({ content: msg, hidden: true, characterId: chat.characters[0].id });
   } catch (e) {
-    console.warn('[tf_speaker] list failed', e);
+    console.warn('[speaker][tf_speaker] list failed', e);
   }
 });
 
-console.log('[toonflow_story_speaker] plugin entry loaded');
+console.log('[speaker][toonflow_story_speaker] plugin entry loaded');

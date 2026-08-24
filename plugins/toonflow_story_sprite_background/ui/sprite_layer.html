@@ -32,11 +32,11 @@
 
 <script>
 (function(){
-  console.log('[sprite-html] sprite_layer.html loaded');
+  console.log('[sprite_background][sprite-html] sprite_layer.html loaded');
   setTimeout(function(){
     var wrap = document.getElementById('tf-sprite-fg-wrap');
     var img = document.getElementById('tf-sprite-fg');
-    console.log('[sprite-html] DOM check: wrap=' + !!wrap + ' img=' + !!img + ' wrap.style=' + (wrap ? wrap.style.cssText : 'N/A'));
+    console.log('[sprite_background][sprite-html] DOM check: wrap=' + !!wrap + ' img=' + !!img + ' wrap.style=' + (wrap ? wrap.style.cssText : 'N/A'));
     if (wrap) {
       try {
         wrap.style.zIndex = -1;
@@ -45,8 +45,8 @@
           img.style.bottom = tavo.plugin.config.get('fgBottom') || '0px';
           img.style.height = tavo.plugin.config.get('fgHeight') || '100vh';
         }
-        console.log('[sprite-html] wrap styles applied, zIndex=' + wrap.style.zIndex + ' bottom=' + (img ? img.style.bottom : 'N/A'));
-      } catch(e) { console.warn('[sprite-html] config error', e); }
+        console.log('[sprite_background][sprite-html] wrap styles applied, zIndex=' + wrap.style.zIndex + ' bottom=' + (img ? img.style.bottom : 'N/A'));
+      } catch(e) { console.warn('[sprite_background][sprite-html] config error', e); }
     }
   }, 100);
 })();

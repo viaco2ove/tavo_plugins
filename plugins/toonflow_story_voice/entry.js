@@ -26,8 +26,8 @@ const ts = () => {
     + ' ' + [d.getHours(), d.getMinutes(), d.getSeconds()].map(n => String(n).padStart(2, '0')).join(':')
     + '.' + String(d.getMilliseconds()).padStart(3, '0');
 };
-const vl = (...a) => console.log('[' + ts() + '] [voice] ' + a.join(' '));
-const vw = (...a) => console.warn('[' + ts() + '] [voice] ' + a.join(' '));
+const vl = (...a) => console.log('[voice][' + ts() + '] [voice] ' + a.join(' '));
+const vw = (...a) => console.warn('[voice][' + ts() + '] [voice] ' + a.join(' '));
 
 // ---------- 工具 ----------
 // 配置读取：优先 tf_voice_config 变量（跨插件面板可写），兜底插件 settings
@@ -85,7 +85,7 @@ function setVoiceCache(cache) {
 // 读音色文件绑定：chat scope → tf_character_voices，global scope → tf_character_voices_{chat_id}
 function getVoiceFiles(scope) {
   const globalNs = voiceFileNsGlobal();
-  console.log('[API][voice] getVoiceFiles scope=' + scope + ' chatKey=' + VOICE_FILE_NS
+  console.log('[voice][API][voice] getVoiceFiles scope=' + scope + ' chatKey=' + VOICE_FILE_NS
       + ' globalKey=' + globalNs);
   // 先尝试 global scope
   let v = readVar(globalNs, 'global');
@@ -143,9 +143,9 @@ function tf_voice_funs () {
       // 绑定音色文件（角色配置弹窗保存时调用）
       bindVoiceFile: (charId, name, file) => {
         const files = getVoiceFiles();
-        console.log('[API][voice] bindVoiceFile files: ' + JSON.stringify(files));
+        console.log('[voice][API][voice] bindVoiceFile files: ' + JSON.stringify(files));
         files[name] = { mode: 'clone_voice', prompt: '', audioRef: file, enabled: true };
-        console.log('[API][voice] bindVoiceFile files name:' + name, JSON.stringify(files[name]));
+        console.log('[voice][API][voice] bindVoiceFile files name:' + name, JSON.stringify(files[name]));
         // chat scope: tf_character_voices（不带 chat_id）
         try { tavo.set(VOICE_FILE_NS, files, 'chat'); } catch (e) { vw('bindVoiceFile write chat error', e.message); }
         // global scope: tf_character_voices_{chat_id}（带 chat_id）
@@ -158,17 +158,17 @@ function tf_voice_funs () {
 
       // 读音色文件绑定
       getVoiceFile: (charId) => {
-        console.log('[API][voice] getVoiceFile start')
+        console.log('[voice][API][voice] getVoiceFile start')
         const files = getVoiceFiles('global');
         if(!files){
-          console.log('[API][voice] getVoiceFile files is null')
+          console.log('[voice][API][voice] getVoiceFile files is null')
         }
-        console.log('[API][voice] getVoiceFile files :', JSON.stringify(files))
+        console.log('[voice][API][voice] getVoiceFile files :', JSON.stringify(files))
         // tf_character_voices 格式: {<charName>: {mode, prompt, audioRef, enabled, charId}}
         // charId 可能是: (1) 角色名 "旁白"/"红缥缈" (2) tavo 数字 ID "110" (3) narrator/npc 字符串
         const cidStr = String(charId);
         const fileKeys = Object.keys(files);
-        console.log('[API][voice] getVoiceFile charId=' + cidStr + ' files_keys=' + JSON.stringify(fileKeys)
+        console.log('[voice][API][voice] getVoiceFile charId=' + cidStr + ' files_keys=' + JSON.stringify(fileKeys)
         + ' files=' + JSON.stringify(fileKeys));
         vl('[API] getVoiceFile charId=' + cidStr + ' files_keys=' + JSON.stringify(fileKeys));
         // (1) 直接按 key 匹配
@@ -696,14 +696,14 @@ vl('插件已加载 (voice_platform=' + cfg('voice_platform', 'xiaomimimo') + ')
 vl('auto_play=' + cfg('auto_play', true));
 vl('apiKey configured=' + (cfg('voice_platform_apikey', '') ? 'yes' : 'NO!'));
 vl('========================================');
-console.log('[toonflow_story_voice] plugin entry loaded');
+console.log('[voice][toonflow_story_voice] plugin entry loaded');
 // 平台配置变化 -> 清空缓存
 (function() {
  try {
   tavo.plugin.config.onChange((changed) => {
     if (changed && changed.key === 'voice_platform') {
       tf_voice_funs().clearAllVoiceIds();
-      console.log('[toonflow_story_voice] clearAllVoiceIds');
+      console.log('[voice][toonflow_story_voice] clearAllVoiceIds');
     }
   });
   } catch (e) {}

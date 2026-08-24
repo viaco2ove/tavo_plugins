@@ -25,7 +25,7 @@
 
 <script>
 (function () {
-  console.log('[voice-html] voice_panel.html loaded');
+  console.log('[voice][voice-html] voice_panel.html loaded');
 
   var btnWrap = document.getElementById('tf-voice-btn-wrap');
   var btn = document.getElementById('tf-voice-btn');
@@ -51,7 +51,7 @@
     btn.addEventListener('click', async function () {
       try {
         var voice = window.tf_voice;
-        if (!voice) { console.warn('[voice-html] tf_voice API 未加载'); return; }
+        if (!voice) { console.warn('[voice][voice-html] tf_voice API 未加载'); return; }
         // 找最后一条 assistant 消息
         var cnt = T.message.count();
         var msgs = T.message.find([Math.max(0, cnt - 10), cnt - 1]);
@@ -59,7 +59,7 @@
         for (var i = msgs.length - 1; i >= 0; i--) {
           if (msgs[i] && msgs[i].role === 'assistant' && msgs[i].characterId) { last = msgs[i]; break; }
         }
-        if (!last) { console.log('[voice-html] 无角色消息'); return; }
+        if (!last) { console.log('[voice][voice-html] 无角色消息'); return; }
         var charId = String(last.characterId);
         var text = (last.content || '').replace(/<[^>]+>/g, '').trim().slice(0, 120);
         if (!text) return;
@@ -85,7 +85,7 @@
         if (window.tf_voice && window.tf_voice.playLast) {
           window.tf_voice.playLast();
         }
-      } catch (e) { console.error('[voice-html] replay err', e); }
+      } catch (e) { console.error('[voice][voice-html] replay err', e); }
     });
   }
 })();

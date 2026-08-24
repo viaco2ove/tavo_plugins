@@ -6,37 +6,37 @@
 
 // 诊断：确认 entry.js 真的被 Tavo 加载并执行
 try {
-  console.log('[tmm] ENTRY START v1.0.8 ' + new Date().toISOString()
+  console.log('[memory_manager][tmm] ENTRY START v1.0.8 ' + new Date().toISOString()
     + ' tavo=' + (typeof tavo)
     + ' tavo.plugin=' + ((typeof tavo !== 'undefined' && tavo.plugin) ? typeof tavo.plugin : 'undefined')
     + ' tavo.plugin.on=' + ((typeof tavo !== 'undefined' && tavo.plugin) ? typeof tavo.plugin.on : 'undefined'));
 } catch (e) {
-  console.error('[tmm] entry log failed', e);
+  console.error('[memory_manager][tmm] entry log failed', e);
 }
 
 // hook 注册用 try/catch 包裹：抓 Tavo API 抛错（之前没有错误日志 = 静默死）
 const _safeOn = (name, fn) => {
   try {
     if (typeof tavo === 'undefined' || !tavo.plugin || typeof tavo.plugin.on !== 'function') {
-      console.error('[tmm] hook 注册失败: tavo.plugin.on 不可用, hook=' + name);
+      console.error('[memory_manager][tmm] hook 注册失败: tavo.plugin.on 不可用, hook=' + name);
       return;
     }
     tavo.plugin.on(name, fn);
-    console.log('[tmm] hook registered: ' + name);
+    console.log('[memory_manager][tmm] hook registered: ' + name);
   } catch (e) {
-    console.error('[tmm] hook 注册失败: hook=' + name, e && (e.message || e));
+    console.error('[memory_manager][tmm] hook 注册失败: hook=' + name, e && (e.message || e));
   }
 };
 const _safeOnSide = (name, fn) => {
   try {
     if (typeof tavo === 'undefined' || !tavo.plugin || typeof tavo.plugin.onSidebarAction !== 'function') {
-      console.error('[tmm] sidebar 注册失败: tavo.plugin.onSidebarAction 不可用, name=' + name);
+      console.error('[memory_manager][tmm] sidebar 注册失败: tavo.plugin.onSidebarAction 不可用, name=' + name);
       return;
     }
     tavo.plugin.onSidebarAction(name, fn);
-    console.log('[tmm] sidebar registered: ' + name);
+    console.log('[memory_manager][tmm] sidebar registered: ' + name);
   } catch (e) {
-    console.error('[tmm] sidebar 注册失败: name=' + name, e && (e.message || e));
+    console.error('[memory_manager][tmm] sidebar 注册失败: name=' + name, e && (e.message || e));
   }
 };
 
@@ -320,7 +320,7 @@ async function runSafetyCheck(currentState, parsed, directive) {
       new Promise((_, reject) => setTimeout(() => reject(new Error('runSafetyCheck timeout 15s')), 15000)),
     ]);
   } catch (e) {
-    console.warn('[tmm] safety call failed', e && e.message);
+    console.warn('[memory_manager][tmm] safety call failed', e && e.message);
     return { decision: 'approve', reason: 'safety call failed, fall through: ' + (e && e.message) };
   }
   const s = String(raw || '').trim();
@@ -329,10 +329,10 @@ async function runSafetyCheck(currentState, parsed, directive) {
   let parsed2 = null;
   try { parsed2 = JSON.parse(jsonText); } catch (e) {}
   if (!parsed2 || !parsed2.decision) {
-    console.warn('[tmm] safety parse failed, raw=' + s.slice(0, 200));
+    console.warn('[memory_manager][tmm] safety parse failed, raw=' + s.slice(0, 200));
     return { decision: 'approve', reason: 'safety parse failed, fall through' };
   }
-  console.log('[tmm] safety: decision=' + parsed2.decision + (parsed2.reason ? ' reason=' + parsed2.reason : ''));
+  console.log('[memory_manager][tmm] safety: decision=' + parsed2.decision + (parsed2.reason ? ' reason=' + parsed2.reason : ''));
   return { decision: parsed2.decision, reason: parsed2.reason || '', modifiedPatch: parsed2.modifiedPatch || null };
 }
 
@@ -576,7 +576,7 @@ async function buildStaticStory(force, maxRetries) {
       // 角色解析健壮化：任一角色拉取/解析失败不影响整体，缺省空数组也要写基准卡
       let characters = [];
       try { characters = await buildCharactersFromChat(chat); } catch (e) {
-        console.warn('[tmm] buildCharactersFromChat failed', e);
+        console.warn('[memory_manager][tmm] buildCharactersFromChat failed', e);
         characters = [];
       }
       // 受保护合并：保留已有角色卡，只补建新角色（优先读 global 防 reset）
@@ -599,10 +599,10 @@ async function buildStaticStory(force, maxRetries) {
       const msg = (e && e.message) || String(e);
       const retriable = /not ready|try again|internal error|could not complete/i.test(msg);
       if (!retriable || i === maxRetries) {
-        console.warn('[tmm] buildStaticStory failed (no more retries)', msg);
+        console.warn('[memory_manager][tmm] buildStaticStory failed (no more retries)', msg);
         return null;
       }
-      console.warn('[tmm] buildStaticStory retry ' + i + '/' + maxRetries + ': ' + msg);
+      console.warn('[memory_manager][tmm] buildStaticStory retry ' + i + '/' + maxRetries + ': ' + msg);
       await new Promise(r => setTimeout(r, 600));
     }
   }
@@ -645,10 +645,10 @@ async function initStory(maxRetries) {
       const msg = (e && e.message) || String(e);
       const retriable = /not ready|try again|internal error|could not complete/i.test(msg);
       if (!retriable || i === maxRetries) {
-        console.warn('[tmm] initStory failed (no more retries)', msg);
+        console.warn('[memory_manager][tmm] initStory failed (no more retries)', msg);
         return;
       }
-      console.warn('[tmm] initStory retry ' + i + '/' + maxRetries + ': ' + msg);
+      console.warn('[memory_manager][tmm] initStory retry ' + i + '/' + maxRetries + ': ' + msg);
       await new Promise(r => setTimeout(r, 800));
     }
   }
@@ -797,16 +797,16 @@ function buildCharacterCardList() {
 
 // 记忆管理器 LLM 主入口：directive 非空时表示 @记忆管理 直接指令
 async function runMemoryAgent(directive) {
-  console.log('[tmm] runMemoryAgent start, directive=' + JSON.stringify((directive || '').slice(0, 60)) + ', refreshing=' + refreshing);
+  console.log('[memory_manager][tmm] runMemoryAgent start, directive=' + JSON.stringify((directive || '').slice(0, 60)) + ', refreshing=' + refreshing);
   if (refreshing) {
-    console.log('[tmm] runMemoryAgent skipped: previous still refreshing');
+    console.log('[memory_manager][tmm] runMemoryAgent skipped: previous still refreshing');
     // tavo.utils.toast('@记忆管理：上一轮还在跑，跳过本次（避免堆积）');
     return;
   }
   refreshing = true;
   try {
     const cfg = getConfig();
-    if (!cfg.enabled) { console.log('[tmm] runMemoryAgent skip: enabled=false'); return; }
+    if (!cfg.enabled) { console.log('[memory_manager][tmm] runMemoryAgent skip: enabled=false'); return; }
 
     // 防御：展示层 tmm_story 缺失（如重置后）则立刻重建，保证模型能看到角色参数卡以生成 patch
     if (!readChatVar(tmmNs('story'))) {
@@ -843,17 +843,17 @@ async function runMemoryAgent(directive) {
       else if (/攻击|探索|交易|打开|使用/.test(text0)) classifiedIntent = 'game_action';
       else classifiedIntent = 'normal_dialog';
     }
-    console.log('[tmm] ┌─── 意图识别 TRACE ─────────────────────────');
-    console.log('[tmm] │ 🎯 意图模式: ' + mode + ' → ' + classifiedIntent);
-    console.log('[tmm] │ 📝 最近消息: ' + JSON.stringify((text0||'').slice(0,80)));
-    console.log('[tmm] │ 📊 触发原因: turnsSinceRefresh=' + (cur.turnsSinceRefresh||0)
+    console.log('[memory_manager][tmm] ┌─── 意图识别 TRACE ─────────────────────────');
+    console.log('[memory_manager][tmm] │ 🎯 意图模式: ' + mode + ' → ' + classifiedIntent);
+    console.log('[memory_manager][tmm] │ 📝 最近消息: ' + JSON.stringify((text0||'').slice(0,80)));
+    console.log('[memory_manager][tmm] │ 📊 触发原因: turnsSinceRefresh=' + (cur.turnsSinceRefresh||0)
       + ' refreshInterval=' + cfg.refreshInterval
       + (pendingDirective ? ' [指令触发]' : (cfg.triggerKeywords.some(k=>(text0||'').includes(k))?' [关键词触发]':' [轮数触发]'))
     );
-    console.log('[tmm] │ 🧠 历史摘要: ' + ((cur.summary||'（空）').slice(0,80)));
-    console.log('[tmm] │ 📋 角色卡: player.level=' + ((cur.cards&&cur.cards.player&&cur.cards.player.level)||'?')
+    console.log('[memory_manager][tmm] │ 🧠 历史摘要: ' + ((cur.summary||'（空）').slice(0,80)));
+    console.log('[memory_manager][tmm] │ 📋 角色卡: player.level=' + ((cur.cards&&cur.cards.player&&cur.cards.player.level)||'?')
       + ' npcs数量=' + Object.keys((cur.cards&&cur.cards.npcs)||{}).length);
-    console.log('[tmm] └─────────────────────────────────────────────');
+    console.log('[memory_manager][tmm] └─────────────────────────────────────────────');
 
     let prompt = '';
     prompt += '【历史记忆】\n';
@@ -871,7 +871,7 @@ async function runMemoryAgent(directive) {
     }
     prompt += '\n请基于以上上下文，输出唯一的 JSON 记忆更新结果。';
 
-    console.log('[tmm] runMemoryAgent: calling tf_llm.callDirect (prompt len=' + prompt.length + ')');
+    console.log('[memory_manager][tmm] runMemoryAgent: calling tf_llm.callDirect (prompt len=' + prompt.length + ')');
     // 改用 tf_llm.callDirect（跟 mcs / llm-opt / classifyLLM 同一通道，已验证能通）
     // 不再用 tavo.generate — 那条 tavo 自带 LLM 通道会卡死
     const LLM_TIMEOUT_MS = 30000;
@@ -906,30 +906,30 @@ async function runMemoryAgent(directive) {
         clearTimeout(timeoutHandle);
       }
     }
-    console.log('[tmm] runMemoryAgent: LLM returned, len=' + (raw ? raw.length : 0));
-     console.log('[tmm] runMemoryAgent: LLM returned raw:' ,raw );
+    console.log('[memory_manager][tmm] runMemoryAgent: LLM returned, len=' + (raw ? raw.length : 0));
+     console.log('[memory_manager][tmm] runMemoryAgent: LLM returned raw:' ,raw );
 
     let parsed = null;
     try {
       // 用括号计数法正确提取 JSON（避免 regex /\{[\s\S]*\}/ 贪婪匹配多余内容）
       parsed = extractJson(raw);
     } catch (e) {
-      console.warn('[tmm] parse failed', e);
+      console.warn('[memory_manager][tmm] parse failed', e);
     }
 
     if (parsed) {
       // ===== LLM 结果 TRACE =====
-      console.log('[tmm] ┌─── LLM 记忆输出 TRACE ─────────────────────');
-      console.log('[tmm] │ 🤖 LLM返回: summary=' + JSON.stringify((parsed.summary||'').slice(0,80)));
-      console.log('[tmm] │ 📝 facts(' + (parsed.facts||[]).length + '): ' + JSON.stringify((parsed.facts||[]).slice(0,5)));
-      console.log('[tmm] │ 🏷  tags(' + (parsed.tags||[]).length + '): ' + JSON.stringify((parsed.tags||[]).slice(0,8)));
+      console.log('[memory_manager][tmm] ┌─── LLM 记忆输出 TRACE ─────────────────────');
+      console.log('[memory_manager][tmm] │ 🤖 LLM返回: summary=' + JSON.stringify((parsed.summary||'').slice(0,80)));
+      console.log('[memory_manager][tmm] │ 📝 facts(' + (parsed.facts||[]).length + '): ' + JSON.stringify((parsed.facts||[]).slice(0,5)));
+      console.log('[memory_manager][tmm] │ 🏷  tags(' + (parsed.tags||[]).length + '): ' + JSON.stringify((parsed.tags||[]).slice(0,8)));
       const pp = parsed.player_card_patch || {};
       const np = parsed.npc_card_patches || {};
       const npNames = Object.keys(np);
-      console.log('[tmm] │ 🧙 player_patch: ' + JSON.stringify(Object.keys(pp)));
-      console.log('[tmm] │ 👥 npc_patches: ' + JSON.stringify(npNames));
-      console.log('[tmm] │ 🌍 dynamic_bg: ' + JSON.stringify((parsed.dynamic_world_global_background||'').slice(0,60)));
-      console.log('[tmm] └─────────────────────────────────────────────');
+      console.log('[memory_manager][tmm] │ 🧙 player_patch: ' + JSON.stringify(Object.keys(pp)));
+      console.log('[memory_manager][tmm] │ 👥 npc_patches: ' + JSON.stringify(npNames));
+      console.log('[memory_manager][tmm] │ 🌍 dynamic_bg: ' + JSON.stringify((parsed.dynamic_world_global_background||'').slice(0,60)));
+      console.log('[memory_manager][tmm] └─────────────────────────────────────────────');
 
       // 安全审查（对齐 toonflow PROMPT_STORY_SAFETY）：拦截越权修改、注入、人设漂移、非法状态
       // reject → 不写 state；approve 但给了 modifiedPatch → 用修正版覆盖
@@ -941,7 +941,7 @@ async function runMemoryAgent(directive) {
       if(safetyOn){
         safety = await runSafetyCheck(preState, parsed, pendingDirective);
         if (safety.decision === 'reject' && safetyOn) {
-          console.warn('[tmm] safety rejected, skip write: ' + safety.reason);
+          console.warn('[memory_manager][tmm] safety rejected, skip write: ' + safety.reason);
           tavo.utils.toast('@记忆管理 安全审查拒绝：' + (safety.reason || '无理由'));
           return;
         }
@@ -987,7 +987,7 @@ async function runMemoryAgent(directive) {
       tavo.utils.toast('@记忆管理 指令解析失败');
     }
   } catch (e) {
-    console.warn('[tmm] agent failed', e);
+    console.warn('[memory_manager][tmm] agent failed', e);
     if (directive) tavo.utils.toast('@记忆管理 执行异常');
   } finally {
     refreshing = false;
@@ -1001,10 +1001,10 @@ _safeOn('chat:opened', async () => {
   // 非阻塞：initStory 和 memory refresh 都不 await，避免阻塞 boot 等待路径
   // boot 需要尽快完成，后续编排才能启动
   setTimeout(() => {
-    initStory().catch(e => console.warn('[tmm] initStory failed', e));
+    initStory().catch(e => console.warn('[memory_manager][tmm] initStory failed', e));
     if (!refreshing) {
-      console.log('[tmm] chat:opened: triggering initial memory refresh (non-blocking)');
-      runMemoryAgent().catch(e => console.warn('[tmm] initial refresh failed', e));
+      console.log('[memory_manager][tmm] chat:opened: triggering initial memory refresh (non-blocking)');
+      runMemoryAgent().catch(e => console.warn('[memory_manager][tmm] initial refresh failed', e));
     }
   }, 100);
 });
@@ -1044,7 +1044,7 @@ if (typeof window !== 'undefined') {
       if (!t) return { intent: 'send', confidence: 0, reasoning: 'empty input' };
       const llm = (typeof window !== 'undefined') ? window.tf_llm : null;
       if (!llm || typeof llm.callDirect !== 'function') {
-        console.warn('[tmm] classifyLLM: window.tf_llm.callDirect 不可用');
+        console.warn('[memory_manager][tmm] classifyLLM: window.tf_llm.callDirect 不可用');
         return { intent: 'send', confidence: 0, reasoning: 'tf_llm not available' };
       }
       const cfg = getIntentLlmConfig();
@@ -1064,7 +1064,7 @@ if (typeof window !== 'undefined') {
           new Promise((_, reject) => setTimeout(() => reject(new Error('classifyLLM timeout 15s')), 15000)),
         ]);
       } catch (e) {
-        console.warn('[tmm] classifyLLM call failed', e && e.message);
+        console.warn('[memory_manager][tmm] classifyLLM call failed', e && e.message);
         return { intent: 'send', confidence: 0, reasoning: 'llm call failed: ' + (e && e.message) };
       }
       const s = String(raw || '').trim();
@@ -1073,10 +1073,10 @@ if (typeof window !== 'undefined') {
       let parsed = null;
       try { parsed = JSON.parse(jsonText); } catch (e) {}
       if (!parsed || !parsed.intent) {
-        console.warn('[tmm] classifyLLM parse failed, raw=' + s.slice(0, 200));
+        console.warn('[memory_manager][tmm] classifyLLM parse failed, raw=' + s.slice(0, 200));
         return { intent: 'send', confidence: 0, reasoning: 'parse failed' };
       }
-      console.log('[tmm] classifyLLM: intent=' + parsed.intent + ' confidence=' + parsed.confidence
+      console.log('[memory_manager][tmm] classifyLLM: intent=' + parsed.intent + ' confidence=' + parsed.confidence
         + ' (text=' + t.slice(0, 40) + ')');
       return {
         intent: parsed.intent,
@@ -1092,14 +1092,14 @@ if (typeof window !== 'undefined') {
     // triggerMemoryAgent=true 时编排器认为当前回合记忆变化较大，需要立即刷新参数卡
     refresh: async function (directive) {
       if (refreshing) {
-        console.log('[tmm][external] refresh skipped: still refreshing');
+        console.log('[memory_manager][tmm][external] refresh skipped: still refreshing');
         return;
       }
       // 内部 runMemoryAgent 不接受空 directive（表示普通刷新，不是指令）
       await runMemoryAgent(directive || null);
     },
   };
-  console.log('[tmm] intent shared: ' + DIRECTIVE_PREFIXES.length + ' prefixes registered, window.tmmIntent=function');
+  console.log('[memory_manager][tmm] intent shared: ' + DIRECTIVE_PREFIXES.length + ' prefixes registered, window.tmmIntent=function');
 }
 
 // 拦截 @记忆管理 / @记忆管理器 前缀：cancel 原生流程 → 运行记忆代理
@@ -1110,7 +1110,7 @@ _safeOn('input:beforeSend', async (event) => {
   const text = String((event && event.text) || '').trim();
   const m = text.match(/^@(记忆管理|记忆管理器)\s*([\s\S]*)$/);
   if (!m) return;
-  console.log('[tmm] @记忆管理 命中: ' + text.slice(0, 60));
+  console.log('[memory_manager][tmm] @记忆管理 命中: ' + text.slice(0, 60));
   // 立即清空输入框
   try {
     if (typeof tavo.input?.set === 'function') tavo.input.set('');
@@ -1131,11 +1131,11 @@ _safeOn('input:beforeSend', async (event) => {
   // 运行记忆代理
   tavo.utils.toast('@记忆管理 指令处理中…');
   runMemoryAgent(m[2] || '')
-    .catch(err => { console.warn('[tmm] directive failed', err); tavo.utils.toast('@记忆管理 执行异常'); });
+    .catch(err => { console.warn('[memory_manager][tmm] directive failed', err); tavo.utils.toast('@记忆管理 执行异常'); });
 });
 
 _safeOn('message:added', async (event) => {
-  console.log('[tmm][msg:added] role=' + ((event&&event.message&&event.message.role)||'?'));
+  console.log('[memory_manager][tmm][msg:added] role=' + ((event&&event.message&&event.message.role)||'?'));
   const cfg = getConfig();
   if (!cfg.enabled) return;
   const msg = event && event.message;

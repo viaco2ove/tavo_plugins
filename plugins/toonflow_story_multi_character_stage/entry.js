@@ -111,7 +111,7 @@ function initMessageCount() {
     const state = getWorldbookState();
     state.messageCount = c;
     setWorldbookState(state);
-    console.log('[wb_delay] 初始化消息计数=' + c);
+    console.log('[multi-character_stage][wb_delay] 初始化消息计数=' + c);
   }).catch(() => {});
 }
 
@@ -125,7 +125,7 @@ function onMessageAdded() {
   for (const id in state.activeEntries) {
     const entry = state.activeEntries[id];
     if (entry.stickyUntil && now > entry.stickyUntil) {
-      console.log('[wb_delay] 粘性到期删除条目: ' + id);
+      console.log('[multi-character_stage][wb_delay] 粘性到期删除条目: ' + id);
       delete state.activeEntries[id];
     }
   }
@@ -134,7 +134,7 @@ function onMessageAdded() {
   for (const id in state.cooldownEntries) {
     const entry = state.cooldownEntries[id];
     if (entry.cooldownUntil && now > entry.cooldownUntil) {
-      console.log('[wb_delay] 冷却到期恢复条目: ' + id);
+      console.log('[multi-character_stage][wb_delay] 冷却到期恢复条目: ' + id);
       if (!state.activeEntries[id]) state.activeEntries[id] = {};
       delete state.cooldownEntries[id];
     }
@@ -150,14 +150,14 @@ function canActivateEntry(entryId, delay, cooldown, currentCount) {
 
   // 1. 延迟检查
   if (delay > 0 && now < delay) {
-    console.log('[wb_delay] 延迟未到: entry=' + entryId + ' delay=' + delay + ' current=' + now);
+    console.log('[multi-character_stage][wb_delay] 延迟未到: entry=' + entryId + ' delay=' + delay + ' current=' + now);
     return false;
   }
 
   // 2. 冷却检查
   const cooldownEntry = state.cooldownEntries && state.cooldownEntries[entryId];
   if (cooldownEntry && cooldownEntry.cooldownUntil && now < cooldownEntry.cooldownUntil) {
-    console.log('[wb_delay] 冷却中: entry=' + entryId + ' until=' + cooldownEntry.cooldownUntil + ' current=' + now);
+    console.log('[multi-character_stage][wb_delay] 冷却中: entry=' + entryId + ' until=' + cooldownEntry.cooldownUntil + ' current=' + now);
     return false;
   }
 
@@ -173,13 +173,13 @@ function activateEntry(entryId, sticky, cooldown, currentCount) {
   // 设置粘性
   if (sticky > 0) {
     state.activeEntries[entryId] = { stickyUntil: currentCount + sticky };
-    console.log('[wb_delay] 激活条目: ' + entryId + ' 粘性=' + sticky + ' until=' + (currentCount + sticky));
+    console.log('[multi-character_stage][wb_delay] 激活条目: ' + entryId + ' 粘性=' + sticky + ' until=' + (currentCount + sticky));
   }
 
   // 设置冷却
   if (cooldown > 0) {
     state.cooldownEntries[entryId] = { cooldownUntil: currentCount + cooldown };
-    console.log('[wb_delay] 条目进入冷却: ' + entryId + ' 冷却=' + cooldown + ' until=' + (currentCount + cooldown));
+    console.log('[multi-character_stage][wb_delay] 条目进入冷却: ' + entryId + ' 冷却=' + cooldown + ' until=' + (currentCount + cooldown));
   }
 
   setWorldbookState(state);
@@ -248,11 +248,11 @@ async function getWorldbookInject(messageText) {
     if (!injectedEntries.length) return '';
 
     const lines = injectedEntries.map(e => '## ' + (e.name || '知识') + '\n' + (e.content || ''));
-    console.log('[worldbook] 注入 ' + injectedEntries.length + ' 个条目'
+    console.log('[multi-character_stage][worldbook] 注入 ' + injectedEntries.length + ' 个条目'
       + (newlyActivated.length ? '（新激活: ' + newlyActivated.map(a => a.entryId).join(',') + '）' : '（粘性延续）'));
     return '\n\n【世界知识】\n' + lines.join('\n\n');
   } catch (e) {
-    console.warn('[worldbook] 获取世界书注入失败', e);
+    console.warn('[multi-character_stage][worldbook] 获取世界书注入失败', e);
     return '';
   }
 }
@@ -367,7 +367,7 @@ async function _retry(fn, label, maxTries) {
       const msg = (e && e.message) || String(e);
       const retriable = /internal error|try again|could not complete|not ready/i.test(msg);
       if (!retriable || i === maxTries) throw e;
-      console.warn('[' + ts() + '] [mcs] ' + label + ' retry ' + i + '/' + (maxTries-1) + ': ' + msg);
+      console.warn('[multi-character_stage][' + ts() + '] [mcs] ' + label + ' retry ' + i + '/' + (maxTries-1) + ': ' + msg);
       await new Promise(r => setTimeout(r, 500));
     }
   }
@@ -378,34 +378,34 @@ tavo.plugin.on('chat:opened', async () => {
   try { const c = await tavo.chat.current(); _mcsChatId = c && c.id; } catch (e) {}
   const cfg = getConfig();
   if (!cfg.enabled) {
-    console.log('[' + ts() + '] [mcs] skip: enabled=false');
+    console.log('[multi-character_stage][' + ts() + '] [mcs] skip: enabled=false');
     return;
   }
   if (getOrchestration() === 'system') {
-    console.log('[' + ts() + '] [mcs] skip: orchestration=system');
+    console.log('[multi-character_stage][' + ts() + '] [mcs] skip: orchestration=system');
     return;
-  }  console.log('[' + ts() + '] [mcs] chat:opened waiting for boot...');
+  }  console.log('[multi-character_stage][' + ts() + '] [mcs] chat:opened waiting for boot...');
   // 初始化世界书延时状态的消息计数
   initMessageCount();
   // 等 story_event_manager 的 boot 序列完成（最多 30 秒）
   const booted = await waitForBoot(30000);
-  console.log('[' + ts() + '] [mcs] boot waited result=' + booted + ' responseMode=' + cfg.responseMode);
+  console.log('[multi-character_stage][' + ts() + '] [mcs] boot waited result=' + booted + ' responseMode=' + cfg.responseMode);
   // 诊断：llm-optimization 是否已加载
   const hasLLM = !!(window.tf_llm);
   const hasCallDirect = !!(window.tf_llm && window.tf_llm.callDirect);
   const llmCfg = window.tf_llm && window.tf_llm.getConfig ? window.tf_llm.getConfig() : null;
-  console.warn('[' + ts() + '] 🔍 [mcs] LLM接管层状态: loaded=' + hasLLM + ' callDirect=' + hasCallDirect + ' cfg=' + JSON.stringify(llmCfg || {}).slice(0, 300));
+  console.warn('[multi-character_stage][' + ts() + '] 🔍 [mcs] LLM接管层状态: loaded=' + hasLLM + ' callDirect=' + hasCallDirect + ' cfg=' + JSON.stringify(llmCfg || {}).slice(0, 300));
   try {
     const scen = await getEffectiveScenarioPrompt();
-    console.log('[' + ts() + '] [mcs] applying scenario, len=' + scen.length);
+    console.log('[multi-character_stage][' + ts() + '] [mcs] applying scenario, len=' + scen.length);
     const res = await _retry(() => tavo.chat.update({
       responseMode: cfg.responseMode,
       overrideScenario: scen,
       allowSelfResponses: false,  // 禁止角色发言后继续触发其他角色回复（防「全员轮着发言」）
     }), 'chat.update', 4);
-    console.log('[' + ts() + '] [mcs] chat.update result=' + JSON.stringify(res));
+    console.log('[multi-character_stage][' + ts() + '] [mcs] chat.update result=' + JSON.stringify(res));
   } catch (e) {
-    console.warn('[' + ts() + '] [mcs] chat.update failed', e);
+    console.warn('[multi-character_stage][' + ts() + '] [mcs] chat.update failed', e);
   }
 });
 
@@ -417,7 +417,7 @@ function triggerAutoOrchestrate() {
 // 监听 speaker 发的 auto_orchestrate 事件，开场白写完后自动触发 NPC 编排
 tavo.plugin.on('chat:opened', function() {
   window.tf_story_on('auto_orchestrate', function() {
-  console.log('[' + ts() + '] [mcs] 收到 auto_orchestrate 事件，触发自动编排');
+  console.log('[multi-character_stage][' + ts() + '] [mcs] 收到 auto_orchestrate 事件，触发自动编排');
   triggerAutoOrchestrate();
   });
 });
@@ -513,7 +513,7 @@ async function buildMemoryContext() {
     castBlock += '（请严格按各角色当前状态决定谁发言）\n';
     return { summary, castState: castBlock, castCards: cards };
   } catch (e) {
-    console.warn('[' + ts() + '] 🎭 [mcs] buildMemoryContext failed', e);
+    console.warn('[multi-character_stage][' + ts() + '] 🎭 [mcs] buildMemoryContext failed', e);
     return { summary: '', castState: '', castCards: [] };
   }
 }
@@ -565,7 +565,7 @@ async function findCharacterId(name) {
 // ============================================================
 // 返回 { prompt, evDigest, nextEvInfo } 让调用方同时拿到 prompt 和事件元数据
 async function buildOrchestrationPrompt(userInput) {
-  console.log('[buildOrchestrationPrompt ]promptParts get start');
+  console.log('[multi-character_stage][buildOrchestrationPrompt ]promptParts get start');
   const n = getLineCount();
   const edit = readDualScope(storyNs('edit'), storyNsGlobal('edit')) || {};
   const chapters = edit.chapters || [];
@@ -585,7 +585,7 @@ async function buildOrchestrationPrompt(userInput) {
         const entry = (sprites.byName || {})[c.name] || {};
         roleType = entry.roleType || 'npc';
       } catch (e) {}
-      console.log('[buildOrchestrationPrompt ]promptParts get 1');
+      console.log('[multi-character_stage][buildOrchestrationPrompt ]promptParts get 1');
       return { name: c.name, role_type: roleType };
     });
     // 旁白作为内置角色加入（不在 wildcard_roles 中）
@@ -600,7 +600,7 @@ async function buildOrchestrationPrompt(userInput) {
       const msgs = tavo.message.find([Math.max(0, cnt - n), cnt]) || [];
       recentDialogue = msgs.map(m => {
         const name = m.characterName || (m.role === 'user' ? '用户' : '旁白');
-        console.log('[buildOrchestrationPrompt ]promptParts get 2');
+        console.log('[multi-character_stage][buildOrchestrationPrompt ]promptParts get 2');
         return { speaker: name, content: String(m.content || '').slice(0, 150) };
       });
     }
@@ -668,7 +668,7 @@ async function buildOrchestrationPrompt(userInput) {
       });
     }
   } catch (e) {
-    console.warn('[' + ts() + '] 🎭 [mcs] tfStoryJudge.checkAndAdvance failed', e);
+    console.warn('[multi-character_stage][' + ts() + '] 🎭 [mcs] tfStoryJudge.checkAndAdvance failed', e);
   }
 
   // 从 memory_manager 读取记忆状态（角色当前参数卡）
@@ -849,7 +849,7 @@ const promptParts = [
 
   const outputSchema = `直接输出 JSON，不要任何其他文字：
 {"speaker":"角色名","role_type":"npc/narrator/general","motive":"一句话动机","await_user":false,"trigger_memory_agent":false,"event_adjust_mode":"keep","event_status":"active","event_summary":"当前事件一句话","event_facts":["关键事实1","关键事实2"]}`;
-  console.log('[buildOrchestrationPrompt ]promptParts last');
+  console.log('[multi-character_stage][buildOrchestrationPrompt ]promptParts last');
   const user = promptParts.join('\n') + '\n\n' + outputSchema;
   return {
     prompt: _PROMPT_ORCHESTRATOR_SYSTEM + '\n\n' + user, // 兼容老调用
@@ -1063,7 +1063,7 @@ tavo.plugin.on('input:beforeSend', async (event) => {
           el.dispatchEvent(new Event('change', { bubbles: true }));
         }
       });
-      if (cleared) console.log('[tmm] input cleared (sync)');
+      if (cleared) console.log('[multi-character_stage][tmm] input cleared (sync)');
     } catch (e) { /* ignore */ }
   })();
 
@@ -1071,7 +1071,7 @@ tavo.plugin.on('input:beforeSend', async (event) => {
   // 否则 input:beforeSend 会 cancel 原生流程，但编排还没跑起来，导致 Tavo 原生生成劫持
   const boot = readTfBoot();
   if (boot.status !== 'ready') {
-    console.log('[' + ts() + '] 🎭 [mcs] 让出：boot.status=' + boot.status + ' (等待 boot 完成)');
+    console.log('[multi-character_stage][' + ts() + '] 🎭 [mcs] 让出：boot.status=' + boot.status + ' (等待 boot 完成)');
     return;
   }
 
@@ -1102,21 +1102,21 @@ tavo.plugin.on('input:beforeSend', async (event) => {
       isDirective = FALLBACK_PREFIXES.some(p => userTextTrim.startsWith(p));
     }
   } catch (e) {
-    console.warn('[' + ts() + '] 🎭 [mcs] intent classify failed, fallback to non-directive', e && e.message);
+    console.warn('[multi-character_stage][' + ts() + '] 🎭 [mcs] intent classify failed, fallback to non-directive', e && e.message);
     isDirective = false;
   }
   if (isDirective) {
-    console.log('[' + ts() + '] 🎭 [mcs] 让出：' + userTextTrim.slice(0, 40)
+    console.log('[multi-character_stage][' + ts() + '] 🎭 [mcs] 让出：' + userTextTrim.slice(0, 40)
       + ' | intent=' + (intentResult && intentResult.intent ? intentResult.intent : 'keyword')
       + ' conf=' + (intentResult && intentResult.confidence ? intentResult.confidence : 'n/a'));
     return;
   }
- console.log('[' + ts() + '] 🎭 [mcs] input:beforeSend → 拦截用户: ' + userText.slice(0, 80));
+ console.log('[multi-character_stage][' + ts() + '] 🎭 [mcs] input:beforeSend → 拦截用户: ' + userText.slice(0, 80));
 
   // 【关键】立即 cancel，不等任何 async 操作
   // tavo 在 handler 返回前不会继续原生流程
   event.cancel('角色编排插件接管');
-  console.log('[' + ts() + '] 🎭 [mcs] 已 cancel tavo 原生流程');
+  console.log('[multi-character_stage][' + ts() + '] 🎭 [mcs] 已 cancel tavo 原生流程');
 
   game_orchestration(userText,intentResult);
 });
@@ -1126,7 +1126,7 @@ function game_orchestration(userText,intentResult){
 
   // 编排锁：防止多个 auto_orchestrate 并发抢占
   if (_mcsBusy) {
-    console.log('[' + ts() + '] 🎭 [mcs] 编排锁占用，跳过: userText=' + (userText||'').slice(0,20));
+    console.log('[multi-character_stage][' + ts() + '] 🎭 [mcs] 编排锁占用，跳过: userText=' + (userText||'').slice(0,20));
     return;
   }
   _mcsBusy = true;
@@ -1138,7 +1138,7 @@ function game_orchestration(userText,intentResult){
       // 1. append 用户消息
       if(userText!=null && userText!=''){
           await tavo.message.append({ role: 'user', content: userText, hidden: false });
-          console.log('[' + ts() + '] 🎭 [mcs] 用户消息已 append');
+          console.log('[multi-character_stage][' + ts() + '] 🎭 [mcs] 用户消息已 append');
       }
 
 
@@ -1147,12 +1147,12 @@ function game_orchestration(userText,intentResult){
       try {
         if (window.tmmIntent && typeof window.tmmIntent.refresh === 'function') {
           // 异步触发，不阻塞编排（编排结果可以作为触发条件）
-          window.tmmIntent.refresh().catch(e => console.warn('[' + ts() + '] [mcs] tmmIntent.refresh failed', e));
-          console.log('[' + ts() + '] 🎭 [mcs] 🔄 记忆刷新已触发（异步）');
+          window.tmmIntent.refresh().catch(e => console.warn('[multi-character_stage][' + ts() + '] [mcs] tmmIntent.refresh failed', e));
+          console.log('[multi-character_stage][' + ts() + '] 🎭 [mcs] 🔄 记忆刷新已触发（异步）');
           //触发 记忆管理agent
         }
       } catch (e) {
-        console.warn('[' + ts() + '] 🎭 [mcs] 记忆刷新调用失败', e);
+        console.warn('[multi-character_stage][' + ts() + '] 🎭 [mcs] 记忆刷新调用失败', e);
       }
 
       // 触发 1: 章节判定 agent (LLM 为主)
@@ -1163,9 +1163,9 @@ function game_orchestration(userText,intentResult){
             allMessages: '',
             messageCount: 0,
           });
-          console.log('[' + ts() + '] [mcs] 章节判定 result=' + (r && r.result) + ' reason=' + (r && r.reason));
+          console.log('[multi-character_stage][' + ts() + '] [mcs] 章节判定 result=' + (r && r.result) + ' reason=' + (r && r.reason));
         }
-      } catch (e) { console.warn('[' + ts() + '] [mcs] 章节判定失败', e); }
+      } catch (e) { console.warn('[multi-character_stage][' + ts() + '] [mcs] 章节判定失败', e); }
 
       // 触发 2: 事件进度推进 (LLM 为主，对齐 agent_story_event_progress)
       try {
@@ -1174,12 +1174,12 @@ function game_orchestration(userText,intentResult){
             content: userText || '',
             allMessages: '',
           });
-          console.log('[' + ts() + '] [mcs] 事件进度推进 result=' + JSON.stringify(ep));
+          console.log('[multi-character_stage][' + ts() + '] [mcs] 事件进度推进 result=' + JSON.stringify(ep));
         } else {
           const p = readDualScope(progressVarName(), progressVarNameGlobal()) || {};
-          console.log('[' + ts() + '] [mcs] 事件进度读取 currentPhase=' + (p.currentPhase||0) + ' currentEvent=' + (p.currentEvent||0));
+          console.log('[multi-character_stage][' + ts() + '] [mcs] 事件进度读取 currentPhase=' + (p.currentPhase||0) + ' currentEvent=' + (p.currentEvent||0));
         }
-      } catch (e) { console.warn('[' + ts() + '] [mcs] 事件进度推进失败', e); }
+      } catch (e) { console.warn('[multi-character_stage][' + ts() + '] [mcs] 事件进度推进失败', e); }
 
       // 触发 3: 刷新面板信息
       try {
@@ -1194,10 +1194,10 @@ function game_orchestration(userText,intentResult){
       const { system: orchSystem, user: orchUser, prompt: orchPrompt, evDigest, nextEvInfo, storyStatus, memCtx, chapterIdx, chapterTitle } = await buildOrchestrationPrompt(userText);
       console.log("[game_orchestration] orchPrompt:", orchPrompt);
       // ===== 全链路编排 TRACE =====
-      console.log('══════════════════════════════════════════════════');
-      console.log('[' + ts() + '] 🎭 [mcs] ┌─── 编排全链路 TRACE ──────────────────────');
-      console.log('[' + ts() + '] 🎭 [mcs] │ 📝 用户输入: ' + JSON.stringify(userText.slice(0,80)));
-      console.log('[' + ts() + '] 🎭 [mcs] │ 🎯 意图: ' + (intentResult && intentResult.intent ? intentResult.intent : 'normal')
+      console.log('[multi-character_stage]══════════════════════════════════════════════════');
+      console.log('[multi-character_stage][' + ts() + '] 🎭 [mcs] ┌─── 编排全链路 TRACE ──────────────────────');
+      console.log('[multi-character_stage][' + ts() + '] 🎭 [mcs] │ 📝 用户输入: ' + JSON.stringify(userText.slice(0,80)));
+      console.log('[multi-character_stage][' + ts() + '] 🎭 [mcs] │ 🎯 意图: ' + (intentResult && intentResult.intent ? intentResult.intent : 'normal')
         + (intentResult && intentResult.confidence ? ' conf=' + intentResult.confidence : ''));
       const progress = readDualScope(progressVarName(), progressVarNameGlobal()) || {};
       const phases = progress.phases || [];
@@ -1205,44 +1205,44 @@ function game_orchestration(userText,intentResult){
       const eventIdx = Math.max(0, progress.currentEvent || 0);
       const curPhase = phases[phaseIdx] || {};
       const curEvent = (curPhase.events || [])[eventIdx] || {};
-      console.log('[' + ts() + '] 🎭 [mcs] │ 📚 章节: 第' + (chapterIdx+1) + '章「' + (chapterTitle||'?') + '」');
-      console.log('[' + ts() + '] 🎭 [mcs] │ 📊 事件进度: Phase=' + phaseIdx + '(' + (curPhase.name||'无') + ')'
+      console.log('[multi-character_stage][' + ts() + '] 🎭 [mcs] │ 📚 章节: 第' + (chapterIdx+1) + '章「' + (chapterTitle||'?') + '」');
+      console.log('[multi-character_stage][' + ts() + '] 🎭 [mcs] │ 📊 事件进度: Phase=' + phaseIdx + '(' + (curPhase.name||'无') + ')'
         + ' Event=' + eventIdx + '(' + (curEvent.name||'无') + ')');
       if (evDigest && evDigest.window) {
-        console.log('[' + ts() + '] 🎭 [mcs] │ 📖 事件背景: ' + evDigest.window.slice(0,100));
+        console.log('[multi-character_stage][' + ts() + '] 🎭 [mcs] │ 📖 事件背景: ' + evDigest.window.slice(0,100));
       }
       if (nextEvInfo) {
-        console.log('[' + ts() + '] 🎭 [mcs] │ ⏭ 下一事件: ' + nextEvInfo.name + '(' + nextEvInfo.kind + ')');
+        console.log('[multi-character_stage][' + ts() + '] 🎭 [mcs] │ ⏭ 下一事件: ' + nextEvInfo.name + '(' + nextEvInfo.kind + ')');
       }
       // 记忆上下文 TRACE
       if (memCtx && memCtx.castCards && memCtx.castCards.length) {
         const sample = memCtx.castCards.slice(0, 2).map(c =>
           c.name + (c.card?.level ? 'Lv.' + c.card.level : '') + (c.card?.hp ? ' HP' + c.card.hp : '')
         ).join(', ');
-        console.log('[' + ts() + '] 🎭 [mcs] │ 🧠 记忆状态: ' + sample + (memCtx.castCards.length > 2 ? '...' : ''));
+        console.log('[multi-character_stage][' + ts() + '] 🎭 [mcs] │ 🧠 记忆状态: ' + sample + (memCtx.castCards.length > 2 ? '...' : ''));
       }
       if (storyStatus) {
         const sp = storyStatus.progress || {};
         const ph = (sp.phases || [])[sp.currentPhase || 0];
         const ev = ph ? ((ph.events || [])[sp.currentEvent || 0]) : null;
-        console.log('[' + ts() + '] 🎭 [mcs] │ 📋 章节状态: ' + storyStatus.chapterStatus
+        console.log('[multi-character_stage][' + ts() + '] 🎭 [mcs] │ 📋 章节状态: ' + storyStatus.chapterStatus
           + ' | 第' + ((sp.currentChapterIndex||0)+1) + '章「' + (storyStatus.chapterInfo?.title||'') + '」'
           + ' | Phase=' + (sp.currentPhase||0) + '(' + (ph?.name||'') + ')'
           + ' | Event=' + (sp.currentEvent||0) + '(' + (ev?.name||'') + ')'
           + (storyStatus.pendingChapterId != null ? ' | ⏳pending切换到第' + (storyStatus.pendingChapterId+1) + '章' : ''));
       }
-      console.log('[' + ts() + '] 🎭 [mcs] │ 📄 阶段一prompt长: ' + orchPrompt.length + '字符');
+      console.log('[multi-character_stage][' + ts() + '] 🎭 [mcs] │ 📄 阶段一prompt长: ' + orchPrompt.length + '字符');
       // 打印当前章节/事件/进度（对齐 toonflow 编排调试信息）
       try {
         const p = readDualScope(progressVarName(), progressVarNameGlobal()) || {};
         const ph = (p.phases || [])[p.currentPhase || 0] || {};
         const evs = ph.events || [];
-        console.log('[' + ts() + '] 🎭 [mcs] 当前进度: 第' + ((p.currentChapterIndex || 0) + 1) + '章 phase=' + (p.currentPhase || 0) + '/' + (p.phases || []).length + ' event=' + (p.currentEvent || 0) + '/' + evs.length + (p.sessionFreeMode ? ' [自由模式]' : ''));
+        console.log('[multi-character_stage][' + ts() + '] 🎭 [mcs] 当前进度: 第' + ((p.currentChapterIndex || 0) + 1) + '章 phase=' + (p.currentPhase || 0) + '/' + (p.phases || []).length + ' event=' + (p.currentEvent || 0) + '/' + evs.length + (p.sessionFreeMode ? ' [自由模式]' : ''));
       } catch (e) {}
 
       // 调试：判断走哪条 LLM 路径
       const llmMode = (window.tf_llm && window.tf_llm.callDirect) ? '接管' : 'tavo原生';
-      console.warn('[' + ts() + '] 🎭 [mcs] 阶段一 LLM 路径: ' + llmMode
+      console.warn('[multi-character_stage][' + ts() + '] 🎭 [mcs] 阶段一 LLM 路径: ' + llmMode
         + ' | tf_llm=' + (typeof window.tf_llm) + ' | callDirect=' + (typeof (window.tf_llm && window.tf_llm.callDirect))
         + (window.tf_llm ? ' | cfg=' + JSON.stringify(window.tf_llm.getConfig ? window.tf_llm.getConfig() : {}).slice(0, 200) : ''));
       let orchRaw;
@@ -1258,9 +1258,9 @@ function game_orchestration(userText,intentResult){
         } else {
           orchRaw = await tavo.generate(orchPrompt, { context: false, settings: { temperature: 0.3, maxCompletionTokens: 600 } });
         }
-        console.log('[' + ts() + '] 🎭 [mcs] 阶段一结果 len=' + (orchRaw||'').length + ' 首200: ' + JSON.stringify((orchRaw||'').slice(0,200)));
+        console.log('[multi-character_stage][' + ts() + '] 🎭 [mcs] 阶段一结果 len=' + (orchRaw||'').length + ' 首200: ' + JSON.stringify((orchRaw||'').slice(0,200)));
       } catch(e) {
-        console.error('[' + ts() + '] ❌ [mcs] 阶段一 LLM 异常: ' + e.message + ' | name=' + e.name + ' | stack=' + (e.stack||'').slice(0,500));
+        console.error('[multi-character_stage][' + ts() + '] ❌ [mcs] 阶段一 LLM 异常: ' + e.message + ' | name=' + e.name + ' | stack=' + (e.stack||'').slice(0,500));
         throw e;
       }
 
@@ -1285,8 +1285,8 @@ function game_orchestration(userText,intentResult){
       };
 
       const cleaned = stripTags(orchText);
-      console.log('[' + ts() + '] 🎭 [mcs] 阶段一原始: ' + orchText.slice(0, 500));
-      console.log('[' + ts() + '] 🎭 [mcs] 阶段一清理后: ' + cleaned.slice(0, 500));
+      console.log('[multi-character_stage][' + ts() + '] 🎭 [mcs] 阶段一原始: ' + orchText.slice(0, 500));
+      console.log('[multi-character_stage][' + ts() + '] 🎭 [mcs] 阶段一清理后: ' + cleaned.slice(0, 500));
 
       // 解析编排 JSON（严格对齐 toonflow 输出字段）
       let speaker = '旁白', roleType = 'narrator', motive = '', eventSummary = '';
@@ -1308,13 +1308,13 @@ function game_orchestration(userText,intentResult){
         eventAdjustMode = obj.event_adjust_mode || 'keep';
         eventStatus = obj.event_status || obj.eventStatus || 'active';
         eventFacts = Array.isArray(obj.event_facts) ? obj.event_facts : [];
-        console.log('[' + ts() + '] 🎭 [mcs] 阶段一解析 → speaker=' + speaker + ' role_type=' + roleType
+        console.log('[multi-character_stage][' + ts() + '] 🎭 [mcs] 阶段一解析 → speaker=' + speaker + ' role_type=' + roleType
           + ' motive=' + motive + ' await_user=' + awaitUser + ' trigger_memory_agent=' + triggerMemoryAgent
           + ' event_adjust_mode=' + eventAdjustMode + ' event_status=' + eventStatus);
-      console.log('[' + ts() + '] 🎭 [mcs] │ 🎤 编排结果: speaker="' + speaker + '" role_type="' + roleType + '"');
-      console.log('[' + ts() + '] 🎭 [mcs] │ 💡 发言动机: ' + (motive || '(无)').slice(0,80));
-      console.log('[' + ts() + '] 🎭 [mcs] │ 📋 事件摘要: ' + (eventSummary || '(无)').slice(0,80));
-      console.log('[' + ts() + '] 🎭 [mcs] │ ⚡ await_user=' + awaitUser + ' trigger_memory_agent=' + triggerMemoryAgent);
+      console.log('[multi-character_stage][' + ts() + '] 🎭 [mcs] │ 🎤 编排结果: speaker="' + speaker + '" role_type="' + roleType + '"');
+      console.log('[multi-character_stage][' + ts() + '] 🎭 [mcs] │ 💡 发言动机: ' + (motive || '(无)').slice(0,80));
+      console.log('[multi-character_stage][' + ts() + '] 🎭 [mcs] │ 📋 事件摘要: ' + (eventSummary || '(无)').slice(0,80));
+      console.log('[multi-character_stage][' + ts() + '] 🎭 [mcs] │ ⚡ await_user=' + awaitUser + ' trigger_memory_agent=' + triggerMemoryAgent);
       } catch (e) {
         // fallback：正则抽字段
         const m = cleaned.match(/"speaker"\s*:\s*"([^"]+)"/);
@@ -1325,52 +1325,52 @@ function game_orchestration(userText,intentResult){
         if (mau) awaitUser = mau[1].toLowerCase() === 'true';
         const mtma = orchText.match(/"trigger_memory_agent"\s*:\s*(true|false)/i);
         if (mtma) triggerMemoryAgent = mtma[1].toLowerCase() === 'true';
-        console.warn('[' + ts() + '] 🎭 [mcs] 阶段一解析失败 fallback: speaker=' + speaker, e.message);
+        console.warn('[multi-character_stage][' + ts() + '] 🎭 [mcs] 阶段一解析失败 fallback: speaker=' + speaker, e.message);
       }
 
       // 3. 阶段二：发言器 → 台词正文（传入 evDigest + nextEvInfo 对齐官方入参）
       const speakerPrompt = await buildSpeakerPrompt(speaker, roleType, motive, eventSummary, evDigest, nextEvInfo);
-      console.log('[' + ts() + '] 🎭 [mcs] 阶段二 prompt len=' + speakerPrompt.length);
+      console.log('[multi-character_stage][' + ts() + '] 🎭 [mcs] 阶段二 prompt len=' + speakerPrompt.length);
 
       const speakerLLMMode = (window.tf_llm && window.tf_llm.callDirect) ? '接管' : 'tavo原生';
-      console.warn('[' + ts() + '] 🎭 [mcs] 阶段二 LLM 路径: ' + speakerLLMMode
+      console.warn('[multi-character_stage][' + ts() + '] 🎭 [mcs] 阶段二 LLM 路径: ' + speakerLLMMode
         + ' | tf_llm=' + (typeof window.tf_llm) + ' | callDirect=' + (typeof (window.tf_llm && window.tf_llm.callDirect)));
       // speakerPrompt 是 {system, user} 对象 → 转成消息数组
       const speakerMessages = (speakerPrompt && typeof speakerPrompt === 'object' && speakerPrompt.system)
         ? [{ role: 'system', content: speakerPrompt.system }, { role: 'user', content: speakerPrompt.user || '' }]
         : [{ role: 'user', content: String(speakerPrompt || '') }];
-      console.log('[' + ts() + '] 🎭 [mcs] 阶段二 messages 模式: ' + (speakerMessages.length > 1 ? 'system+user' : 'user-only'));
+      console.log('[multi-character_stage][' + ts() + '] 🎭 [mcs] 阶段二 messages 模式: ' + (speakerMessages.length > 1 ? 'system+user' : 'user-only'));
       let speakerRaw;
       try {
         speakerRaw = speakerLLMMode === '接管'
           ? await window.tf_llm.callDirect(speakerMessages, { maxCompletionTokens: 1500 })
           : await tavo.generate(speakerMessages.map(m => (m.role === 'system' ? '[系统]\n' : '') + m.content).join('\n\n'), { context: false, settings: { maxCompletionTokens: 1500 } });
-        console.log('[' + ts() + '] 🎭 [mcs] 阶段二结果 len=' + (speakerRaw||'').length + ' 首200: ' + JSON.stringify((speakerRaw||'').slice(0,200)));
+        console.log('[multi-character_stage][' + ts() + '] 🎭 [mcs] 阶段二结果 len=' + (speakerRaw||'').length + ' 首200: ' + JSON.stringify((speakerRaw||'').slice(0,200)));
       } catch(e) {
-        console.error('[' + ts() + '] ❌ [mcs] 阶段二 LLM 异常: ' + e.message + ' | name=' + e.name + ' | stack=' + (e.stack||'').slice(0,500));
+        console.error('[multi-character_stage][' + ts() + '] ❌ [mcs] 阶段二 LLM 异常: ' + e.message + ' | name=' + e.name + ' | stack=' + (e.stack||'').slice(0,500));
         throw e;
       }
       const rawContent = (speakerRaw || '').trim();
-      console.log('[' + ts() + '] [mcs] 阶段二原始: ' + rawContent.slice(0, 300));
+      console.log('[multi-character_stage][' + ts() + '] [mcs] 阶段二原始: ' + rawContent.slice(0, 300));
       const { thinking, body } = extractThinking(rawContent);
       const content = body.replace(/^["']|["']$/g, '').trim();
-      console.log('[' + ts() + '] [mcs] 阶段二台词: ' + JSON.stringify(content.slice(0, 80)));
+      console.log('[multi-character_stage][' + ts() + '] [mcs] 阶段二台词: ' + JSON.stringify(content.slice(0, 80)));
 
-      console.log('[' + ts() + '] 🎭 [mcs] speaker("' + speaker + '") ');
+      console.log('[multi-character_stage][' + ts() + '] 🎭 [mcs] speaker("' + speaker + '") ');
       // 4. 查角色 id 并 append
       const charId = await findCharacterId(speaker);
       if(speaker !="player" && speaker !="用户"){
 
-        console.log('[' + ts() + '] 🎭 [mcs] findCharacterId("' + speaker + '") = ' + charId);
+        console.log('[multi-character_stage][' + ts() + '] 🎭 [mcs] findCharacterId("' + speaker + '") = ' + charId);
 
         tavo.set('tf_last_speaker', { name: speaker, characterId: charId || '' }, 'chat');
-        console.log('[' + ts() + '] 🎭 [mcs] tf_last_speaker → ' + speaker + ' (id=' + charId + ')');
+        console.log('[multi-character_stage][' + ts() + '] 🎭 [mcs] tf_last_speaker → ' + speaker + ' (id=' + charId + ')');
 
         // 打印编排阶段（阶段一）的 thinking（如果模型有输出）
         try {
           const orchThink = extractThinking(orchText);
           if (orchThink.thinking) {
-            console.log('[' + ts() + '] 🎭 [mcs] 阶段一思考:\n' + orchThink.thinking.slice(0, 400));
+            console.log('[multi-character_stage][' + ts() + '] 🎭 [mcs] 阶段一思考:\n' + orchThink.thinking.slice(0, 400));
           }
         } catch(e) {}
 
@@ -1389,13 +1389,13 @@ function game_orchestration(userText,intentResult){
 
       }
 
-      console.log('[' + ts() + '] ✅ [mcs] 角色消息已 append → speaker=' + speaker + ' charId=' + charId);
-      console.log('[' + ts() + '] 🎭 [mcs] │ 💬 台词: ' + JSON.stringify(content.slice(0, 80)));
-      if (motive) console.log('[' + ts() + '] 🎭 [mcs] │ 💡 动机: ' + motive.slice(0,60));
-      if (thinking) console.log('[' + ts() + '] 🎭 [mcs] │ 🧠 思考: ' + thinking.slice(0,80));
-      console.log('[' + ts() + '] 🎭 [mcs] │ ⚡ await_user=' + awaitUser + ' trigger_memory_agent=' + triggerMemoryAgent);
-      console.log('[' + ts() + '] 🎭 [mcs] └─────────────────────────────────────');
-      console.log('══════════════════════════════════════════════════');
+      console.log('[multi-character_stage][' + ts() + '] ✅ [mcs] 角色消息已 append → speaker=' + speaker + ' charId=' + charId);
+      console.log('[multi-character_stage][' + ts() + '] 🎭 [mcs] │ 💬 台词: ' + JSON.stringify(content.slice(0, 80)));
+      if (motive) console.log('[multi-character_stage][' + ts() + '] 🎭 [mcs] │ 💡 动机: ' + motive.slice(0,60));
+      if (thinking) console.log('[multi-character_stage][' + ts() + '] 🎭 [mcs] │ 🧠 思考: ' + thinking.slice(0,80));
+      console.log('[multi-character_stage][' + ts() + '] 🎭 [mcs] │ ⚡ await_user=' + awaitUser + ' trigger_memory_agent=' + triggerMemoryAgent);
+      console.log('[multi-character_stage][' + ts() + '] 🎭 [mcs] └─────────────────────────────────────');
+      console.log('[multi-character_stage]══════════════════════════════════════════════════');
 
       // 4c. 章节+事件状态同步（调用 event_manager API 更新 tf_progress）
       // 对齐 event_manager 的 message:added → judgeAndAdvance 流程
@@ -1406,35 +1406,35 @@ function game_orchestration(userText,intentResult){
           const msgContext = { content: userText || '', messageCount: msgCount };
           const judgeResult = window.tfStoryJudge.checkAndAdvance(msgContext);
           if (judgeResult && judgeResult.chapterStatus === 'active') {
-            console.log('[' + ts() + '] 🎭 [mcs] 章节状态: ' + judgeResult.chapterStatus
+            console.log('[multi-character_stage][' + ts() + '] 🎭 [mcs] 章节状态: ' + judgeResult.chapterStatus
               + ' | phase=' + (judgeResult.progress?.currentPhase||0) + '(' + ((judgeResult.progress?.phases||[])[judgeResult.progress?.currentPhase||0]?.name||'') + ')'
               + ' | event=' + (judgeResult.progress?.currentEvent||0));
           }
           // 章节切换/完结提示
           if (judgeResult && (judgeResult.chapterStatus === 'chapter_switching' || judgeResult.chapterStatus === 'completed')) {
-            console.log('[' + ts() + '] 🎭 [mcs] 📢 ' + (judgeResult.message || '章节状态变化: ' + judgeResult.chapterStatus));
+            console.log('[multi-character_stage][' + ts() + '] 🎭 [mcs] 📢 ' + (judgeResult.message || '章节状态变化: ' + judgeResult.chapterStatus));
           }
         }
       } catch (e) {
-        console.warn('[' + ts() + '] 🎭 [mcs] 章节状态同步失败', e);
+        console.warn('[multi-character_stage][' + ts() + '] 🎭 [mcs] 章节状态同步失败', e);
       }
 
       // 4d. trigger_memory_agent 处理（后台异步刷新记忆，对齐 Toonflow triggerMemoryAgent=true 语义）
       if (triggerMemoryAgent) {
-        console.log('[' + ts() + '] 🔄 [mcs] trigger_memory_agent=true → 触发记忆刷新');
+        console.log('[multi-character_stage][' + ts() + '] 🔄 [mcs] trigger_memory_agent=true → 触发记忆刷新');
         try {
           if (window.tmmIntent && typeof window.tmmIntent.refresh === 'function') {
-            window.tmmIntent.refresh().catch(e => console.warn('[' + ts() + '] [mcs] tmmIntent.refresh failed', e));
+            window.tmmIntent.refresh().catch(e => console.warn('[multi-character_stage][' + ts() + '] [mcs] tmmIntent.refresh failed', e));
           } else {
-            console.warn('[' + ts() + '] [mcs] window.tmmIntent.refresh 不可用，跳过记忆刷新');
+            console.warn('[multi-character_stage][' + ts() + '] [mcs] window.tmmIntent.refresh 不可用，跳过记忆刷新');
           }
         } catch (e) {
-          console.warn('[' + ts() + '] [mcs] trigger_memory_agent 处理失败', e);
+          console.warn('[multi-character_stage][' + ts() + '] [mcs] trigger_memory_agent 处理失败', e);
         }
       }
 
     } catch (e) {
-      console.error('[' + ts() + '] ❌ [mcs] 后台编排异常:', e);
+      console.error('[multi-character_stage][' + ts() + '] ❌ [mcs] 后台编排异常:', e);
     } finally {
       _mcsBusy = false;
       try { tavo.set(ORCH_FLAG, false, 'chat'); } catch (e) {}
@@ -1444,18 +1444,18 @@ function game_orchestration(userText,intentResult){
 
 // generation 生命周期：只做日志和标记清理（因为现在不是主要触发路径）
 tavo.plugin.on('generation:prepare', async (event) => {
-  console.log('[' + ts() + '] 🎭 [mcs] generation:prepare (原生, 非接管路径) event=' + JSON.stringify(event || {}).slice(0, 200));
+  console.log('[multi-character_stage][' + ts() + '] 🎭 [mcs] generation:prepare (原生, 非接管路径) event=' + JSON.stringify(event || {}).slice(0, 200));
 });
 tavo.plugin.on('generation:success', async (event) => {
-  console.log('[' + ts() + '] 🎯 [mcs] generation:success (原生路径) event=' + JSON.stringify(event || {}).slice(0, 200));
+  console.log('[multi-character_stage][' + ts() + '] 🎯 [mcs] generation:success (原生路径) event=' + JSON.stringify(event || {}).slice(0, 200));
   try { tavo.set(ORCH_FLAG, false, 'chat'); } catch (e) {}
 });
 tavo.plugin.on('generation:error', async (event) => {
-  console.error('[' + ts() + '] ❌ [mcs] generation:error event=' + JSON.stringify(event || {}).slice(0, 200));
+  console.error('[multi-character_stage][' + ts() + '] ❌ [mcs] generation:error event=' + JSON.stringify(event || {}).slice(0, 200));
   try { tavo.set(ORCH_FLAG, false, 'chat'); } catch (e) {}
 });
 tavo.plugin.on('generation:cancelled', async () => {
-  console.log('[' + ts() + '] ⚠️ [mcs] generation:cancelled');
+  console.log('[multi-character_stage][' + ts() + '] ⚠️ [mcs] generation:cancelled');
   try { tavo.set(ORCH_FLAG, false, 'chat'); } catch (e) {}
 });
 
@@ -1495,7 +1495,7 @@ tavo.plugin.onSidebarAction('mcs-area', async () => {
       characterId: chat?.characters?.[0]?.id,
     });
   } catch (e) {
-    console.warn('[' + ts() + '] [mcs] area failed', e);
+    console.warn('[multi-character_stage][' + ts() + '] [mcs] area failed', e);
   }
 });
 

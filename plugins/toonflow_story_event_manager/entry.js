@@ -8,21 +8,21 @@
 let isNeedJump=true;
 let cmAtJump ='#jump';
 (function() {
-  console.log('[_handlers] add start 1');
+  console.log('[event_manager][_handlers] add start 1');
   var _handlers = {};
 
-  console.log('[_handlers] add  window.tf_story_on');
+  console.log('[event_manager][_handlers] add  window.tf_story_on');
   window.tf_story_on = function(event, handler) {
-    console.log('[_handlers]  window.tf_story_on');
+    console.log('[event_manager][_handlers]  window.tf_story_on');
     if (!_handlers[event]) _handlers[event] = [];
     _handlers[event].push(handler);
   };
-  console.log('[_handlers] add   window.tf_story_emit');
+  console.log('[event_manager][_handlers] add   window.tf_story_emit');
   window.tf_story_emit = function(event, data) {
-    console.log('[tf_story][event] emit ' + event, data);
+    console.log('[event_manager][tf_story][event] emit ' + event, data);
     var list = _handlers[event] || [];
     list.forEach(function(fn) {
-      try { fn(data); } catch(e) { console.warn('[tf_story][event] handler error', e); }
+      try { fn(data); } catch(e) { console.warn('[event_manager][tf_story][event] handler error', e); }
     });
   };
 })();
@@ -45,12 +45,12 @@ if (typeof window !== 'undefined') {
 
 // 诊断：确认 entry.js 真的被 Tavo 加载并执行（之前发现 message:added 监听没跑，怀疑 entry 加载时就静默失败）
 try {
-  console.log('[tf_story] ENTRY START v1.4.0 ' + new Date().toISOString()
+  console.log('[event_manager][tf_story] ENTRY START v1.4.0 ' + new Date().toISOString()
     + ' tavo=' + (typeof tavo)
     + ' tavo.plugin=' + ((typeof tavo !== 'undefined' && tavo.plugin) ? typeof tavo.plugin : 'undefined')
     + ' tavo.plugin.on=' + ((typeof tavo !== 'undefined' && tavo.plugin) ? typeof tavo.plugin.on : 'undefined'));
 } catch (e) {
-  console.error('[tf_story] entry log failed', e);
+  console.error('[event_manager][tf_story] entry log failed', e);
 }
 
 // =========================================================================
@@ -125,7 +125,7 @@ function tfStoryJudge_checkAndAdvance(messageContext) {
       },
     };
   } catch (e) {
-    console.warn('[tf_story][mcs_api] checkAndAdvance error', e);
+    console.warn('[event_manager][tf_story][mcs_api] checkAndAdvance error', e);
     return { chapterStatus: 'error', error: e.message };
   }
 }
@@ -200,7 +200,7 @@ async function tfStoryJudge_checkChapterDone(messageContext) {
       llmResult = await _llmJudgeChapter(chapter, cond, ctx);
     }
 
-    console.log('[tf_story][mcs_api] checkChapterDone start')
+    console.log('[event_manager][tf_story][mcs_api] checkChapterDone start')
     let finalResult = 'continue';
     let reason = '';
     if (ruleMatched) {
@@ -210,7 +210,7 @@ async function tfStoryJudge_checkChapterDone(messageContext) {
       reason = llmResult.reason || 'llm';
     }
     //result: string - 只能是 "continue" /"guide"/ "success" / "failed"
-    console.log('[tf_story][mcs_api] checkChapterDone result', finalResult, reason, llmResult)
+    console.log('[event_manager][tf_story][mcs_api] checkChapterDone result', finalResult, reason, llmResult)
     if (finalResult !== 'done' && finalResult !== 'success') {
       return { done: false, result: 'continue', pendingChapterId: null, message: '', llmResult, reason };
     }
@@ -240,7 +240,7 @@ async function tfStoryJudge_checkChapterDone(messageContext) {
       return { done: true, result: 'success', pendingChapterId: nextIdx, message: '第 ' + (idx+1) + ' 章完成！下一章将在下一轮切换', llmResult, reason };
     }
   } catch (e) {
-    console.warn('[tf_story][mcs_api] checkChapterDone error', e);
+    console.warn('[event_manager][tf_story][mcs_api] checkChapterDone error', e);
     return { done: false, result: 'error', error: e.message };
   }
 }
@@ -319,10 +319,10 @@ async function _llmJudgeChapter(chapter, cond, ctx) {
       raw = await tavo.generate(_PROMPT_STORY_CHAPTER + '\n\n' + userPrompt, { context: false, settings: { temperature: 0.3, maxCompletionTokens: 800 } });
     }
   } catch (e) {
-    console.warn('[tf_story][judge_llm] 调用失败:', e.message);
+    console.warn('[event_manager][tf_story][judge_llm] 调用失败:', e.message);
     return { result: 'continue', reason: 'llm_error:' + e.message };
   }
-  console.warn('[tf_story][judge_llm] raw:',raw);
+  console.warn('[event_manager][tf_story][judge_llm] raw:',raw);
   return _parseJudgeResponse(raw);
 }
 
@@ -446,12 +446,12 @@ async function _llmJudgeEventProgress(progress, chapters, recentDialogue) {
       raw = await tavo.generate(_PROMPT_STORY_EVENT_PROGRESS + '\n\n' + userPrompt, { context: false, settings: { temperature: 0.3, maxCompletionTokens: 600 } });
     }
   } catch (e) {
-    console.warn('[tf_story][event_llm] 调用失败:', e.message);
+    console.warn('[event_manager][tf_story][event_llm] 调用失败:', e.message);
     return { ended: false, event_status: 'active', reason: 'llm_error:' + e.message };
   }
   // 解析 ended / event_status / progress_summary / progress_facts / reason
   if (!raw) return { ended: false, event_status: 'active', reason: 'empty' };
-    console.warn('[tf_story][event_llm] 调用 :raw', JSON.stringify(raw));
+    console.warn('[event_manager][tf_story][event_llm] 调用 :raw', JSON.stringify(raw));
   let txt = String(raw).trim();
   const fence = txt.match(/```(?:json)?\s*([\s\S]*?)```/i);
   if (fence) txt = fence[1].trim();
@@ -533,7 +533,7 @@ async function tfEventProgress_advance(messageContext) {
     setProgress(progress);
     return { advanced: true, reason: llmRes.reason, summary: llmRes.progress_summary, event_status: llmRes.event_status };
   } catch (e) {
-    console.warn('[tf_story][event_advance] error', e);
+    console.warn('[event_manager][tf_story][event_advance] error', e);
     return { advanced: false, reason: 'exception:' + e.message };
   }
 }
@@ -542,25 +542,25 @@ async function tfEventProgress_advance(messageContext) {
 const _safeOn = (name, fn) => {
   try {
     if (typeof tavo === 'undefined' || !tavo.plugin || typeof tavo.plugin.on !== 'function') {
-      console.error('[tf_story] hook 注册失败: tavo.plugin.on 不可用, hook=' + name);
+      console.error('[event_manager][tf_story] hook 注册失败: tavo.plugin.on 不可用, hook=' + name);
       return;
     }
     tavo.plugin.on(name, fn);
-    console.log('[tf_story] hook registered: ' + name);
+    console.log('[event_manager][tf_story] hook registered: ' + name);
   } catch (e) {
-    console.error('[tf_story] hook 注册失败: hook=' + name, e && (e.message || e));
+    console.error('[event_manager][tf_story] hook 注册失败: hook=' + name, e && (e.message || e));
   }
 };
 const _safeOnSide = (name, fn) => {
   try {
     if (typeof tavo === 'undefined' || !tavo.plugin || typeof tavo.plugin.onSidebarAction !== 'function') {
-      console.error('[tf_story] sidebar 注册失败: tavo.plugin.onSidebarAction 不可用, name=' + name);
+      console.error('[event_manager][tf_story] sidebar 注册失败: tavo.plugin.onSidebarAction 不可用, name=' + name);
       return;
     }
     tavo.plugin.onSidebarAction(name, fn);
-    console.log('[tf_story] sidebar registered: ' + name);
+    console.log('[event_manager][tf_story] sidebar registered: ' + name);
   } catch (e) {
-    console.error('[tf_story] sidebar 注册失败: name=' + name, e && (e.message || e));
+    console.error('[event_manager][tf_story] sidebar 注册失败: name=' + name, e && (e.message || e));
   }
 };
 
@@ -627,8 +627,8 @@ function readVarAnyScope(name) {
 // globalVarName: global scope 变量名（带 chat_id）
 function writeVarDual(chatVarName, globalVarName, value) {
   let ok = false;
-  try { tavo.set(chatVarName, value, 'chat'); ok = true; } catch (e) { console.warn('[tf_story][writeVarDual] chat write failed: ' + (e && e.message)); }
-  try { tavo.set(globalVarName, value, 'global'); console.log('[tf_story][writeVarDual] global write: ' + globalVarName); } catch (e) { console.warn('[tf_story][writeVarDual] global write failed: ' + (e && e.message)); }
+  try { tavo.set(chatVarName, value, 'chat'); ok = true; } catch (e) { console.warn('[event_manager][tf_story][writeVarDual] chat write failed: ' + (e && e.message)); }
+  try { tavo.set(globalVarName, value, 'global'); console.log('[event_manager][tf_story][writeVarDual] global write: ' + globalVarName); } catch (e) { console.warn('[event_manager][tf_story][writeVarDual] global write failed: ' + (e && e.message)); }
   return ok;
 }
 
@@ -927,10 +927,10 @@ function syncChapterIndex(idx) {
 
 // 评估每条用户消息对当前章节的影响
 async function judgeAndAdvance(messageContext) {
-  if (cfgGet('enabled', true) === false) { console.log('[tf_story][judge] ✗ enabled=false'); return; }
+  if (cfgGet('enabled', true) === false) { console.log('[event_manager][tf_story][judge] ✗ enabled=false'); return; }
   const progress = getProgress();
-  console.log('[tf_story][judge] progress.chapter=' + progress.currentChapterIndex + ' completed=' + JSON.stringify(progress.completedChapters) + ' storyCompleted=' + progress.storyCompleted + ' freeMode=' + progress.sessionFreeMode);
-  if (progress.storyCompleted || progress.sessionFreeMode) { console.log('[tf_story][judge] ✗ stopped: storyCompleted or freeMode'); return; }
+  console.log('[event_manager][tf_story][judge] progress.chapter=' + progress.currentChapterIndex + ' completed=' + JSON.stringify(progress.completedChapters) + ' storyCompleted=' + progress.storyCompleted + ' freeMode=' + progress.sessionFreeMode);
+  if (progress.storyCompleted || progress.sessionFreeMode) { console.log('[event_manager][tf_story][judge] ✗ stopped: storyCompleted or freeMode'); return; }
 
   const edit = getEdit();
   const chapters = edit.chapters || [];
@@ -944,19 +944,19 @@ async function judgeAndAdvance(messageContext) {
   const curPhase = phases[phaseIdx] || null;
   const curEvent = (curPhase && curPhase.events) ? (curPhase.events[eventIdx] || null) : null;
 
-  console.log('[tf_story] ┌─── judgeAndAdvance 入口 ─────────────────');
-  console.log('[tf_story] │ 📝 用户消息: ' + JSON.stringify((messageContext.content||'').slice(0,100)));
-  console.log('[tf_story] │ 📚 章节: ' + (idx+1) + '/' + chapters.length + (chapter ? '「' + chapter.title + '」' : '(无)'));
-  console.log('[tf_story] │ 📋 完成条件: ' + (chapter && chapter.successCondition ? chapter.successCondition.slice(0,80) : '(无)'));
-  console.log('[tf_story] │ 📊 事件进度: Phase=' + phaseIdx + '(' + (curPhase?curPhase.name:'无') + ')'
+  console.log('[event_manager][tf_story] ┌─── judgeAndAdvance 入口 ─────────────────');
+  console.log('[event_manager][tf_story] │ 📝 用户消息: ' + JSON.stringify((messageContext.content||'').slice(0,100)));
+  console.log('[event_manager][tf_story] │ 📚 章节: ' + (idx+1) + '/' + chapters.length + (chapter ? '「' + chapter.title + '」' : '(无)'));
+  console.log('[event_manager][tf_story] │ 📋 完成条件: ' + (chapter && chapter.successCondition ? chapter.successCondition.slice(0,80) : '(无)'));
+  console.log('[event_manager][tf_story] │ 📊 事件进度: Phase=' + phaseIdx + '(' + (curPhase?curPhase.name:'无') + ')'
     + ' Event=' + eventIdx + '/' + ((curPhase&&curPhase.events)?curPhase.events.length:0)
     + '(' + (curEvent?curEvent.name:'无') + ')');
-  console.log('[tf_story] │ 🏷  phases: ' + JSON.stringify(phases.map(p=>({n:p.name,e:p.events.map(e=>e.name||'')}))));
-  console.log('[tf_story] │ 🔖 pendingChapterId=' + progress.pendingChapterId
+  console.log('[event_manager][tf_story] │ 🏷  phases: ' + JSON.stringify(phases.map(p=>({n:p.name,e:p.events.map(e=>e.name||'')}))));
+  console.log('[event_manager][tf_story] │ 🔖 pendingChapterId=' + progress.pendingChapterId
     + ' failedAttempts=' + progress.failedAttempts
     + ' completedChapters=' + JSON.stringify(progress.completedChapters||[]));
-  console.log('[tf_story] └─────────────────────────────────────────');
-  console.log('[tf_story][judge] idx=' + idx + ' chapters.len=' + chapters.length + ' chapter.title=' + (chapter ? chapter.title : 'NULL'));
+  console.log('[event_manager][tf_story] └─────────────────────────────────────────');
+  console.log('[event_manager][tf_story][judge] idx=' + idx + ' chapters.len=' + chapters.length + ' chapter.title=' + (chapter ? chapter.title : 'NULL'));
   if (!chapter) {
     // 越界：所有章节完成
     progress.storyCompleted = true;
@@ -969,14 +969,14 @@ async function judgeAndAdvance(messageContext) {
     return;
   }
 
-    console.log('[tf_story][judge] 解析章节 content → phases...');
+    console.log('[event_manager][tf_story][judge] 解析章节 content → phases...');
   // 解析事件进度（首次进入新章节时）
   if (!progress.phases || progress.phaptersKey !== chapters.length + ':' + idx) {
     progress.phases = parseProgress(chapter.content || '');
     progress.currentPhase = 0;
     progress.currentEvent = 0;
     progress.chaptersKey = chapters.length + ':' + idx;
-    console.log('[tf_story][judge] phases=' + progress.phases.length + ' ' + JSON.stringify(progress.phases.map(p=>({n:p.name,e:p.events.length}))));
+    console.log('[event_manager][tf_story][judge] phases=' + progress.phases.length + ' ' + JSON.stringify(progress.phases.map(p=>({n:p.name,e:p.events.length}))));
 
   }
   // ========== pendingChapterId 处理（对齐官方 pendingChapterId 双阶段语义）==========
@@ -985,7 +985,7 @@ async function judgeAndAdvance(messageContext) {
     const prevChapterId = progress.currentChapterIndex;
     const prevChapter = chapters[prevChapterId];
     const nextIdx = progress.pendingChapterId;
-    console.log('[tf_story] ⏳ [pendingChapterId] 章节切换: ' + (prevChapterId+1) + '「' + (prevChapter?prevChapter.title:'?') + '」'
+    console.log('[event_manager][tf_story] ⏳ [pendingChapterId] 章节切换: ' + (prevChapterId+1) + '「' + (prevChapter?prevChapter.title:'?') + '」'
       + ' → ' + (nextIdx+1) + '/' + chapters.length);
     progress.pendingChapterId = null; // 先清除标记
     if (nextIdx >= chapters.length) {
@@ -1035,7 +1035,7 @@ async function judgeAndAdvance(messageContext) {
     // 重新获取当前章节引用
     const newIdx = progress.currentChapterIndex;
     chapter = chapters[newIdx];
-    console.log('[tf_story][judge] chapter switched to idx=' + newIdx + ' title=' + (chapter ? chapter.title : 'NULL'));
+    console.log('[event_manager][tf_story][judge] chapter switched to idx=' + newIdx + ' title=' + (chapter ? chapter.title : 'NULL'));
   }
 
   // 阶段一：LLM 事件进度检测（对齐 toonflow applySessionUserEventProgress）
@@ -1088,9 +1088,9 @@ async function judgeAndAdvance(messageContext) {
       };
       progress.updatedAt = Date.now();
       setProgress(progress);
-      console.log('[tf_story][judge] guide 已落盘（最后一个事件）');
+      console.log('[event_manager][tf_story][judge] guide 已落盘（最后一个事件）');
     } else {
-      console.log('[tf_story][judge] guide 但不是最后一个事件 → 等同 continue，不落盘');
+      console.log('[event_manager][tf_story][judge] guide 但不是最后一个事件 → 等同 continue，不落盘');
     }
     return;
   }
@@ -1121,7 +1121,7 @@ async function judgeAndAdvance(messageContext) {
       progress.pendingChapterId = nextIdx;
       progress.updatedAt = Date.now();
       setProgress(progress);
-      console.log('[tf_story][judge] chapter success: pendingChapterId=' + nextIdx + ' (will switch next round)');
+      console.log('[event_manager][tf_story][judge] chapter success: pendingChapterId=' + nextIdx + ' (will switch next round)');
       tavo.utils.toast('✅ 第 ' + (idx + 1) + ' 章完成！下一章将在下一轮对话开始时切换');
     }
   }
@@ -1150,7 +1150,7 @@ async function getMemoryItems() {
 // =========================================================================
 
 function defaultEditData() {
-  console.log('[tf_story] │ ？？？ 获取默认编辑数据，请检查检查故事数据异常！！！');
+  console.log('[event_manager][tf_story] │ ？？？ 获取默认编辑数据，请检查检查故事数据异常！！！');
   return {
     intro: '', globalBackground: '', lineCount: 20, intentMode: 'keyword',
     chapters: [{ title: '第 1 章', openingRole: '旁白', openingLine: '。。。', background: '', content: '', successCondition: '', conditionVisible: true, entryCondition: '', musicAutoPlay: false }],
@@ -1186,7 +1186,7 @@ function getEdit() {
     } catch (e) {}
   }
   if (!(v && typeof v === 'object')){
-    console.error('[tf_story] │ ？？？getEdit 数据异常！！！');
+    console.error('[event_manager][tf_story] │ ？？？getEdit 数据异常！！！');
   }
   return (v && typeof v === 'object') ? v : defaultEditData();
 }
@@ -1264,7 +1264,7 @@ function restoreStaticData() {
           return g;
         } catch (e) { return null; }
       })();
-      console.log('[tf_story][restore] name=' + name + ' gv=' + (gv ? JSON.stringify(gv).slice(0, 200) : 'null'));
+      console.log('[event_manager][tf_story][restore] name=' + name + ' gv=' + (gv ? JSON.stringify(gv).slice(0, 200) : 'null'));
       // 检查 global 数据是否有实质内容（防止 {chapters:[{...}]} 被 Object.keys().length===1 误判为空）
       const hasContent = (gv && typeof gv === 'object') ? (() => {
         if (name === editName) {
@@ -1276,14 +1276,14 @@ function restoreStaticData() {
         }
         return Object.keys(gv).length > 0;
       })() : false;
-      console.log('[tf_story][restore] hasContent=' + hasContent);
+      console.log('[event_manager][tf_story][restore] hasContent=' + hasContent);
       if (hasContent) {
         tavo.set(name, gv, 'chat');
-        console.log('[tf_story][restore] restored: ' + name);
+        console.log('[event_manager][tf_story][restore] restored: ' + name);
         restored = true;
       }
     } catch (e) {
-      console.warn('[tf_story][restore] error for ' + name + ': ' + (e && e.message));
+      console.warn('[event_manager][tf_story][restore] error for ' + name + ': ' + (e && e.message));
     }
   }
   return restored;
@@ -1345,47 +1345,47 @@ async function story_start_init(boot) {
           //    切换到 natural 模式 + 清空 overrideScenario，阻断官方 scenario 开场
           try {
             await _retry(() => tavo.chat.update({ responseMode: 'natural', overrideScenario: '' }), 'step0 chat.update', 4);
-            console.log('[tf_story] │ ✅ 已禁止和清理tavo自己的开场白');
+            console.log('[event_manager][tf_story] │ ✅ 已禁止和清理tavo自己的开场白');
           } catch (e) {
-            console.warn('[tf_story][opening] 禁止开场白失败', e);
+            console.warn('[event_manager][tf_story][opening] 禁止开场白失败', e);
           }
 
           // 3. 故事初始化完毕
-          console.log('[tf_story] │ ✅ 故事初始化完毕');
+          console.log('[event_manager][tf_story] │ ✅ 故事初始化完毕');
           // 注意：openingDone 不能用于判断开场白是否完成，如果false ，生成的开场白会被删除
           boot.openingDone = true;
           boot.status ='ready';
           // 写到 boot 对应的tavo 变量
           writeBoot(boot);
-          console.log('[tf_story] message:added！！！status{}, openingDone{}",', boot.status, boot.openingDone);
+          console.log('[event_manager][tf_story] message:added！！！status{}, openingDone{}",', boot.status, boot.openingDone);
     } catch (e) {}
 }
 
 
 async function playChapterOpening(boot) {
-  console.log('[tf_story] ─── 开场白流程 ──────────────────────────');
+  console.log('[event_manager][tf_story] ─── 开场白流程 ──────────────────────────');
   // 1. 找到当前章节的开场白配置
   const ch = await getCurrChapter();
-  console.log('[tf_story] │ ✅ 找到当前章节的开场白配置 ch:', ch);
+  console.log('[event_manager][tf_story] │ ✅ 找到当前章节的开场白配置 ch:', ch);
   if (!ch) return 0;
 
   const role = ch.openingRole || '旁白';
   let text = ch.openingLine || '';
 
-  console.log('[tf_story] │ ✅ 获取开场白: $openingRole="' + role + '" $openingText="' + (text.slice(0, 40) || '(空)') + '"');
+  console.log('[event_manager][tf_story] │ ✅ 获取开场白: $openingRole="' + role + '" $openingText="' + (text.slice(0, 40) || '(空)') + '"');
 
     // 5. 调用发言插
   if (!text) {
       console.log(ch);
        text="进入故事";
-      console.log('[tf_story] error 播放开场白失败，开场白内容为空,策略：依然发送给发言器',text);
+      console.log('[event_manager][tf_story] error 播放开场白失败，开场白内容为空,策略：依然发送给发言器',text);
 
   }
 
-  console.log('[tf_story] ─── 开场白流程-通知发言器 ──────────────────────────');
+  console.log('[event_manager][tf_story] ─── 开场白流程-通知发言器 ──────────────────────────');
   // 委托发言插件处理：window.tf_story_emit 触发，speaker 用 window.tf_story_on 监听
   window.tf_story_emit('opening', { role: role, text: text });
-  console.log('[tf_story]  sent window.tf_story_emit  opening',window.tf_story_emit);
+  console.log('[event_manager][tf_story]  sent window.tf_story_emit  opening',window.tf_story_emit);
   // 3. 返回播了几条（speaker 插件 append 后才算）
   return 1;
 }
@@ -1411,7 +1411,7 @@ async function _retry(fn, label, maxTries) {
       const msg = (e && e.message) || String(e);
       const retriable = /internal error|try again|could not complete|not ready/i.test(msg);
       if (!retriable || i === maxTries) throw e;
-      console.warn('[tf_story] ' + label + ' retry ' + i + '/' + (maxTries-1) + ': ' + msg);
+      console.warn('[event_manager][tf_story] ' + label + ' retry ' + i + '/' + (maxTries-1) + ': ' + msg);
       await new Promise(r => setTimeout(r, 500));
     }
   }
@@ -1498,24 +1498,24 @@ function hideStartButton() {
 // 完整 Boot 序列（5 阶段：uninitialized/reset/resumption_start -> data_loaded -> ready）
 async function bootSequence() {
   const myGuard = ++_bootGuard;
-  console.log('[tf_story][boot] start, myGuard=' + myGuard);
+  console.log('[event_manager][tf_story][boot] start, myGuard=' + myGuard);
   let chatId = null;
-  try { const c = await tavo.chat.current(); chatId = c && c.id; console.log('[tf_story][boot] chatId=' + chatId); } catch (e) { console.warn('[tf_story][boot] chat.current failed', e); }
+  try { const c = await tavo.chat.current(); chatId = c && c.id; console.log('[event_manager][tf_story][boot] chatId=' + chatId); } catch (e) { console.warn('[event_manager][tf_story][boot] chat.current failed', e); }
   _currentChatId = chatId;
 
   // 0) 立刻切到 natural 模式 + 清空 overrideScenario，阻断官方 scenario 默认开场
   // chat:opened 触发时 tavo 内部可能未 ready，报 "internal error, try again"，重试
   try {
     await _retry(() => tavo.chat.update({ responseMode: 'natural', overrideScenario: '' }), 'step0 chat.update', 4);
-    console.log('[tf_story][boot] step0 natural mode set');
-  } catch (e) { console.warn('[tf_story][boot] step0 chat.update failed', e); }
+    console.log('[event_manager][tf_story][boot] step0 natural mode set');
+  } catch (e) { console.warn('[event_manager][tf_story][boot] step0 chat.update failed', e); }
 
   const boot = readBoot();
   let count = 0;
   try {
     count = await _retry(() => tavo.message.count(), 'message.count', 4);
-    console.log('[tf_story][boot] message count=' + count);
-  } catch (e) { console.warn('[tf_story][boot] count failed', e); }
+    console.log('[event_manager][tf_story][boot] message count=' + count);
+  } catch (e) { console.warn('[event_manager][tf_story][boot] count failed', e); }
 
   // 关键判定：chat_reset 清空 chat scope 变量但保留 global。
   // 「chat scope 的 boot 镜像是否还在」是判断「是否刚 reset」的可靠信号：
@@ -1540,21 +1540,21 @@ async function bootSequence() {
   } else {
     sessionStage = 'reset';                    // 兜底：global 有数据但状态异常
   }
-  console.log('[tf_story][boot] sessionStage=' + sessionStage + ' globalHasData=' + globalHasData + ' chatBoot=' + (chatBoot ? chatBoot.status : 'null') + ' count=' + count);
+  console.log('[event_manager][tf_story][boot] sessionStage=' + sessionStage + ' globalHasData=' + globalHasData + ' chatBoot=' + (chatBoot ? chatBoot.status : 'null') + ' count=' + count);
 
   writeBoot({ status: 'loading', stage: sessionStage, chatId, openedAt: Date.now(), openingDone: false, sessionType: sessionStage });
   notifyBootStage(sessionStage, '检测会话：' + sessionStage);
 
   const restored = restoreStaticData();
-  console.log('[tf_story][boot] restored=' + restored);
+  console.log('[event_manager][tf_story][boot] restored=' + restored);
   notifyBootStage(sessionStage, '恢复静态数据' + (restored ? '（global -> chat）' : '（无 global 备份）'));
 
   const rebuilt = rebuildDynamicData();
-  console.log('[tf_story][boot] rebuilt=' + rebuilt);
+  console.log('[event_manager][tf_story][boot] rebuilt=' + rebuilt);
 
   if (sessionStage !== 'resumption_start') {
     const purged = await purgeOfficialHijack();
-    if (purged > 0) console.log('[tf_story][boot] purged ' + purged + ' official hijack');
+    if (purged > 0) console.log('[event_manager][tf_story][boot] purged ' + purged + ' official hijack');
   }
 
   writeBoot({ status: 'loading', stage: 'data_loaded', chatId, openedAt: Date.now(), openingDone: false, sessionType: sessionStage, restored, rebuilt });
@@ -1573,7 +1573,7 @@ async function bootSequence() {
     setTimeout(() => {
           // start_story fun
           showStartButton(function () {
-            console.log('[tf_story][boot] 用户点击开始，触发开场白…');
+            console.log('[event_manager][tf_story][boot] 用户点击开始，触发开场白…');
             _bootState = 'opening';
             // notifyBootStage('opening', '开场白生成中…');
             const boot = readBoot();
@@ -1586,11 +1586,11 @@ async function bootSequence() {
 
             // 注意：openingDone 不能用于判断开场白是否完成，如果false ，生成的开场白会被删除
             setTimeout(function () {
-               console.log('[tf_story][boot] playChapterOpening start...');
+               console.log('[event_manager][tf_story][boot] playChapterOpening start...');
                playChapterOpening(boot).then(played => {
-               console.log('[tf_story][boot] playChapterOpening result=' + played);
+               console.log('[event_manager][tf_story][boot] playChapterOpening result=' + played);
               // 开场白执行完毕后再标记 openingDone=true，防止提前返回
-             }).catch(e => { console.warn('[tf_story][boot] playChapterOpening failed', e); });
+             }).catch(e => { console.warn('[event_manager][tf_story][boot] playChapterOpening failed', e); });
             }, 400);
 
           });
@@ -1609,7 +1609,7 @@ async function bootSequence() {
     setTimeout(function () { notifyBootStage('ready', ''); }, 400);
   }
 
-  console.log('[tf_story][boot] DONE sessionType=' + sessionStage + ' restored=' + restored + ' rebuilt=' + rebuilt);
+  console.log('[event_manager][tf_story][boot] DONE sessionType=' + sessionStage + ' restored=' + restored + ' rebuilt=' + rebuilt);
 
   return sessionStage;
 }
@@ -1624,10 +1624,10 @@ _safeOn('generation:prepare', async (event) => {
   // tmm 就绪检查：只打日志，不再阻断（插件加载顺序不确定，阻断会导致编排永远无法启动）
   const tmm = readChatVar('tmm');
   if (!tmm || typeof tmm !== 'object' || !('summary' in tmm)) {
-    console.warn('[tf_story][gen:prepare] tmm not ready yet (memory_manager still initializing)');
+    console.warn('[event_manager][tf_story][gen:prepare] tmm not ready yet (memory_manager still initializing)');
     // 不再阻断生成！让编排继续
   } else {
-    console.log('[tf_story][gen:prepare] tmm ready, generation allowed');
+    console.log('[event_manager][tf_story][gen:prepare] tmm ready, generation allowed');
   }
 });
 
@@ -1637,7 +1637,7 @@ _safeOn('message:added', async (event) => {
   if (!msg || msg.role !== 'assistant') return;
   const boot = readBoot();
   // boot ready 且开场白已播 -> 正常消息
-  console.log('[tf_story] message:added！！！status{}, openingDone{}",', boot.status, boot.openingDone);
+  console.log('[event_manager][tf_story] message:added！！！status{}, openingDone{}",', boot.status, boot.openingDone);
   if (boot.status === 'ready' && boot.openingDone === true) return;
   // 否则视为官方劫持 -> 删除
   // 但要小心：我们自己的 playChapterOpening 也会 append assistant 消息，
@@ -1646,13 +1646,13 @@ _safeOn('message:added', async (event) => {
   if (_bootState === 'opening') return; // 自己的开场白
   try {
     await tavo.message.delete(msg.id);
-    console.log('[tf_story] deleted official hijack message！！！', msg.id);
+    console.log('[event_manager][tf_story] deleted official hijack message！！！', msg.id);
   } catch (e) {}
 });
 
 _safeOn('chat:opened', async () => {
   // Boot 序列接管：数据恢复 -> 官方劫持清理 -> 开场白 -> 编排应用
-  console.log('[tf_story] Boot 序列接管：数据恢复 -> 官方劫持清理 -> 开场白 -> 编排应用');
+  console.log('[event_manager][tf_story] Boot 序列接管：数据恢复 -> 官方劫持清理 -> 开场白 -> 编排应用');
   await bootSequence();
 
   // 章节修复（仅补全缺失字段，绝不清空/丢弃已有章节 —— 静态故事数据受保护）
@@ -1683,20 +1683,20 @@ _safeOn('chat:opened', async () => {
   const progress = getProgress();
   progress.updatedAt = Date.now();
   setProgress(progress);
-  console.log('[tf_story] Boot 序列接管：数据恢复 -> 官方劫持清理 -> 开场白 -> 编排应用 end');
+  console.log('[event_manager][tf_story] Boot 序列接管：数据恢复 -> 官方劫持清理 -> 开场白 -> 编排应用 end');
 });
 
 // 判定器入口：每轮对话后评估章节结局（仅 boot ready 后生效）
 _safeOn('message:added', async (event) => {
   if (!event || !event.message) return;
   const msg = event.message;
-  console.log('[tf_story][msg:added] role=' + msg.role + ' content=' + JSON.stringify((msg.content||'').slice(0,60)));
+  console.log('[event_manager][tf_story][msg:added] role=' + msg.role + ' content=' + JSON.stringify((msg.content||'').slice(0,60)));
   if (msg.role !== 'user') return; // 只在用户发言后判定
   // boot 未完成时不判定（避免官方劫持阶段误判）
   const boot = readBoot();
-  console.log('[tf_story][msg:added] ★ 用户发言 boot.status=' + (boot&&boot.status) + ' openingDone=' + (boot&&boot.openingDone));
+  console.log('[event_manager][tf_story][msg:added] ★ 用户发言 boot.status=' + (boot&&boot.status) + ' openingDone=' + (boot&&boot.openingDone));
   if (!boot || boot.status !== 'ready' || !boot.openingDone) {
-    console.warn('[tf_story][msg:added] ✗ judge blocked: boot not ready');
+    console.warn('[event_manager][tf_story][msg:added] ✗ judge blocked: boot not ready');
     return;
   }
   try {
@@ -1716,24 +1716,24 @@ _safeOn('message:added', async (event) => {
     const curEvent = (curPhase && curPhase.events) ? (curPhase.events[eventIdx] || null) : null;
     const nextEvent = (curPhase && curPhase.events) ? (curPhase.events[eventIdx + 1] || null) : null;
 
-    console.log('══════════════════════════════════════════');
-    console.log('[tf_story] ┌─── 全链路 TRACE ───────────────────');
-    console.log('[tf_story] │ 📝 用户输入: ' + JSON.stringify((msg.content||'').slice(0,80)));
-    console.log('[tf_story] │ 📚 章节状态: 第' + (idx+1) + '/' + chapters.length + '章'
+    console.log('[event_manager]══════════════════════════════════════════');
+    console.log('[event_manager][tf_story] ┌─── 全链路 TRACE ───────────────────');
+    console.log('[event_manager][tf_story] │ 📝 用户输入: ' + JSON.stringify((msg.content||'').slice(0,80)));
+    console.log('[event_manager][tf_story] │ 📚 章节状态: 第' + (idx+1) + '/' + chapters.length + '章'
       + (chapter ? '「' + chapter.title + '」' : '(无)'));
     if (chapter && chapter.successCondition) {
-      console.log('[tf_story] │ 📋 完成条件: ' + chapter.successCondition.slice(0,100));
+      console.log('[event_manager][tf_story] │ 📋 完成条件: ' + chapter.successCondition.slice(0,100));
     }
-    console.log('[tf_story] │ 📊 事件进度: Phase=' + phaseIdx + '(' + (curPhase?curPhase.name:'无') + ')'
+    console.log('[event_manager][tf_story] │ 📊 事件进度: Phase=' + phaseIdx + '(' + (curPhase?curPhase.name:'无') + ')'
       + ' / Event=' + eventIdx + '(' + (curEvent?curEvent.name:'无') + ')'
       + ' / next=' + (nextEvent?nextEvent.name:'无'));
-    console.log('[tf_story] │    phases总数=' + phases.length
+    console.log('[event_manager][tf_story] │    phases总数=' + phases.length
       + ' completedChapters=[' + (progress.completedChapters||[]).map(i=>i+1).join(',') + ']'
       + ' pendingChapterId=' + progress.pendingChapterId
       + ' storyCompleted=' + progress.storyCompleted
       + ' freeMode=' + progress.sessionFreeMode);
-    console.log('[tf_story] │ 🔄 触发: judgeAndAdvance (messageCount=' + count + ')');
-    console.log('[tf_story] └─────────────────────────────────────');
+    console.log('[event_manager][tf_story] │ 🔄 触发: judgeAndAdvance (messageCount=' + count + ')');
+    console.log('[event_manager][tf_story] └─────────────────────────────────────');
 
     await judgeAndAdvance({ content: msg.content || '', messageCount: count });
 
@@ -1744,19 +1744,19 @@ _safeOn('message:added', async (event) => {
     const eventIdxAfter = Math.max(0, progressAfter.currentEvent || 0);
     const curPhaseAfter = phasesAfter[phaseIdxAfter] || null;
     const curEventAfter = (curPhaseAfter && curPhaseAfter.events) ? (curPhaseAfter.events[eventIdxAfter] || null) : null;
-    console.log('══════════════════════════════════════════');
-    console.log('[tf_story] ┌─── judgeAndAdvance 结果 ─────────────');
-    console.log('[tf_story] │ ✅ 章节: ' + (idx+1) + '/' + chapters.length
+    console.log('[event_manager]══════════════════════════════════════════');
+    console.log('[event_manager][tf_story] ┌─── judgeAndAdvance 结果 ─────────────');
+    console.log('[event_manager][tf_story] │ ✅ 章节: ' + (idx+1) + '/' + chapters.length
       + (progressAfter.pendingChapterId ? ' → pending切第' + (progressAfter.pendingChapterId+1) + '章' : '')
       + (progressAfter.storyCompleted ? ' 故事完结!' : ''));
-    console.log('[tf_story] │ 📊 事件进度(后): Phase=' + phaseIdxAfter + '(' + (curPhaseAfter?curPhaseAfter.name:'无') + ')'
+    console.log('[event_manager][tf_story] │ 📊 事件进度(后): Phase=' + phaseIdxAfter + '(' + (curPhaseAfter?curPhaseAfter.name:'无') + ')'
       + ' / Event=' + eventIdxAfter + '(' + (curEventAfter?curEventAfter.name:'无') + ')');
-    console.log('[tf_story] │    pendingChapterId=' + progressAfter.pendingChapterId
+    console.log('[event_manager][tf_story] │    pendingChapterId=' + progressAfter.pendingChapterId
       + ' failedAttempts=' + progressAfter.failedAttempts);
-    console.log('[tf_story] └─────────────────────────────────────');
-    console.log('══════════════════════════════════════════');
+    console.log('[event_manager][tf_story] └─────────────────────────────────────');
+    console.log('[event_manager]══════════════════════════════════════════');
   } catch (e) {
-    console.warn('[tf_story] judge failed', e);
+    console.warn('[event_manager][tf_story] judge failed', e);
   }
 });
 
@@ -1790,7 +1790,7 @@ async function manualChapterAdvance(chapters, idx, progress) {
     setProgress(progress);
     const nextCh = chapters[nextIdx];
     tavo.utils.toast('✅ 第 ' + (idx + 1) + ' 章完成！下一章将在下一轮对话开始时切换');
-    console.log('[tf_story][manual] pendingChapterId=' + nextIdx + ' (will switch next round)');
+    console.log('[event_manager][tf_story][manual] pendingChapterId=' + nextIdx + ' (will switch next round)');
   }
 }
 
@@ -1812,7 +1812,7 @@ async function advanceManually(rawText) {
     if (!chapter) { tavo.utils.toast('无当前章节'); return; }
     await manualChapterAdvance(chapters, idx, progress);
   } catch (e) {
-    console.warn('[tf_story] manual advance failed', e);
+    console.warn('[event_manager][tf_story] manual advance failed', e);
     tavo.utils.toast('推进失败：' + (e && e.message ? e.message : e));
   }
 }
@@ -1833,24 +1833,24 @@ _safeOn('input:beforeSend', async (event) => {
           el.dispatchEvent(new Event('change', { bubbles: true }));
         }
       });
-      if (cleared) console.log('[tmm] input cleared (sync)');
+      if (cleared) console.log('[event_manager][tmm] input cleared (sync)');
     } catch (e) { /* ignore */ }
   })();
 
   const boot = readBoot();
   const tmm = readChatVar('tmm');
   const tmmOk = !!(tmm && typeof tmm === 'object' && ('summary' in tmm));
-  console.log('[tf_story][input:beforeSend] ★ _bootState=' + _bootState + ' boot.status=' + (boot && boot.status) + ' openingDone=' + (boot && boot.openingDone) + ' tmm_ok=' + tmmOk);
+  console.log('[event_manager][tf_story][input:beforeSend] ★ _bootState=' + _bootState + ' boot.status=' + (boot && boot.status) + ' openingDone=' + (boot && boot.openingDone) + ' tmm_ok=' + tmmOk);
 
   // 故事加载门：boot 未 ready（数据未加载 / 开场白未播）时禁止一切用户发言
   if (_bootState !== 'ready') {
-    console.log('[tf_story][input:beforeSend] ✗ blocked: _bootState=' + _bootState);
+    console.log('[event_manager][tf_story][input:beforeSend] ✗ blocked: _bootState=' + _bootState);
     try { if (event && typeof event.cancel === 'function') event.cancel('故事加载中…'); } catch (e) {}
     tavo.utils.toast('⏳ 故事加载中，请稍候…');
     return;
   }
   if (!boot || boot.status !== 'ready' || !boot.openingDone) {
-    console.log('[tf_story][input:beforeSend] ✗ blocked: boot.status=' + (boot && boot.status) + ' openingDone=' + (boot && boot.openingDone));
+    console.log('[event_manager][tf_story][input:beforeSend] ✗ blocked: boot.status=' + (boot && boot.status) + ' openingDone=' + (boot && boot.openingDone));
     try { if (event && typeof event.cancel === 'function') event.cancel('故事加载中…'); } catch (e) {}
     tavo.utils.toast('⏳ 故事加载中，请稍候…');
     return;
@@ -1858,13 +1858,13 @@ _safeOn('input:beforeSend', async (event) => {
 
   // tmm 就绪检查：只打日志，不阻断（插件加载顺序不确定，阻断会导致用户无法发言）
   if (!tmmOk) {
-    console.warn('[tf_story][input:beforeSend] tmm not ready yet, proceeding anyway');
+    console.warn('[event_manager][tf_story][input:beforeSend] tmm not ready yet, proceeding anyway');
   }
 
   if (!/^@(事件进度检测\s*下个?事件|下个?事件|下个?章节)/.test(text)) return;
   try { if (event && typeof event.cancel === 'function') event.cancel(); } catch (e) {}
   tavo.utils.toast('事件推进指令处理中…');
-  advanceManually(text).catch(err => console.warn('[tf_story] manual advance failed', err));
+  advanceManually(text).catch(err => console.warn('[event_manager][tf_story] manual advance failed', err));
 });
 
 // =========================================================================
@@ -2074,10 +2074,10 @@ async function evaluateEventProgressByAi(chapter, progress, latestMessageContent
         throw e;
       }
     }
-    console.log('[tf_story] 🤖 [event_progress] LLM调用 → ended=' + obj.ended + ' status=' + obj.event_status);
-    console.log('[tf_story]    reason=' + (obj.reason || '').slice(0, 100));
-    console.log('[tf_story]    progress_summary=' + (obj.progress_summary || '').slice(0, 80));
-    console.log('[tf_story]    progress_facts=' + JSON.stringify((obj.progress_facts||[]).slice(0,3)));
+    console.log('[event_manager][tf_story] 🤖 [event_progress] LLM调用 → ended=' + obj.ended + ' status=' + obj.event_status);
+    console.log('[event_manager][tf_story]    reason=' + (obj.reason || '').slice(0, 100));
+    console.log('[event_manager][tf_story]    progress_summary=' + (obj.progress_summary || '').slice(0, 80));
+    console.log('[event_manager][tf_story]    progress_facts=' + JSON.stringify((obj.progress_facts||[]).slice(0,3)));
     return {
       ended: !!(obj.ended),
       event_status: obj.event_status || 'active',
@@ -2086,7 +2086,7 @@ async function evaluateEventProgressByAi(chapter, progress, latestMessageContent
       reason: obj.reason || '',
     };
   } catch (e) {
-    console.warn('[tf_story][event_progress] LLM 调用失败，回退到规则:', e.message);
+    console.warn('[event_manager][tf_story][event_progress] LLM 调用失败，回退到规则:', e.message);
     return null;
   }
 }
@@ -2153,12 +2153,12 @@ async function applySessionUserEventProgress(chapter, progress, latestMessageCon
   // 每轮都调 LLM 判断当前事件是否结束（纯 LLM 驱动，无硬编码规则）
   const resolution = precomputedResolution || await evaluateEventProgressByAi(chapter, progress, latestMessageContent, latestMessageRole);
   if (!resolution) {
-    console.log('[tf_story][event_progress] LLM 不可用，事件不推进');
+    console.log('[event_manager][tf_story][event_progress] LLM 不可用，事件不推进');
     return { advanced: false };
   }
 
   if (resolution.ended) {
-    console.log('[tf_story][event_progress] LLM ended=true: ' + (resolution.reason || '').slice(0, 80));
+    console.log('[event_manager][tf_story][event_progress] LLM ended=true: ' + (resolution.reason || '').slice(0, 80));
     _markPhaseCompleted(progress, pi, phaseName);
 
     const next = _resolveNextPhase(phases, progress.completedPhases, pi);
@@ -2166,19 +2166,19 @@ async function applySessionUserEventProgress(chapter, progress, latestMessageCon
       progress.currentPhase = next.index;
       progress.currentEvent = 0;
       const enteredUser = _isUserPhase(next.phase);
-      console.log('[tf_story][event_progress] 推进到 phase[' + next.index + ']="' + (next.phase.name || '') + '"' + (enteredUser ? ' (等待用户)' : ''));
+      console.log('[event_manager][tf_story][event_progress] 推进到 phase[' + next.index + ']="' + (next.phase.name || '') + '"' + (enteredUser ? ' (等待用户)' : ''));
       progress.updatedAt = Date.now();
       return { advanced: true, enteredUserPhase: enteredUser };
     } else {
       progress.currentPhase = phases.length;
       progress.currentEvent = 0;
-      console.log('[tf_story][event_progress] 所有 phase 已完成');
+      console.log('[event_manager][tf_story][event_progress] 所有 phase 已完成');
       progress.updatedAt = Date.now();
       return { advanced: true, enteredUserPhase: false };
     }
   }
 
-  console.log('[tf_story][event_progress] LLM ended=false: ' + (resolution.reason || '').slice(0, 80));
+  console.log('[event_manager][tf_story][event_progress] LLM ended=false: ' + (resolution.reason || '').slice(0, 80));
   return { advanced: false };
 }
 
@@ -2357,13 +2357,13 @@ async function evaluateChapterOutcomeByAi(chapter, progress, latestMessageConten
         throw e;
       }
     }
-    console.log('[tf_story] 🤖 [chapter_judge] LLM调用 → result=' + obj.result + ' matched_rule=' + (obj.matched_rule||'null'));
-    console.log('[tf_story]    reason=' + (obj.reason || '').slice(0, 120));
+    console.log('[event_manager][tf_story] 🤖 [chapter_judge] LLM调用 → result=' + obj.result + ' matched_rule=' + (obj.matched_rule||'null'));
+    console.log('[event_manager][tf_story]    reason=' + (obj.reason || '').slice(0, 120));
     if (obj.result === 'guide') {
-      console.log('[tf_story]    guide_summary=' + (obj.guide_summary || '').slice(0, 80));
-      console.log('[tf_story]    guide_facts=' + JSON.stringify((obj.guide_facts||[]).slice(0,3)));
+      console.log('[event_manager][tf_story]    guide_summary=' + (obj.guide_summary || '').slice(0, 80));
+      console.log('[event_manager][tf_story]    guide_facts=' + JSON.stringify((obj.guide_facts||[]).slice(0,3)));
     }
-    console.log('[tf_story][chapter_judge] LLM 调用 obj:', obj)
+    console.log('[event_manager][tf_story][chapter_judge] LLM 调用 obj:', obj)
     return {
       result: obj.result || 'continue',
       matched_rule: obj.matched_rule || null,
@@ -2373,7 +2373,7 @@ async function evaluateChapterOutcomeByAi(chapter, progress, latestMessageConten
       guide_facts: Array.isArray(obj.guide_facts) ? obj.guide_facts : [],
     };
   } catch (e) {
-    console.warn('[tf_story][chapter_judge] LLM 调用失败，回退到启发式:', e.message);
+    console.warn('[event_manager][tf_story][chapter_judge] LLM 调用失败，回退到启发式:', e.message);
     return null;
   }
 }
@@ -2450,8 +2450,8 @@ _safeOnSide('tf-story-reset', async () => {
         }
       } catch (e) {}
     };
-    //console.log('[tf_story] ✅ window.tfStoryJudge 已注册');
+    //console.log('[event_manager][tf_story] ✅ window.tfStoryJudge 已注册');
   } catch (e) {
-    console.warn('[tf_story] window.tfStoryJudge 注册失败', e);
+    console.warn('[event_manager][tf_story] window.tfStoryJudge 注册失败', e);
   }
 })();

@@ -2568,7 +2568,7 @@
                 if (llmOpenBtn) {
                     llmOpenBtn.addEventListener('click', function () {
                         if (window._tfOpenLlmConfig) window._tfOpenLlmConfig();
-                        else console.warn('[story_panel] _tfOpenLlmConfig not defined');
+                        else console.warn('[event_manager][story_panel] _tfOpenLlmConfig not defined');
                     });
                 }
                 body.querySelectorAll('[data-role-raw]').forEach(function (el) {
@@ -2761,7 +2761,7 @@
                         if (preview) preview.src = '';
                     }
                 } catch (e) {
-                    console.warn('[role-config] open err', e);
+                    console.warn('[event_manager][role-config] open err', e);
                 }
                 if (overlay) overlay.style.display = 'flex';
             }
@@ -2797,7 +2797,7 @@
                             }
                         }
                     } catch (e) {
-                        console.warn('[role-config] sprite import err', e);
+                        console.warn('[event_manager][role-config] sprite import err', e);
                         if (spriteStatus) spriteStatus.textContent = '选择失败';
                     }
                 };
@@ -2812,7 +2812,7 @@
                             if (voiceStatus) voiceStatus.textContent = '已选: ' + files[0].originalName;
                         }
                     } catch (e) {
-                        console.warn('[role-config] voice import err', e);
+                        console.warn('[event_manager][role-config] voice import err', e);
                         if (voiceStatus) voiceStatus.textContent = '选择失败';
                     }
                 };
@@ -2842,7 +2842,7 @@
                             tavo.set('tf_sprites', sp, 'global');
                         } catch (e) {
                         }
-                        console.log('[role-config] 立绘: ' + pendingSpritePath);
+                        console.log('[event_manager][role-config] 立绘: ' + pendingSpritePath);
                     }
                     // 2. 音色：写入 tf_character_voices（chat scope）+ tf_character_voices_{chat_id}（global scope）
                     if (pendingVoicePath) {
@@ -2860,12 +2860,12 @@
                         if (window.tf_voice && window.tf_voice.invalidateVoiceId) {
                             window.tf_voice.invalidateVoiceId(charId);
                         }
-                        console.log('[role-config] 音色: ' + pendingVoicePath + ' (角色: ' + charName + ')');
+                        console.log('[event_manager][role-config] 音色: ' + pendingVoicePath + ' (角色: ' + charName + ')');
                     }
                     closeRoleConfig();
                     tavo.utils.toast('保存成功');
                 } catch (e) {
-                    console.error('[role-config] save err', e);
+                    console.error('[event_manager][role-config] save err', e);
                     alert('保存失败: ' + (e.message || e));
                 } finally {
                     if (saveBtn) {
@@ -2909,7 +2909,7 @@
             }
 
             window._tfOpenLlmConfig = function () {
-                console.log('[llm-config] open');
+                console.log('[event_manager][llm-config] open');
                 var cfg = readVar('tf_llm') || {};
                 document.getElementById('tf-llm-cfg-apikey').value = cfg.apiKey || '';
                 document.getElementById('tf-llm-cfg-apiurl').value = cfg.apiUrl || '';
@@ -2945,9 +2945,9 @@
                             tavo.set('tf_llm', llmMerged, 'global');
                         } catch (e) {
                         }
-                        console.log('[llm-config] tf_llm saved:', JSON.stringify(llmMerged));
+                        console.log('[event_manager][llm-config] tf_llm saved:', JSON.stringify(llmMerged));
                     } catch (e) {
-                        console.warn('[llm-config] tf_llm save failed', e);
+                        console.warn('[event_manager][llm-config] tf_llm save failed', e);
                     }
 
                     // 语音配置 → tf_voice_config 变量（voice 插件通过此变量中转）
@@ -2962,9 +2962,9 @@
                             tavo.set('tf_voice_config', voiceMerged, 'global');
                         } catch (e) {
                         }
-                        console.log('[llm-config] tf_voice_config saved:', JSON.stringify(voiceMerged));
+                        console.log('[event_manager][llm-config] tf_voice_config saved:', JSON.stringify(voiceMerged));
                     } catch (e) {
-                        console.warn('[llm-config] tf_voice_config save failed', e);
+                        console.warn('[event_manager][llm-config] tf_voice_config save failed', e);
                     }
 
                     // 通知 voice 插件重新加载

@@ -149,7 +149,7 @@
         updateBadge(cfg.reasoningEffort || 'minimal');
       }
     } catch(e) {
-      console.warn('[tf_llm_panel] loadConfig failed', e);
+      console.warn('[llm_optimization][tf_llm_panel] loadConfig failed', e);
     }
   }
 
@@ -163,10 +163,10 @@
       if (window.tf_llm && window.tf_llm.saveConfig) {
         window.tf_llm.saveConfig(cfg);
         window.tavo.utils.toast('LLM 配置已保存');
-        console.log('[tf_llm_panel] saved', cfg);
+        console.log('[llm_optimization][tf_llm_panel] saved', cfg);
       }
     } catch(e) {
-      console.warn('[tf_llm_panel] save failed', e);
+      console.warn('[llm_optimization][tf_llm_panel] save failed', e);
     }
   }
 
@@ -192,19 +192,19 @@
   try {
     if (window.tavo && window.tavo.plugin && window.tavo.plugin.onSidebarAction) {
       window.tavo.plugin.onSidebarAction('tf-llm-toggle', function() {
-        console.log('[tf_llm_panel] sidebar action tf-llm-toggle fired');
+        console.log('[llm_optimization][tf_llm_panel] sidebar action tf-llm-toggle fired');
         var panel = document.getElementById('tf-llm-panel');
-        if (!panel) { console.warn('[tf_llm_panel] #tf-llm-panel not found!'); return; }
+        if (!panel) { console.warn('[llm_optimization][tf_llm_panel] #tf-llm-panel not found!'); return; }
         panel.classList.toggle('open');
-        console.log('[tf_llm_panel] panel.open=' + panel.classList.contains('open'));
+        console.log('[llm_optimization][tf_llm_panel] panel.open=' + panel.classList.contains('open'));
         if (panel.classList.contains('open')) loadConfig();
       });
-      console.log('[tf_llm_panel] sidebar action registered');
+      console.log('[llm_optimization][tf_llm_panel] sidebar action registered');
     } else {
-      console.warn('[tf_llm_panel] onSidebarAction unavailable');
+      console.warn('[llm_optimization][tf_llm_panel] onSidebarAction unavailable');
     }
   } catch(e) {
-    console.warn('[tf_llm_panel] sidebar register failed', e);
+    console.warn('[llm_optimization][tf_llm_panel] sidebar register failed', e);
   }
 
   // 800ms 后加载当前配置

@@ -35,8 +35,8 @@ function ts() {
     + ' ' + [d.getHours(),d.getMinutes(),d.getSeconds()].map(n=>String(n).padStart(2,'0')).join(':')
     + '.' + String(d.getMilliseconds()).padStart(3,'0');
 }
-const log = (...a) => console.log('[' + ts() + '] [tf_llm] ' + a.join(' '));
-const warn = (...a) => console.warn('[' + ts() + '] [tf_llm] ' + a.join(' '));
+const log = (...a) => console.log('[llm_optimization][' + ts() + '] [tf_llm] ' + a.join(' '));
+const warn = (...a) => console.warn('[llm_optimization][' + ts() + '] [tf_llm] ' + a.join(' '));
 
 function cfg(key, fb) {
   try { const v = tavo.plugin.config.get(key); return (v === undefined || v === null) ? fb : v; }
@@ -482,7 +482,7 @@ if (typeof window !== 'undefined') {
   };
 }
 try { tavo.tf_llm = window.tf_llm; } catch (e) {}
-console.warn('[llm-opt] ✅ 插件加载成功 | tf_llm.callDirect=' + (typeof window.tf_llm?.callDirect) + ' | getConfig=' + JSON.stringify(window.tf_llm?.getConfig ? window.tf_llm.getConfig() : null).slice(0,300));
+console.warn('[llm_optimization][llm-opt] ✅ 插件加载成功 | tf_llm.callDirect=' + (typeof window.tf_llm?.callDirect) + ' | getConfig=' + JSON.stringify(window.tf_llm?.getConfig ? window.tf_llm.getConfig() : null).slice(0,300));
 
 // ============================================================
 // 初始化

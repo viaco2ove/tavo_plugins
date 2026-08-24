@@ -7,8 +7,8 @@ const ts = () => {
     + ' ' + [d.getHours(),d.getMinutes(),d.getSeconds()].map(n=>String(n).padStart(2,'0')).join(':')
     + '.' + String(d.getMilliseconds()).padStart(3,'0');
 };
-const sl = (...a) => console.log('[' + ts() + '] ' + a.join(' '));
-const sw = (...a) => console.warn('[' + ts() + '] ' + a.join(' '));
+const sl = (...a) => console.log('[sprite_background][' + ts() + '] ' + a.join(' '));
+const sw = (...a) => console.warn('[sprite_background][' + ts() + '] ' + a.join(' '));
 // toonflow_story_sprite_background - entry.js
 // 背景：tavo.chat.update({ background: { image: '...' } }) 原生 API
 // 前景：DOM 层 #tf-sprite-fg
