@@ -15,7 +15,7 @@
 ## 二、各真源怎么用
 
 ### 1. UI → Toonflow-game-web
-- 前端界面真源。`src/` 结构：`api` / `components` / `composables` / `types` / `utils` / `styles.css`。
+- 前端界面真源。`../../../src` 结构：`api` / `components` / `composables` / `types` / `utils` / `styles.css`。
 - tavo_plugins 若要新做 Web UI（配置面板、对话浮层等），组件风格、状态管理、API 调用方式以它为准。
 - 注意：tavo 自身的插件 UI 通过 manifest 的 `htmlFragments` / `htmlFragment` 注入（见此前 `toonflow_story_event_manager` 的 `tf-story-panel`），与 web 项目的 Vue 组件是两套体系——tavo 插件 UI 只能挂到 tavo 指定的挂载点。
 

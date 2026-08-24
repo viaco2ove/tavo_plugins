@@ -61,7 +61,7 @@ Compress-Archive -Path manifest.json, entry.js, locales, ui, cover.png -Destinat
 
 ## Design Documents
 
-Detailed design specs are in `md/currdesign/toonflow_story_memory_manager/`:
+Detailed design specs are in `md/currdesign/plugins/toonflow_story_memory_manager/`:
 - `设计文档.md` — Source analysis, tavo capability mapping, architecture, risk boundaries
 - `提示词设计.md` — System/user prompt templates, JSON schema, parsing rules
 - `插件包草案.md` — Target file tree, manifest draft, i18n keys, entry.js skeleton

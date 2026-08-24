@@ -147,7 +147,7 @@
 
 ---
 
-## 四、插件架构：`plugins/toonflow_story_sprite_background/`
+## 四、插件架构：`../../../../plugins/toonflow_story_sprite_background`
 
 ### 4.1 目录结构
 
@@ -326,7 +326,7 @@ updateSprite(getCurrentSpeaker());
 
 ### 5.1 脚本位置
 
-`script/tavo_mcp_use/sprites_import.py`
+`../../../../script/tavo_mcp_use/sprites_import.py`
 
 复用 `chapters_import.py` 的连接、认证、RPC、file_save 封装。
 
@@ -341,8 +341,8 @@ python sprites_import.py 2 .cache/story/谁让这个山大王修仙的 --force-b
 
 ### 5.3 脚本流程
 
-1. **连接 MCP**（`.env` 或 `--url/--token`）。
-2. **解析 `story_sync_config.json`**：拿到角色名列表与 `roleType`。
+1. **连接 MCP**（`../../../../.env` 或 `--url/--token`）。
+2. **解析 `../../../../story_sync_config.json`**：拿到角色名列表与 `roleType`。
 3. **解析 `ex/roles.json`**：拿到服务器端 `avatarSourcePath / avatarBgPath / avatarPath` 等字段（可选，用于校验）。
 4. **解析 `ex/avatars/<角色>/`**：列出 `original.png`、`background.png`、`avatar.*`。
 5. **用 `tavo_character_search` 按名字匹配** tavo 里的 characterId；匹配不到的记录 warn。

@@ -79,7 +79,7 @@ const dialogue = tf_llm.parseSpeakerResponse(raw);
 ## 6. 实现计划
 
 ### Phase 1: 核心引擎
-- `plugins/toonflow_story_llm_optimization/entry.js`
+- `../../../plugins/toonflow_story_llm_optimization/entry.js`
 - `_readLlmConfig()`: 读取 `tf_llm` 变量（chat+global 双读）
 - `generate(prompt, opts)`: 封装 tavo.generate，注入 reasoningEffort
 - `parseResponse(raw)`: stripTags + JSON.parse + fallback 正则

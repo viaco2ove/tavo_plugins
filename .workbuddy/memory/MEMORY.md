@@ -42,7 +42,7 @@
 
 ## 章节背景图 / 立绘（已落地）
 - `chapters_import.py`：`--bg auto|local|generate|skip` + `--bg-scope`；`backgroundPrompt` 是 AI 生图提示词**不是路径**；失败回退本地上传绝不崩。`tavo_image_generate` 在 AVD 曾报 500（服务端没配图像后端）。
-- 立绘：tavo 原生无前景立绘图层（只有头像线 avatar 单图 + 背景线 background/useAvatar 铺满，头像≠立绘，APNG=动画头像），必须插件。方案=PC 抠图 → `tavo_file_save` 上传 `files/chat/sprite_fg_<id>.webp` + `sprite_bg_<id>.png` → 变量 `tf_sprites` 映射 → 插件 htmlFragment 分层显示。设计文档 `md/currdesign/toonflow_sprite_background/toonflow_sprite_background_design.md`。
+- 立绘：tavo 原生无前景立绘图层（只有头像线 avatar 单图 + 背景线 background/useAvatar 铺满，头像≠立绘，APNG=动画头像），必须插件。方案=PC 抠图 → `tavo_file_save` 上传 `files/chat/sprite_fg_<id>.webp` + `sprite_bg_<id>.png` → 变量 `tf_sprites` 映射 → 插件 htmlFragment 分层显示。设计文档 `../../md/currdesign/plugins/toonflow_sprite_background/toonflow_sprite_background_design.md`。
 - 资源映射（`.cache/story/<故事>/ex/avatars/<角色>/`）：`original.png`(1024 RGB)→foreground，`background.png`(768 RGB)→氛围背景，`avatar.webp`(512 RGBA)→小头像，`voice.wav`→音色。
 - MCP 写不进角色卡 `data.avatar`，所有图走 files/ + 变量映射。静态 webp 支持实证。
 
