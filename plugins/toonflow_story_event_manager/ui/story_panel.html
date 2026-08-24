@@ -2711,6 +2711,14 @@
             function openRoleConfig(id, name) {
                 charId = id;
                 charName = name;
+                // 确保 _panelChatId 已初始化（fallback：buildStory 未跑过）
+                if (!window._panelChatId) {
+                    try {
+                        var _c = T.chat.current();
+                        window._panelChatId = _c && _c.id;
+                        _panelChatId = window._panelChatId;
+                    } catch (e) {}
+                }
                 pendingSpritePath = null;
                 pendingVoicePath = null;
 
@@ -2727,7 +2735,7 @@
                     var _pcid2 = window._panelChatId || _panelChatId || null;
                     var vfGlobalKey = _pcid2 ? ('tf_character_voices_' + _pcid2) : 'tf_character_voices';
                     var vfAll = readVarDualScope('tf_character_voices', vfGlobalKey) || {};
-                    var voiceEntry = (typeof vfAll === 'object') ? (vfAll[name] || null) : null;
+                    var voiceEntry = (typeof vfAll === 'object') ? (vfAll[name] || vfAll[String(charId)] || null) : null;
                     var voicePath = voiceEntry ? (voiceEntry.audioRef || '') : '';
                     if (voicePath) {
                         if (voiceStatus) voiceStatus.textContent = '已绑定: ' + voicePath;
@@ -2745,9 +2753,11 @@
                         if (voicePlayer) voicePlayer.src = '';
                     }
                     // 立绘：{ byName: { "红缥缈": { fg, bg, id } } }
-                    var sp = readVar('tf_sprites') || {};
-                     console.log('[event_manager][sprite_background_fun][openRoleConfig][tf_sprites] tf_sprites:',JSON.stringify(sp))
-                    var spe = (sp.byName || {})[name];
+                    // chat scope: tf_sprites; global scope: tf_sprites_{chat_id}
+                    var _spGlobalKey = window._panelChatId ? ('tf_sprites_' + window._panelChatId) : 'tf_sprites';
+                    var sp = readVarDualScope('tf_sprites', _spGlobalKey) || {};
+                    console.log('[event_manager][sprite_background_fun][openRoleConfig][tf_sprites] name=' + name + ' keys=' + JSON.stringify(Object.keys(sp.byName || {})));
+                    var spe = (sp.byName || {})[name] || (sp.byName || {})[String(charId)] || null;
                     if (spe && spe.fg) {
                         if (spriteStatus) spriteStatus.textContent = '已绑定: ' + spe.fg;
                         if (preview) {
@@ -2828,23 +2838,30 @@
                     saveBtn.textContent = '保存中...';
                 }
                 try {
-                    var sp = readVar('tf_sprites') || {};
+                    // 读变量：先 global(tf_sprites_{chat_id}) 再 chat(tf_sprites)
+                    var _spSaveGlobalKey = window._panelChatId ? ('tf_sprites_' + window._panelChatId) : 'tf_sprites';
+                    var sp = readVarDualScope('tf_sprites', _spSaveGlobalKey) || {};
                     console.log('[event_manager][sprite_background_fun][_tfSaveRoleConfig][tf_sprites] tf_sprites:',JSON.stringify(sp))
                     if (typeof sp !== 'object') sp = {};
                     if (!sp.byName) sp.byName = {};
-                    var entry = sp.byName[charName] || {id: charId, name: charName, roleType: 'npc'};
+                    // 同时支持按 name 和 charId 查找（兼容历史数据）
+                    var entry = sp.byName[charName] || sp.byName[String(charId)] || {id: charId, name: charName, roleType: 'npc'};
 
-                    // 1. 立绘：直接用 tavo.file.import 返回的路径写入 tf_sprites
+                    // 1. 立绘：写入 tf_sprites（chat scope）+ tf_sprites_{chat_id}（global scope），按 name + charId 双 key
                     if (pendingSpritePath) {
                         entry.fg = pendingSpritePath;
                         entry.id = charId;
                         sp.byName[charName] = entry;
+                        sp.byName[String(charId)] = entry;  // 冗余存储，charId fallback
+                        // chat scope
                         tavo.set('tf_sprites', sp, 'chat');
+                        // global scope（带 chat_id 后缀）
                         try {
-                            tavo.set('tf_sprites', sp, 'global');
+                            var _spGlobalWriteKey = window._panelChatId ? ('tf_sprites_' + window._panelChatId) : 'tf_sprites';
+                            tavo.set(_spGlobalWriteKey, sp, 'global');
                         } catch (e) {
                         }
-                        console.log('[event_manager][role-config] 立绘: ' + pendingSpritePath);
+                        console.log('[event_manager][role-config] 立绘: ' + pendingSpritePath + ' (角色: ' + charName + ' / id: ' + charId + ')');
                     }
                     // 2. 音色：写入 tf_character_voices（chat scope）+ tf_character_voices_{chat_id}（global scope）
                     if (pendingVoicePath) {
@@ -2852,7 +2869,9 @@
                         var vfGlobalKey2 = _pcid ? ('tf_character_voices_' + _pcid) : 'tf_character_voices';
                         var vfAll = readVarDualScope('tf_character_voices', vfGlobalKey2) || {};
                         if (typeof vfAll !== 'object') vfAll = {};
-                        vfAll[charName] = { mode: 'clone_voice', prompt: '', audioRef: pendingVoicePath, enabled: true, charId: String(charId || '') };
+                        var voiceEntry = { mode: 'clone_voice', prompt: '', audioRef: pendingVoicePath, enabled: true, charId: String(charId || '') };
+                        vfAll[charName] = voiceEntry;
+                        vfAll[String(charId)] = voiceEntry;  // 冗余存储
                         tavo.set('tf_character_voices', vfAll, 'chat');
                         try {
                             tavo.set(vfGlobalKey2, vfAll, 'global');
@@ -2862,7 +2881,7 @@
                         if (window.tf_voice && window.tf_voice.invalidateVoiceId) {
                             window.tf_voice.invalidateVoiceId(charId);
                         }
-                        console.log('[event_manager][role-config] 音色: ' + pendingVoicePath + ' (角色: ' + charName + ')');
+                        console.log('[event_manager][role-config] 音色: ' + pendingVoicePath + ' (角色: ' + charName + ' / id: ' + charId + ')');
                     }
                     closeRoleConfig();
                     tavo.utils.toast('保存成功');
