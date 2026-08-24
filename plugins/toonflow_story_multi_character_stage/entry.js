@@ -759,6 +759,14 @@ async function buildOrchestrationPrompt(userInput) {
     recent_dialogue: recentDialogue.slice(-n),
     latest_player_message: userInput_clean,
     ...(freeMode ? { free_mode: true } : {}),
+    ...(progress.pendingGuide ? {
+      pending_guide: {
+        summary: progress.pendingGuide.summary || '',
+        facts: progress.pendingGuide.facts || [],
+        reason: progress.pendingGuide.reason || '',
+        chapter_title: progress.pendingGuide.chapterTitle || '',
+      }
+    } : {}),
   };
 
   // 章节状态说明（人类可读，追加到 prompt）
@@ -768,6 +776,13 @@ async function buildOrchestrationPrompt(userInput) {
     if (st.chapterStatus === 'completed') return '\n【章节状态】所有章节已完成，故事完结，可自由对话。';
     if (st.chapterStatus === 'free_mode') return '\n【章节状态】已进入自由模式，可自由对话。';
     if (st.chapterStatus === 'chapter_switching') return '\n【章节状态】章节切换中，下一轮将进入新章节。';
+    // 引导提示（对齐 toonflow chapter_ending_check）
+    if (progress && progress.pendingGuide && progress.pendingGuide.summary) {
+      return '\n【章节引导】' + progress.pendingGuide.summary +
+        (progress.pendingGuide.facts && progress.pendingGuide.facts.length
+          ? '\n 引导事实：' + progress.pendingGuide.facts.join('；')
+          : '');
+    }
     if (st.chapterStatus === 'active' && st.progress) {
       const p = st.progress;
       const phaseNames = (p.phases || []).map((ph, i) => (i === p.currentPhase ? '▶' : '·') + '[' + i + ']' + ph.name).join(' ');
