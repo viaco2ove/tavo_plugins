@@ -108,11 +108,11 @@ def sync_story(client, story_dir, force=False, skip_sprite=False,
                 }
                 if av_ref:
                     persona_obj["avatar"] = av_ref
-                r = client.persona_create(persona_obj)
+                r = client.persona_create(persona_obj, chat_id=cid)
                 pid = r.get("id") or r.get("personaId")
                 if pid:
                     try:
-                        client.persona_set_active(int(pid))
+                        client.persona_set_active(int(pid), chat_id=cid)
                     except Exception:
                         pass
                 echo(f"  persona {'OK' if pid else 'ERR'} id={pid}: {name} avatar={av_ref or 'none'}")

@@ -167,7 +167,7 @@ def character_import(http_url, token, name, description, first_mes, personality,
     rr = unwrap(r)
     return rr.get("id") or rr.get("characterId")
 
-def persona_create_minimal(http_url, token, name, description, dry=False):
+def persona_create_minimal(http_url, token, name, description, dry=False, chat_id=None):
     """创建 persona（不传 avatar），用于在没有 chat_id 时拿到 persona_id 给 chat_create 用。
 
     优先复用现有 persona（避免创建多个副本），仅在没有任何同名 persona 时才创建。
@@ -187,19 +187,24 @@ def persona_create_minimal(http_url, token, name, description, dry=False):
         return "dry-run"
     # 没有同名 persona 才创建（不传 avatar）
     args = {"persona": {"name": name, "description": description or "", "active": True}}
+    if chat_id:
+        args["chatId"] = chat_id
     r = rpc(http_url, token, "tavo_persona_create", args)
     rr = unwrap(r)
     pid = rr.get("id") or rr.get("personaId")
     if pid:
         try:
-            rpc(http_url, token, "tavo_persona_set_active", {"id": int(pid)})
+            set_active_args = {"id": int(pid)}
+            if chat_id:
+                set_active_args["chatId"] = chat_id
+            rpc(http_url, token, "tavo_persona_set_active", set_active_args)
         except Exception:
             pass
         print("  [persona] 创建 id=%s name=%s (无 avatar，延后上传)" % (pid, name))
     return pid
 
 
-def persona_create(http_url, token, name, description, first_mes, personality, avatar_ref, dry=False):
+def persona_create(http_url, token, name, description, first_mes, personality, avatar_ref, dry=False, chat_id=None):
     args = {"persona": {
         "name": name,
         "description": description or "",
@@ -207,6 +212,8 @@ def persona_create(http_url, token, name, description, first_mes, personality, a
     }}
     if avatar_ref:
         args["persona"]["avatar"] = avatar_ref
+    if chat_id:
+        args["chatId"] = chat_id
     if dry:
         print("  [persona] dry create name=%s avatar=%s" % (name, avatar_ref or "none"))
         return "dry-run"
@@ -215,7 +222,10 @@ def persona_create(http_url, token, name, description, first_mes, personality, a
     pid = rr.get("id") or rr.get("personaId")
     if pid:
         try:
-            rpc(http_url, token, "tavo_persona_set_active", {"id": int(pid)})
+            set_active_args = {"id": int(pid)}
+            if chat_id:
+                set_active_args["chatId"] = chat_id
+            rpc(http_url, token, "tavo_persona_set_active", set_active_args)
         except Exception:
             pass
     return pid
@@ -505,20 +515,23 @@ def sync_characters(http_url, token, config, story_dir, dry, force, chat_id_for_
             results[name] = existing
         else:
             if skip_avatar:
-                # 第一阶段：只创建/复用 persona 记录（用 persona_create_minimal 已经在 main 流程里调过，
-                # 这里不重复创建；只确保 results[name] 有值）
+                # 第一阶段：只创建/复用 persona 记录（不上传 avatar）
+                # 即使 --force，已存在的 persona 也可以直接复用（ID 不变，avatar 后面再更新）
                 if existing:
                     results[name] = existing
+                    print("  [persona] 复用(已存在) id=%s name=%s" % (existing, name))
                 else:
                     pid = persona_create_minimal(http_url, token, name,
-                                                 p.get("description", ""), dry=dry)
+                                                 p.get("description", ""), dry=dry,
+                                                 chat_id=chat_id_for_files or None)
                     results[name] = pid
-                print("  [persona] (no avatar yet) id=%s name=%s" % (results[name], name))
+                    print("  [persona] (no avatar yet) id=%s name=%s" % (results[name], name))
             else:
                 av_ref = upload_avatar(http_url, token, chat_id_for_files, name, av_local, dry=dry)
                 pid = persona_create(http_url, token, name,
                                      p.get("description", ""), p.get("first_mes", ""),
-                                     p.get("personality", "玩家"), av_ref, dry=dry)
+                                     p.get("personality", "玩家"), av_ref, dry=dry,
+                                     chat_id=chat_id_for_files or None)
                 if not dry:
                     print("  [persona] 创建 id=%s name=%s avatar=%s" % (pid, name, av_ref or "无"))
                 results[name] = pid
@@ -1353,6 +1366,20 @@ def main():
     config = auto_generate_sync_config(story_dir, story_data)
     config["_story_dir"] = story_dir  # 透传给后续步骤
 
+    # 2.1 读缓存 chat_id（避免重复创建群聊）
+    if not args.chat_id:
+        _cache_path = os.path.join(story_dir, "char_ids.json")
+        if os.path.isfile(_cache_path):
+            try:
+                with open(_cache_path, encoding="utf-8") as f:
+                    _cdata = json.load(f)
+                _cached_cid = _cdata.get("chat_id") if isinstance(_cdata, dict) else None
+                if _cached_cid and str(_cached_cid).isdigit():
+                    args.chat_id = int(_cached_cid)
+                    print("  [cache] 复用 chat_id=%s" % args.chat_id)
+            except Exception:
+                pass
+
     # Clean cache
     if args.clean_cache:
         import shutil
@@ -1418,12 +1445,24 @@ def main():
             pass
         print('')
 
+    # 2.5. 预搜已有群聊（用于 persona_create 需要 chatId 的场景）
+    chat_name = config.get("chat_name", config.get("story_name", "unnamed") + " - ch1")
+    pre_existing_chat_id = args.chat_id or None
+    if not pre_existing_chat_id and not args.dry:
+        try:
+            found_chats = chat_search(http_url, token, chat_name)
+            if found_chats:
+                pre_existing_chat_id = found_chats[0].get("chatId") or found_chats[0].get("id")
+                print("  [预搜] 找到已有群聊 id=%s name=%s" % (pre_existing_chat_id, chat_name))
+        except Exception:
+            pass
+
     # 3. 同步角色卡（先 skip_avatar 拿 NPC character id 列表，给 sync_chat 用）
     #    解决循环依赖：MCP 要求 characterIds，但 tavo_file_save 又需要 chatId。
     #    第一阶段：只创建/复用 character 记录（不传 avatar），拿 char_ids
     char_ids = sync_characters(
         http_url, token, config, story_dir, args.dry, args.force,
-        chat_id_for_files=0, skip_avatar=True,
+        chat_id_for_files=pre_existing_chat_id or 0, skip_avatar=True,
     )
     config["_char_id_map"] = char_ids
 
@@ -1434,7 +1473,8 @@ def main():
 
     # 5. 建/取群聊（用 char_ids 里的 NPC id 作为 characterIds）
     #    sync_chat 现在能拿到合法的 character id，能正常创建 chat
-    chat_id = sync_chat(http_url, token, config, char_ids, None, persona_id, args.chat_id, args.dry)
+    chat_id = sync_chat(http_url, token, config, char_ids, None, persona_id,
+                         args.chat_id or pre_existing_chat_id, args.dry)
     print("\n=== chat_id = %s ===" % chat_id)
 
     # 6. 第二阶段：给角色补 avatar（现在有 chat_id 了）
@@ -1491,13 +1531,18 @@ def main():
     if not args.skip_plugins:
         sync_plugins(http_url, token, args.dry)
 
-    # 10. 保存 char_ids.json（ID 映射，供下次同步复用）
+    # 10. 保存 char_ids.json（ID 映射 + chat_id，供下次同步复用）
     if not args.dry:
         char_ids_path = os.path.join(story_dir, "char_ids.json")
         try:
+            cache_data = {
+                "char_ids": char_ids,
+                "persona_id": persona_id or "",
+                "chat_id": chat_id or "",
+            }
             with open(char_ids_path, "w", encoding="utf-8") as f:
-                json.dump(char_ids, f, ensure_ascii=False, indent=2)
-            print("  [cache] char_ids.json saved: %s" % char_ids_path)
+                json.dump(cache_data, f, ensure_ascii=False, indent=2)
+            print("  [cache] char_ids.json saved: %s (chat_id=%s)" % (char_ids_path, chat_id))
         except Exception as e:
             print("  [cache] char_ids.json save failed: %s" % e)
 

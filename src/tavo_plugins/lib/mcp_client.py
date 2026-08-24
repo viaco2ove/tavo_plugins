@@ -109,14 +109,20 @@ class McpClient:
     def character_import_card(self, card):
         return self.unwrap(self.call("tavo_character_import_card", {"card": card}))
 
-    def persona_create(self, persona):
-        return self.unwrap(self.call("tavo_persona_create", {"persona": persona}))
+    def persona_create(self, persona, chat_id=None):
+        args = {"persona": persona}
+        if chat_id:
+            args["chatId"] = chat_id
+        return self.unwrap(self.call("tavo_persona_create", args))
 
     def persona_search(self, query, limit=5):
         return self.get("tavo_persona_search", {"query": query, "limit": limit})
 
-    def persona_set_active(self, persona_id):
-        return self.call("tavo_persona_set_active", {"id": persona_id})
+    def persona_set_active(self, persona_id, chat_id=None):
+        args = {"id": persona_id}
+        if chat_id:
+            args["chatId"] = chat_id
+        return self.call("tavo_persona_set_active", args)
 
     def lorebook_search(self, query, limit=5):
         return self.get("tavo_lorebook_search", {"query": query, "limit": limit})

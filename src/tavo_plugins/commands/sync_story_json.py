@@ -216,6 +216,7 @@ def sync_from_story_json(client, story_json_path, force=False,
     if not reuse_ids_path:
         reuse_ids_path = os.path.join(story_root, "char_ids.json")
     reuse_map = None
+    cached_chat_id = None
     if os.path.isfile(reuse_ids_path):
         try:
             with open(reuse_ids_path, encoding="utf-8") as f:
@@ -223,15 +224,19 @@ def sync_from_story_json(client, story_json_path, force=False,
             # 兼容旧格式（dict 直接是 char_ids）和新格式 {char_ids, persona_id, chat_id}
             if isinstance(_cache, dict) and "char_ids" in _cache:
                 reuse_map = _cache["char_ids"]
+                cached_chat_id = _cache.get("chat_id")
             else:
                 reuse_map = _cache
             echo(f"  reuse IDs from: {reuse_ids_path}")
         except Exception:
             pass
 
+    # 优先用 CLI 传入的 chat_id，其次用缓存的 chat_id（避免重复创建群聊）
+    effective_chat_id = chat_id or cached_chat_id or None
+
     sync_story(client, story_root, force=force,
                skip_sprite=skip_sprite, skip_chapters=skip_chapters,
-               skip_plugins=skip_plugins, chat_id=chat_id,
+               skip_plugins=skip_plugins, chat_id=effective_chat_id,
                reuse_ids=reuse_map, echo=echo)
 
     # 4. duplicate-delete：删除同名重复角色 + 世界书条目
