@@ -162,6 +162,7 @@
     "roleType": "narrator",
     "files": {
       "voiceGeneratedDownloadUrl": "",
+      "voice": "avatars\\某男子\\voice.wav",
       "voicePromptText": ""
     }
   }

@@ -43,7 +43,8 @@ function readVar(name) {
     // 如果没找到，尝试带 chat_id 的版本（MCP同步脚本写入的格式）
     // - tf_chapter_backgrounds_{chat_id}（BG_NS）
     // - tf_story_{chat_id}.edit（name = 'tf_story.edit'）
-    if (!raw && (name === BG_NS || name === 'tf_story.edit')) {
+    // - tf_sprites_{chat_id}（NS）
+    if (!raw && (name === BG_NS || name === 'tf_story.edit' || name === NS)) {
       const cid = getChatId();
       if (cid) {
         const nameWithId = (name === 'tf_story.edit')

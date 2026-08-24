@@ -275,9 +275,16 @@ def main():
     if not args.dry:
         print("=== 写入变量 ===")
         if sprites_by_name:
-            variable_set(http_url, token, chat_id, "tf_sprites",
-                {"byName": sprites_by_name, "byId": sprites_by_id}, args.scope)
-            print("  tf_sprites -> %d 角色" % len(sprites_by_name))
+            sprites_payload = {"byName": sprites_by_name, "byId": sprites_by_id}
+            # chat scope: tf_sprites（基础名）；global scope: tf_sprites_{chat_id}（带 chat_id）
+            if args.scope == "global":
+                sprite_global_key = "tf_sprites_%s" % chat_id
+                variable_set(http_url, token, chat_id, "tf_sprites", sprites_payload, "chat")
+                variable_set(http_url, token, chat_id, sprite_global_key, sprites_payload, "global")
+                print("  tf_sprites + %s -> %d 角色" % (sprite_global_key, len(sprites_by_name)))
+            else:
+                variable_set(http_url, token, chat_id, "tf_sprites", sprites_payload, args.scope)
+                print("  tf_sprites -> %d 角色" % len(sprites_by_name))
         if chapter_bgs:
             variable_set(http_url, token, chat_id, "tf_chapter_backgrounds",
                 chapter_bgs, args.scope)

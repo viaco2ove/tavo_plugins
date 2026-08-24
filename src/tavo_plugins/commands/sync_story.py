@@ -433,9 +433,13 @@ def _sync_sprites(client, chat_id, char_ids, story_dir, config, echo, sprite_ids
     # 追加 persona（如果已存在则覆盖）
     sprites_by_name[persona_name] = p_entry
 
-    for scope in ["chat", "global"]:
-        echo(f"  [tavo_variable_set] scope:{scope} variable_key:tf_sprites")
-        client.variable_set(chat_id, "tf_sprites", {"byName": sprites_by_name}, scope=scope)
+        # 写 tf_sprites：chat scope 用基础名，global scope 用 tf_sprites_{chat_id}（对齐变量设计原则）
+    sprites_payload = {"byName": sprites_by_name}
+    echo(f"  [tavo_variable_set] scope:chat variable_key:tf_sprites")
+    client.variable_set(chat_id, "tf_sprites", sprites_payload, scope="chat")
+    sprite_global_key = f"tf_sprites_{chat_id}"
+    echo(f"  [tavo_variable_set] scope:global variable_key:{sprite_global_key}")
+    client.variable_set(chat_id, sprite_global_key, sprites_payload, scope="global")
     echo(f"  [OK] tf_sprites -> {len(sprites_by_name)} chars")
 
     for scope in ["chat", "global"]:

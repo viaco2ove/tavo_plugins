@@ -1004,10 +1004,13 @@ def sync_sprites(http_url, token, chat_id, config, story_dir, dry):
             break
 
     if not dry and sprites_by_name:
-        for scope in ['chat', 'global']:
-            print('  [tavo_variable_set] scope:%s variable_key:%s' % (scope, 'tf_sprites'))
-            variable_set(http_url, token, chat_id, "tf_sprites",
-                {"byName": sprites_by_name, "byId": sprites_by_id}, scope=scope)
+        sprites_payload = {"byName": sprites_by_name, "byId": sprites_by_id}
+        # chat scope: tf_sprites（基础名）；global scope: tf_sprites_{chat_id}（带 chat_id）
+        print('  [tavo_variable_set] scope:chat variable_key:tf_sprites')
+        variable_set(http_url, token, chat_id, "tf_sprites", sprites_payload, scope="chat")
+        sprites_global_key = 'tf_sprites_%s' % chat_id
+        print('  [tavo_variable_set] scope:global variable_key:%s' % sprites_global_key)
+        variable_set(http_url, token, chat_id, sprites_global_key, sprites_payload, scope="global")
         print("  [tf_sprites] -> %d 角色 (chat+global)" % len(sprites_by_name))
     if not dry and chapter_bgs:
         chapter_bgs_var = 'tf_chapter_backgrounds_%s' % chat_id

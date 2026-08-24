@@ -203,9 +203,12 @@ def main(http_url, token, story_dir, chat_id, force):
 
     # 写变量
     if sprites_by_name:
-        variable_set(http_url, token, chat_id, "tf_sprites",
-            {"byName": sprites_by_name, "byId": sprites_by_id}, "chat")
-        print("tf_sprites 写入 (%d 角色)" % len(sprites_by_name))
+        sprites_payload = {"byName": sprites_by_name, "byId": sprites_by_id}
+        # chat scope: tf_sprites（基础名）；global scope: tf_sprites_{chat_id}（带 chat_id）
+        sprite_global_key = "tf_sprites_%s" % chat_id
+        variable_set(http_url, token, chat_id, "tf_sprites", sprites_payload, "chat")
+        variable_set(http_url, token, chat_id, sprite_global_key, sprites_payload, "global")
+        print("tf_sprites + %s 写入 (%d 角色)" % (sprite_global_key, len(sprites_by_name)))
     if chapter_bgs:
         variable_set(http_url, token, chat_id, "tf_chapter_backgrounds", chapter_bgs, "chat")
         print("tf_chapter_backgrounds 写入 (%d)" % len(chapter_bgs))

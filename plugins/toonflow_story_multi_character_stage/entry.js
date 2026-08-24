@@ -581,8 +581,10 @@ async function buildOrchestrationPrompt(userInput) {
     roles = (chat?.characters || []).map(c => {
       let roleType = 'npc';
       try {
-        const sprites = readChatVar('tf_sprites') || {};
-        const entry = (sprites.byName || {})[c.name] || {};
+        // 读 tf_sprites：先 global(tf_sprites_{chat_id}) 再 chat(tf_sprites)
+        const _spriteGlobalKey = _mcsChatId ? ('tf_sprites_' + _mcsChatId) : 'tf_sprites';
+        const sprites = readDualScope('tf_sprites', _spriteGlobalKey) || {};
+        const entry = (sprites.byName || {})[c.name] || (sprites.byName || {})[String(c.id)] || {};
         roleType = entry.roleType || 'npc';
       } catch (e) {}
       console.log('[multi-character_stage][buildOrchestrationPrompt ]promptParts get 1');
