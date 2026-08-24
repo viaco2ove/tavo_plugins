@@ -2746,6 +2746,7 @@
                     }
                     // 立绘：{ byName: { "红缥缈": { fg, bg, id } } }
                     var sp = readVar('tf_sprites') || {};
+                     console.log('[event_manager][sprite_background_fun][openRoleConfig][tf_sprites] tf_sprites:',JSON.stringify(sp))
                     var spe = (sp.byName || {})[name];
                     if (spe && spe.fg) {
                         if (spriteStatus) spriteStatus.textContent = '已绑定: ' + spe.fg;
@@ -2828,6 +2829,7 @@
                 }
                 try {
                     var sp = readVar('tf_sprites') || {};
+                    console.log('[event_manager][sprite_background_fun][_tfSaveRoleConfig][tf_sprites] tf_sprites:',JSON.stringify(sp))
                     if (typeof sp !== 'object') sp = {};
                     if (!sp.byName) sp.byName = {};
                     var entry = sp.byName[charName] || {id: charId, name: charName, roleType: 'npc'};

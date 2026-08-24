@@ -35,4 +35,8 @@ console.warn('[event_manager]...
 
 
 # parmName:参数名称
-....
+[变量列表.global.md](../%E5%8F%98%E9%87%8F%E8%AE%BE%E8%AE%A1/%E5%8F%98%E9%87%8F%E5%88%97%E8%A1%A8.global.md)
+[变量列表.chat.md](../%E5%8F%98%E9%87%8F%E8%AE%BE%E8%AE%A1/%E5%8F%98%E9%87%8F%E5%88%97%E8%A1%A8.chat.md)
+[变量列表.tavoself.md](../%E5%8F%98%E9%87%8F%E8%AE%BE%E8%AE%A1/%E5%8F%98%E9%87%8F%E5%88%97%E8%A1%A8.tavoself.md)
+
+- tf_sprites
