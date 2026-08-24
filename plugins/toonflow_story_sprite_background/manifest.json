@@ -4,7 +4,7 @@
   "name": {
     "$t": "plugin.name"
   },
-  "version": "1.0.0",
+  "version": "1.0.1",
   "minAppVersion": "1.0.0",
   "entry": "entry.js",
   "author": "viaco",
@@ -87,9 +87,18 @@
           },
           "default": "chapter",
           "options": [
-            { "label": "章节场景背景", "value": "chapter" },
-            { "label": "角色氛围背景", "value": "character" },
-            { "label": "叠加模式（章节+角色）", "value": "both" }
+            {
+              "label": "章节场景背景",
+              "value": "chapter"
+            },
+            {
+              "label": "角色氛围背景",
+              "value": "character"
+            },
+            {
+              "label": "叠加模式（章节+角色）",
+              "value": "both"
+            }
           ]
         },
         {
