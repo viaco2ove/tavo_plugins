@@ -1256,6 +1256,75 @@
             pin('tf-story-tab');
             pin('tf-story-overlay');
 
+            // 一次性数据迁移：旧 chat-scope 单一 key → 新 chat-scope + global-scope 带 chat_id 双 key
+            (function migrateLegacyBindings() {
+                try {
+                    var _mCid = window._panelChatId;
+                    if (!_mCid) {
+                        try { var _c = T.chat.current(); _mCid = _c && _c.id; window._panelChatId = _mCid; } catch (e) {}
+                    }
+                    console.log('[migrate] _mCid=' + _mCid);
+                    if (!_mCid) { console.log('[migrate] no chatId, skip'); return; }
+                    // 1. tf_sprites: chat → global(tf_sprites_{chat_id})
+                    try {
+                        var spChat = T.get('tf_sprites', 'chat');
+                        while (spChat && typeof spChat === 'object' && spChat.found !== undefined && 'value' in spChat) spChat = spChat.value;
+                        var spGlobal = T.get('tf_sprites_' + _mCid, 'global');
+                        while (spGlobal && typeof spGlobal === 'object' && spGlobal.found !== undefined && 'value' in spGlobal) spGlobal = spGlobal.value;
+                        if (spChat && (!spGlobal || (spChat.byName && Object.keys(spChat.byName).length > (spGlobal.byName ? Object.keys(spGlobal.byName).length : 0)))) {
+                            T.set('tf_sprites_' + _mCid, spChat, 'global');
+                            console.log('[migrate] tf_sprites → tf_sprites_' + _mCid + ' (' + Object.keys(spChat.byName || {}).length + ' chars)');
+                        }
+                    } catch (e) {}
+                    // 2. tf_character_voices: chat → global(tf_character_voices_{chat_id})
+                    try {
+                        var vChat = T.get('tf_character_voices', 'chat');
+                        while (vChat && typeof vChat === 'object' && vChat.found !== undefined && 'value' in vChat) vChat = vChat.value;
+                        var vGlobal = T.get('tf_character_voices_' + _mCid, 'global');
+                        while (vGlobal && typeof vGlobal === 'object' && vGlobal.found !== undefined && 'value' in vGlobal) vGlobal = vGlobal.value;
+                        if (vChat && (!vGlobal || (vChat && Object.keys(vChat).length > Object.keys(vGlobal || {}).length))) {
+                            T.set('tf_character_voices_' + _mCid, vChat, 'global');
+                            console.log('[migrate] tf_character_voices → tf_character_voices_' + _mCid + ' (' + Object.keys(vChat).length + ' chars)');
+                        }
+                    } catch (e) {}
+                    // 3. byName 老数据补 charId 双 key（容错：旧数据只存了 name，没存 charId）
+                    try {
+                        var spM = T.get('tf_sprites_' + _mCid, 'global');
+                        while (spM && typeof spM === 'object' && spM.found !== undefined && 'value' in spM) spM = spM.value;
+                        if (spM && spM.byName) {
+                            var changed = false;
+                            Object.keys(spM.byName).forEach(function (k) {
+                                var e = spM.byName[k];
+                                if (e && e.id != null && !spM.byName[String(e.id)]) {
+                                    spM.byName[String(e.id)] = e; changed = true;
+                                }
+                            });
+                            if (changed) {
+                                T.set('tf_sprites_' + _mCid, spM, 'global');
+                                T.set('tf_sprites', spM, 'chat');
+                                console.log('[migrate] tf_sprites 补 charId 双 key');
+                            }
+                        }
+                        var vM = T.get('tf_character_voices_' + _mCid, 'global');
+                        while (vM && typeof vM === 'object' && vM.found !== undefined && 'value' in vM) vM = vM.value;
+                        if (vM) {
+                            var vchanged = false;
+                            Object.keys(vM).forEach(function (k) {
+                                var e = vM[k];
+                                if (e && e.charId && !vM[String(e.charId)]) {
+                                    vM[String(e.charId)] = e; vchanged = true;
+                                }
+                            });
+                            if (vchanged) {
+                                T.set('tf_character_voices_' + _mCid, vM, 'global');
+                                T.set('tf_character_voices', vM, 'chat');
+                                console.log('[migrate] tf_character_voices 补 charId 双 key');
+                            }
+                        }
+                    } catch (e) {}
+                } catch (e) {}
+            })();
+
             function esc(s) {
                 return String(s == null ? '' : s).replace(/[&<>"']/g, function (m) {
                     return {'&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'}[m];
@@ -2708,7 +2777,32 @@
                 }
             }
 
+            // 双域读取：先 global（chatId 后缀 key），再 chat；chatName 和 globalName 可以不同
+            function readVarDualScope(chatName, globalName) {
+                var result = null;
+                try {
+                    var v = tavo.get(globalName, 'global');
+                    var guard = 0;
+                    while (v && typeof v === 'object' && v.found !== undefined && ('value' in v) && guard < 5) {
+                        v = v.value; guard++;
+                    }
+                    if (v !== null && v !== undefined && v !== '') result = v;
+                } catch (e) {}
+                if (result === null || result === '' || (typeof result === 'object' && Object.keys(result).length === 0)) {
+                    try {
+                        var v2 = tavo.get(chatName, 'chat');
+                        var guard2 = 0;
+                        while (v2 && typeof v2 === 'object' && v2.found !== undefined && ('value' in v2) && guard2 < 5) {
+                            v2 = v2.value; guard2++;
+                        }
+                        if (v2 !== null && v2 !== undefined && v2 !== '') result = v2;
+                    } catch (e2) {}
+                }
+                return result;
+            }
+
             function openRoleConfig(id, name) {
+                 console.log('[event_manager][sprite_background_fun][openRoleConfig][tf_sprites] openRoleConfig');
                 charId = id;
                 charName = name;
                 // 确保 _panelChatId 已初始化（fallback：buildStory 未跑过）
@@ -2730,20 +2824,24 @@
                 if (info) info.textContent = '角色: ' + name + ' (ID: ' + id + ')';
 
                 try {
+                    console.log('[event_manager][sprite_background_fun][openRoleConfig][tf_sprites] start');
                     // 音色：{ "角色名": { mode, prompt, audioRef, enabled } }
                     // chat scope: tf_character_voices; global scope: tf_character_voices_{chat_id}
+                    console.log('[event_manager][sprite_background_fun][openRoleConfig][tf_sprites] 1-1');
                     var _pcid2 = window._panelChatId || _panelChatId || null;
                     var vfGlobalKey = _pcid2 ? ('tf_character_voices_' + _pcid2) : 'tf_character_voices';
                     var vfAll = readVarDualScope('tf_character_voices', vfGlobalKey) || {};
+                    console.log('[event_manager][sprite_background_fun][openRoleConfig][tf_sprites] 1-2');
                     var voiceEntry = (typeof vfAll === 'object') ? (vfAll[name] || vfAll[String(charId)] || null) : null;
                     var voicePath = voiceEntry ? (voiceEntry.audioRef || '') : '';
+                    console.log('[event_manager][sprite_background_fun][openRoleConfig][tf_sprites] 1-3');
                     if (voicePath) {
                         if (voiceStatus) voiceStatus.textContent = '已绑定: ' + voicePath;
                         if (voicePlayer) {
                             voicePlayer.controls = true;
                             try {
                                 var vname = voicePath.split('/').pop();
-                                voicePlayer.src = tavo.file.url(vname, 'chat') || '';
+                                voicePlayer.src = tavo.file.url(vname, 'chat') | tavo.file.url(vname, 'global') | '';
                             } catch (e) {
                                 voicePlayer.src = '';
                             }
@@ -2752,12 +2850,15 @@
                         if (voiceStatus) voiceStatus.textContent = '未绑定音色文件';
                         if (voicePlayer) voicePlayer.src = '';
                     }
+                    console.log('[event_manager][sprite_background_fun][openRoleConfig][tf_sprites] 2');
                     // 立绘：{ byName: { "红缥缈": { fg, bg, id } } }
                     // chat scope: tf_sprites; global scope: tf_sprites_{chat_id}
                     var _spGlobalKey = window._panelChatId ? ('tf_sprites_' + window._panelChatId) : 'tf_sprites';
                     var sp = readVarDualScope('tf_sprites', _spGlobalKey) || {};
                     console.log('[event_manager][sprite_background_fun][openRoleConfig][tf_sprites] name=' + name + ' keys=' + JSON.stringify(Object.keys(sp.byName || {})));
                     var spe = (sp.byName || {})[name] || (sp.byName || {})[String(charId)] || null;
+                    console.log('[event_manager][sprite_background_fun][openRoleConfig][tf_sprites] sp.byName:'+sp.byName+'charId:'+charId+ 'spe:',JSON.stringify(spe));
+
                     if (spe && spe.fg) {
                         if (spriteStatus) spriteStatus.textContent = '已绑定: ' + spe.fg;
                         if (preview) {
@@ -2832,6 +2933,14 @@
             // 保存配置
             window._tfSaveRoleConfig = async function () {
                 if (!charId) return;
+                // 确保 _panelChatId 已初始化
+                if (!window._panelChatId) {
+                    try {
+                        var _c2 = T.chat.current();
+                        window._panelChatId = _c2 && _c2.id;
+                        _panelChatId = window._panelChatId;
+                    } catch (e) {}
+                }
                 var saveBtn = document.getElementById('tf-config-save');
                 if (saveBtn) {
                     saveBtn.disabled = true;
@@ -2897,6 +3006,7 @@
             };
 
             document.addEventListener('click', function (e) {
+                 console.log('[event_manager][sprite_background_fun][openRoleConfig][tf_sprites] [data-role-config]');
                 var btn = e.target.closest('[data-role-config]');
                 if (btn) {
                     e.stopPropagation();

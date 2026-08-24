@@ -74,13 +74,15 @@ function resolveUrl(path) {
     // 文件存在 chat scope，name 只需文件名（不含 files/chat/ 前缀）
     const name = path.split('/').pop() || path;
     let url = '';
-    try { url = tavo.file.url(name, 'chat') || tavo.file.url(path, 'chat') || path; } catch(e) { url = path; }
+    try { url = tavo.file.url(name, 'chat') || tavo.file.url(path, 'chat')
+        ||tavo.file.url(name, 'global') || tavo.file.url(path, 'global')
+        || path; } catch(e) { url = path; }
     sl('[sprite] resolveUrl(' + path + ') name=' + name + ' → ' + url);
     return url;
   }
   // 相对路径：直接用
   let url = '';
-  try { url = tavo.file.url(path, 'chat') || path; } catch(e) { url = path; }
+  try { url = tavo.file.url(path, 'chat') ||tavo.file.url(path, 'global')|| path; } catch(e) { url = path; }
   return url;
 }
 
