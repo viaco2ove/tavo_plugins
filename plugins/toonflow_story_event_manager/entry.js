@@ -518,12 +518,14 @@ async function tfEventProgress_advance(messageContext) {
     const eventMarker = 'phase:' + phaseIdx + ':event:' + eventIdx;
      console.log('[event_manager][_llmJudgeEventProgress][tfEventProgress_advance][tf_progress]eventMarker', eventMarker );
     if (!progress.completedEvents.includes(eventMarker)) progress.completedEvents.push(eventMarker);
+    if (events[eventIdx]) events[eventIdx].state = '[s]'; // 直接写入 event.state，UI 不用推理
     if (eventIdx + 1 < events.length) {
       progress.currentEvent = eventIdx + 1;
     } else if (phaseIdx + 1 < phases.length) {
       // 当前 phase 完成
       const phaseMarker = 'phase:' + phaseIdx;
       if (!progress.completedEvents.includes(phaseMarker)) progress.completedEvents.push(phaseMarker);
+      if (phases[phaseIdx]) phases[phaseIdx].state = '[s]';
       if (phaseName && !progress.completedPhases.includes(phaseName)) progress.completedPhases.push(phaseName);
       progress.currentPhase = phaseIdx + 1;
       progress.currentEvent = 0;
@@ -542,10 +544,17 @@ async function tfEventProgress_advance(messageContext) {
       if (llmRes.event_status) writeEvt.status = llmRes.event_status;
     }
     // 兼容：progress 顶层保留快照
-    //状态：[s] 完成 / [i] 进行中 / [] 未开始 / [f] 失败
+    // 事件进度状态：[s] 完成 / [i] 进行中 / [] 未开始 / [f] 失败
     if (llmRes.progress_summary) progress.progressSummary = llmRes.progress_summary;
     if (llmRes.progress_facts && llmRes.progress_facts.length) {
       progress.progressFacts = [...(progress.progressFacts || []), ...llmRes.progress_facts].slice(-20);
+    }
+    // 标记新当前 event 为：“进行中”
+    const newPhaseIdx = progress.currentPhase || 0;
+    const newEventIdx = progress.currentEvent || 0;
+    const newPhase = phases[newPhaseIdx];
+    if (newPhase && newPhase.events && newPhase.events[newEventIdx] && !newPhase.events[newEventIdx].state) {
+      newPhase.events[newEventIdx].state = '[i]';
     }
     progress.updatedAt = Date.now();
 
@@ -2120,11 +2129,13 @@ function _isPhaseCompleted(completedPhases, phaseName) {
 
 function _markPhaseCompleted(progress, phaseIdx, phaseName) {
   if (!progress.completedPhases) progress.completedPhases = [];
-      progress.completedEvents = [];
   if (!progress.completedPhases.includes(phaseName)) {
     progress.completedPhases.push(phaseName);
   }
-  // 同步写到 completedEvents（面板读取此字段判断 [s]/[i]/[ ] 状态）
+  // 同步写 phase.state = '[s]'（UI 直接读，不靠 currentPhase 推断）
+  if (progress.phases && progress.phases[phaseIdx]) {
+    progress.phases[phaseIdx].state = '[s]';
+  }
   if (!progress.completedEvents) progress.completedEvents = [];
   const marker = 'phase:' + phaseIdx;
   if (!progress.completedEvents.includes(marker)) {
