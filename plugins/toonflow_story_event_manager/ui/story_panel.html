@@ -2209,9 +2209,9 @@
                         // 优先读 phase.state（entry.js 直接写入），fallback 用 currentPhase 推断
                         let phaseMark = ph.state || (pi < curPhaseIdx ? '[s]' : (pi === curPhaseIdx ? '[i]' : '[ ]'));
                         h += '<div class="tf-event-item"><div class="tf-event-item__head">'
-                            + '<span class="tf-event-item__index">' + phaseMark + ' 阶段 ' + (pi + 1) + ': ' + esc(ph.name || '') + '</span></div>';
+                            + '<span class="tf-event-item__index" id="phase-' + pi + '">' + phaseMark + ' 阶段 ' + (pi + 1) + ': ' + esc(ph.name || '') + '</span></div>';
                         if (ph.events && ph.events.length) {
-                            h += '<div class="tf-event-item__summary">';
+                            h += '<div class="tf-event-item__summary" id="phase-' + pi + '-events">';
                             ph.events.forEach(function (ev, ei) {
                                 // 优先读 ev.state（entry.js 直接写入），fallback 用 currentEvent 推断
                                 var em = ev.state || (pi < curPhaseIdx ? '[s]' : (pi === curPhaseIdx && ei <= curEventIdx ? '[s]' : '[ ]'));

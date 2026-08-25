@@ -43,7 +43,7 @@ console.warn('[event_manager]...
 
 - tf_sprites
 
-#
+# 例子
 console.log('[multi-character_stage][setWorldbookState] [mcs_wb_state]: ' + JSON.stringify(state));
 console.log('[multi-character_stage] [mcs_free_mode_seen]');
 console.log('[event_manager][tf_story_game][writeBoot] [tf_story.boot]: ' + JSON.stringify(b));
@@ -54,3 +54,7 @@ console.log('[speaker][tmm_story_static]' );
 console.log('[speaker]',ORCH_FLAG);
 sprite_background_fun
 console.log('sprite_background_fun]['+name+']set');
+
+
+#  toast
+tavo.utils.toast('🎉 故事已完结！' + (progress.sessionFreeMode ? '已进入自由模式' : ''));

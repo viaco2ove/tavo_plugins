@@ -23,10 +23,28 @@ function cfg(key, fb) {
 }
 
 let _chatId = null;
+let _chatIdInit = false;
+let _updateSpriteRetried = false;
 function getChatId() {
   if (_chatId) return _chatId;
+  if (!_chatIdInit) {
+    _chatIdInit = true;
+    try {
+      const result = tavo.chat.current();
+      if (result && typeof result.then === 'function') {
+        result.then(chat => { _chatId = chat && chat.id; }).catch(() => {});
+      } else {
+        _chatId = result && result.id;
+      }
+    } catch(e) {}
+  }
+  return _chatId;
+}
+
+// 强制刷新 _chatId（异步版，用于 updateSprite 重试路径）
+async function refreshChatId() {
   try {
-    const chat = tavo.chat.current();
+    const chat = await tavo.chat.current();
     _chatId = chat && chat.id;
   } catch(e) {}
   return _chatId;
@@ -198,6 +216,16 @@ function setForeground(fgPath) {
 // ===== 主渲染 =====
 function updateSprite(speakerName) {
   sl('=== [sprite] updateSprite speaker=' + speakerName + ' enabled=' + cfg('enabled', true) + ' ===');
+
+  // _chatId 还没异步解析完，刷新后延迟重试一次（避免无限递归）
+  if (!_chatId && !_updateSpriteRetried) {
+    _updateSpriteRetried = true;
+    refreshChatId().then(function() {
+      _updateSpriteRetried = false;
+      updateSprite(speakerName);
+    });
+    return;
+  }
 
   if (!cfg('enabled', true)) {
     setForeground('');

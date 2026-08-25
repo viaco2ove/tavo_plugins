@@ -504,6 +504,7 @@ async function tfEventProgress_advance(messageContext) {
     const recentDialogue = (messageContext && (messageContext.allMessages || messageContext.content)) || '';
     const llmRes = await _llmJudgeEventProgress(progress, chapters, recentDialogue);
     console.log('[event_manager][_llmJudgeEventProgress][tfEventProgress_advance][tf_progress]llmRes', JSON.stringify(llmRes) );
+    tavo.utils.toast('🎉 进度阿推进 llmRes.ended'+llmRes.ended+" reason:"+llmRes.reason);
     if (!llmRes || !llmRes.ended) return { advanced: false, reason: (llmRes && llmRes.reason) || 'not_ended' };
 
     // 推进：对齐 applySessionUserEventProgress 的 completedEvents 标记逻辑
@@ -545,6 +546,9 @@ async function tfEventProgress_advance(messageContext) {
     }
     // 兼容：progress 顶层保留快照
     // 事件进度状态：[s] 完成 / [i] 进行中 / [] 未开始 / [f] 失败
+    // 如 （phases[currIndex](ph,pi)）-> 阶段pi:ph.name->阶段1:苏醒
+    // ph.events -> [s]穿越醒来 [i]发现身份 []用户发言
+    // [s]穿越醒来 [i]发现身份 []用户发言 -> [s]穿越醒来 [s]发现身份 []用户发言
     if (llmRes.progress_summary) progress.progressSummary = llmRes.progress_summary;
     if (llmRes.progress_facts && llmRes.progress_facts.length) {
       progress.progressFacts = [...(progress.progressFacts || []), ...llmRes.progress_facts].slice(-20);
@@ -555,6 +559,7 @@ async function tfEventProgress_advance(messageContext) {
     const newPhase = phases[newPhaseIdx];
     if (newPhase && newPhase.events && newPhase.events[newEventIdx] && !newPhase.events[newEventIdx].state) {
       newPhase.events[newEventIdx].state = '[i]';
+      tavo.utils.toast('🎉 进度推进'+"newEventIdx:"+newEventIdx+ ":"+progress.progressFacts);
     }
     progress.updatedAt = Date.now();
 
