@@ -66,3 +66,25 @@ writeVarDual 会同时写 chat scope 和 global scope：
 
 tf_progress          → chat scope（聊天级别，tavo_chat_reset 会清掉）
 tf_progress_{chatId} → global scope（全局备份，reset 后还能恢复）
+
+
+## 问题分析
+chat:opened
+    ↓
+rebuildDynamicData()  ← tf_progress 还没初始化，不写 phases
+    ↓
+judgeAndAdvance()  ← tf_story.edit.chapters[0].content 是空的！
+    ↓
+parseProgress('')   ← chapter.content === ''，得到空数组
+    ↓
+progress.phases = []  ← 写回 tf_progress，覆盖了原来的 11 个 phases
+
+我认为你在做无用功，忽略真正的问题， 我认为重点是章节内容为什么为空！我发现这个bug 还会删掉章节内容删掉故事的简介和描述。是个非常严重的大bug!!!!!!!!!!!
+  而且进度修改为什么要读 章节内容？ 我觉得这个代码逻辑是不是有点怪异？？？？  参考D:\Users\viaco\tools\Toonflow-game\toonflow-game-app 是如何管理章节的动态事件链的。
+
+# 问题分析
+tf_story.edit 变成了空的
+问题是restoreStaticData() 和 writeVarDual(ns('edit'), nsGlobal('edit'), edit)
+修之前确认一下程序sync_story 有没有同步globla 的 tf_story_{chat_id} ，插件读写的是不是global的 tf_story_{chat_id}
+
+验证：tf_story_{chat_id} 数据的初始值没有问题

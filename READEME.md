@@ -100,6 +100,7 @@ tavo vs  python -m tavo_plugins ：tavo 需要配置环境，  python -m tavo_pl
 
 详见 [md/cli/tavo_plugins_help.md](md/cli/tavo_plugins_help.md)
 # cli实例
+[example.md](md/cli/tavo_plugins/example.md)
 ## 同步故事
 python -m tavo_plugins sync ".cache/story/谁让这个山大王修仙的" --reuse-ids ".cache/story/谁让这个山大王修仙的/char_ids.json" --skip-plugins
 ## story.json 控制的故事同步：

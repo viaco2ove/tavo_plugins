@@ -1254,6 +1254,7 @@ function restoreStaticData() {
   const staticName = 'tmm_story_static' + (_currentChatId ? '_' + _currentChatId : '');
   const names = [editName, staticName];
   for (const name of names) {
+    console.log('[event_manager][tf_story][restore] checking name=' + name);
     try {
       // chat 里还有就跳过（正常续玩）
       const cv = readChatVar(name);
@@ -1503,16 +1504,19 @@ async function bootSequence() {
   const myGuard = ++_bootGuard;
   console.log('[event_manager][tf_story][boot] start, myGuard=' + myGuard);
   let chatId = null;
+  console.log('[event_manager][tf_story][boot] 1 tavo.chat.curren');
   try { const c = await tavo.chat.current(); chatId = c && c.id; console.log('[event_manager][tf_story][boot] chatId=' + chatId); } catch (e) { console.warn('[event_manager][tf_story][boot] chat.current failed', e); }
   _currentChatId = chatId;
 
   // 0) 立刻切到 natural 模式 + 清空 overrideScenario，阻断官方 scenario 默认开场
   // chat:opened 触发时 tavo 内部可能未 ready，报 "internal error, try again"，重试
+  console.log('[event_manager][tf_story][boot] 2 tavo.chat.update');
   try {
     await _retry(() => tavo.chat.update({ responseMode: 'natural', overrideScenario: '' }), 'step0 chat.update', 4);
     console.log('[event_manager][tf_story][boot] step0 natural mode set');
   } catch (e) { console.warn('[event_manager][tf_story][boot] step0 chat.update failed', e); }
 
+  console.log('[event_manager][tf_story][boot] 3 readBoot');
   const boot = readBoot();
   let count = 0;
   try {
@@ -1520,6 +1524,7 @@ async function bootSequence() {
     console.log('[event_manager][tf_story][boot] message count=' + count);
   } catch (e) { console.warn('[event_manager][tf_story][boot] count failed', e); }
 
+  console.log('[event_manager][tf_story][boot] 4 readChatVar');
   // 关键判定：chat_reset 清空 chat scope 变量但保留 global。
   // 「chat scope 的 boot 镜像是否还在」是判断「是否刚 reset」的可靠信号：
   //   - chat boot 丢失 + global 数据在       => 刚 reset（reset 后 tavo 可能自动插 1 条消息，count 不可靠）
