@@ -496,6 +496,7 @@ async function tfEventProgress_advance(messageContext) {
 
     const recentDialogue = (messageContext && (messageContext.allMessages || messageContext.content)) || '';
     const llmRes = await _llmJudgeEventProgress(progress, chapters, recentDialogue);
+    console.log('[event_manager][_llmJudgeEventProgress][tfEventProgress_advance][tf_progress]llmRes', JSON.stringify(llmRes) );
     if (!llmRes || !llmRes.ended) return { advanced: false, reason: (llmRes && llmRes.reason) || 'not_ended' };
 
     // 推进：对齐 applySessionUserEventProgress 的 completedEvents 标记逻辑
@@ -530,6 +531,8 @@ async function tfEventProgress_advance(messageContext) {
       progress.progressFacts = [...(progress.progressFacts || []), ...llmRes.progress_facts].slice(-20);
     }
     progress.updatedAt = Date.now();
+
+    console.log('[event_manager][_llmJudgeEventProgress][tfEventProgress_advance][tf_progress]progress:', JSON.stringify(progress) );
     setProgress(progress);
     return { advanced: true, reason: llmRes.reason, summary: llmRes.progress_summary, event_status: llmRes.event_status };
   } catch (e) {
