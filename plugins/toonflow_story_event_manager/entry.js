@@ -504,7 +504,7 @@ async function tfEventProgress_advance(messageContext) {
     const recentDialogue = (messageContext && (messageContext.allMessages || messageContext.content)) || '';
     const llmRes = await _llmJudgeEventProgress(progress, chapters, recentDialogue);
     console.log('[event_manager][_llmJudgeEventProgress][tfEventProgress_advance][tf_progress]llmRes', JSON.stringify(llmRes) );
-    tavo.utils.toast('🎉 进度阿推进 llmRes.ended'+llmRes.ended+" reason:"+llmRes.reason);
+    tavo.utils.toast('🎉 进度阿推进 llmRes.ended'+llmRes.ended+", reason:"+llmRes.reason);
     if (!llmRes || !llmRes.ended) return { advanced: false, reason: (llmRes && llmRes.reason) || 'not_ended' };
 
     // 推进：对齐 applySessionUserEventProgress 的 completedEvents 标记逻辑
