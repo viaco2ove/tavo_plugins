@@ -874,7 +874,7 @@ def sync_chapters(http_url, token, chat_id, config, story_dir, dry):
             fname, chapters[-1]["title"], enabled, len(runtime_outline['phases'])))
 
     if chapters and not dry:
-        variable_key = 'tf_story_%s.edit' % chat_id
+        variable_key = 'tf_story_db_%s.edit' % chat_id
         # 读取已有数据（可能已有 intro/globalBackground 等）
         try:
             existing_edit = unwrap(rpc(http_url, token, 'tavo_variable_get',
@@ -897,7 +897,7 @@ def sync_chapters(http_url, token, chat_id, config, story_dir, dry):
         if not edit.get('lineCount'):
             edit['lineCount'] = 20
 
-        # 只写 global scope（chat scope 由 event_manager 的 writeVarDual 写入 tf_story）
+        # 只写 global scope（chat scope 由 event_manager 写 tf_story.edit）
         print('  [tavo_variable_set] scope:%s variable_key:%s' % ('global', variable_key))
         rpc(http_url, token, 'tavo_variable_set', {
             'scope': 'global', 'name': variable_key, 'value': edit

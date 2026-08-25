@@ -155,6 +155,7 @@ function syncVarsFromGlobal() {
       }
       const gv = readVar(ns);
       if (gv && typeof gv === 'object' && Object.keys(gv).length) {
+         console.log('sprite_background_fun]['+ns+']set');
         try { tavo.set(ns, gv, 'chat'); sl('[sprite] ✓ ' + ns + ' 从 global 恢复到 chat，' + Object.keys(gv).length + ' 键'); } catch(e) {}
       }
     } catch(e) {}
@@ -291,6 +292,7 @@ tavo.plugin.on('message:added', async (event) => {
   // 用户消息 -> 立即切到用户立绘（persona），并清掉 tf_last_speaker 防止旧值污染
   if (msg.role === 'user') {
     sl('[sprite] user msg -> 切换用户立绘');
+    console.log('sprite_background_fun][tf_last_speaker]set');
     try { tavo.set('tf_last_speaker', null, 'chat'); } catch (e) {}
     const sprites0 = readVar(NS) || {};
     const personaName = readVar(PERSONA_KEY) || '纯小白'; // 默认 persona 名

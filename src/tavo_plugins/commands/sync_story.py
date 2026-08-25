@@ -658,10 +658,9 @@ def _sync_chapters(client, chat_id, story_dir, config, echo):
 
     if chapters:
         # 变量命名（对齐变量设计.原则）：
-        #   global scope → tf_story_{chat_id}.edit（带 chat_id）
-        #   chat scope → tf_story.edit（不带 chat_id，由 event_manager writeVarDual 写入）
-        edit_var = f"tf_story_{chat_id}.edit"
-        progress_var = f"tf_progress_{chat_id}"
+        #   global scope → tf_story_db_{chat_id}.edit（带 chat_id）
+        #   chat scope → tf_story.edit（不带 chat_id，由 event_manager 写 chat scope）
+        edit_var = f"tf_story_db_{chat_id}.edit"
         bg_var = f"tf_chapter_backgrounds_{chat_id}"
 
         # 解包 {target,name,found,value} 包装
@@ -700,16 +699,7 @@ def _sync_chapters(client, chat_id, story_dir, config, echo):
         else:
             echo(f"  [DEBUG] no chapter_bgs to write")
 
-        progress = {
-            "currentChapterIndex": 0,
-            "currentPhase": 0,
-            "currentEvent": 0,
-            "phases": [],
-            "sessionFreeMode": False,
-        }
-        echo(f"  [tavo_variable_set] scope:global variable_key:{progress_var}")
-        client.variable_set(chat_id, progress_var, progress, scope="global")
-        echo(f"  [SET] {progress_var} (scope=global) = {json.dumps(progress, ensure_ascii=False)}")
+        # tf_progress 已废除 global（动态数据，只写 chat scope，reset 后清空）
     else:
         echo(f"  [WARN] no chapters to write!")
 

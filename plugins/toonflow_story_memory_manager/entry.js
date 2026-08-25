@@ -592,6 +592,7 @@ async function buildStaticStory(force, maxRetries) {
       // 静态基准卡必须写 global scope 才能抗 tavo_chat_reset！
       // chat scope 在 reset 时被清空，导致角色参数卡全部消失。
       const staticName = tmmNs('story_static');
+      console.log('[memory_manager][tmm_story_static]' );
       try { tavo.set(staticName, staticStory, 'global'); } catch (e) {}
       try { tavo.set(staticName, staticStory, 'chat'); } catch (e) {}
       return staticStory;
@@ -636,6 +637,7 @@ async function initStory(maxRetries) {
       if (!staticStory) return;
       // 展示层 = 静态基准的深拷贝，立即生效
       const display = JSON.parse(JSON.stringify(staticStory));
+      console.log('[memory_manager][tmm_story_static]' );
       tavo.set(tmmNs('story'), display, 'chat');
       // 把持久化的动态增量立刻合并回来，避免展示层短暂空白/清零
       syncStoryDynamicCards();
@@ -672,6 +674,7 @@ function syncStoryDynamicCards() {
         changed = true;
       }
     });
+    console.log('[memory_manager][tmm_story_static]' );
     if (changed) tavo.set(tmmNs('story'), story, 'chat');
   } catch (e) {}
 }
@@ -975,6 +978,7 @@ async function runMemoryAgent(directive) {
       state.turnsSinceRefresh = 0;
       state.updatedAt = Date.now();
       delete state._pendingDirective; // 清理指令标记
+      console.log('[memory_manager][tmm]' );
       tavo.set(NS, state, 'chat');
       // 把动态参数补丁回流到 tmm_story，供信息面板/发言器展示实时数值与关键信息
       syncStoryDynamicCards();
@@ -996,6 +1000,7 @@ async function runMemoryAgent(directive) {
 
 _safeOn('chat:opened', async () => {
   if (!readChatVar(NS)) {
+    console.log('[memory_manager][tmm]' );
     tavo.set(NS, defaultState(), 'chat');
   }
   // 非阻塞：initStory 和 memory refresh 都不 await，避免阻塞 boot 等待路径
@@ -1147,6 +1152,7 @@ _safeOn('message:added', async (event) => {
 
   const state = readChatVar(NS) || defaultState();
   state.turnsSinceRefresh = (state.turnsSinceRefresh || 0) + 1;
+  console.log('[memory_manager][tmm]' );
   tavo.set(NS, state, 'chat');
 
   const hardTrigger = cfg.triggerKeywords.some(k => text.includes(k));

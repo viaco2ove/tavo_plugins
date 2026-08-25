@@ -19,7 +19,7 @@
 console.log('[event_manager]...
 console.error('[event_manager]...
 console.warn('[event_manager]...
-如：console.log('[event_manager][tf_story][writeBoot] [tf_story.boot]: ' + JSON.stringify(b));
+如：console.log('[event_manager][tf_story_game][writeBoot] [tf_story.boot]: ' + JSON.stringify(b));
 
 ## funName:功能名称
 - event_manager_fun
@@ -42,3 +42,15 @@ console.warn('[event_manager]...
 [变量列表.tavoself.md](../%E5%8F%98%E9%87%8F%E8%AE%BE%E8%AE%A1/%E5%8F%98%E9%87%8F%E5%88%97%E8%A1%A8.tavoself.md)
 
 - tf_sprites
+
+#
+console.log('[multi-character_stage][setWorldbookState] [mcs_wb_state]: ' + JSON.stringify(state));
+console.log('[multi-character_stage] [mcs_free_mode_seen]');
+console.log('[event_manager][tf_story_game][writeBoot] [tf_story.boot]: ' + JSON.stringify(b));
+console.log('[memory_manager][memory_manager_fun]' );
+console.log('[memory_manager][tmm_story_static]' );
+speaker
+console.log('[speaker][tmm_story_static]' );
+console.log('[speaker]',ORCH_FLAG);
+sprite_background_fun
+console.log('sprite_background_fun]['+name+']set');

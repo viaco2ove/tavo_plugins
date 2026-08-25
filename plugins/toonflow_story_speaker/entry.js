@@ -638,6 +638,7 @@ tavo.plugin.on('generation:prepare', async (event) => {
   const cfg = getConfig();
   if (!cfg.enabled) return;
   if (getOrchestration() === 'system') return; // 跟随系统：不注入动态状态、不显示编排中
+  console.log('[speaker]',ORCH_FLAG);
   try { tavo.set(ORCH_FLAG, true, 'chat'); } catch (e) {}
   try {
     const n = getLineCount();
@@ -656,9 +657,15 @@ tavo.plugin.on('generation:prepare', async (event) => {
   }
 });
 
-tavo.plugin.on('generation:success', async () => { try { tavo.set(ORCH_FLAG, false, 'chat'); } catch (e) {} });
-tavo.plugin.on('generation:error', async () => { try { tavo.set(ORCH_FLAG, false, 'chat'); } catch (e) {} });
-tavo.plugin.on('generation:cancelled', async () => { try { tavo.set(ORCH_FLAG, false, 'chat'); } catch (e) {} });
+tavo.plugin.on('generation:success', async () => {
+   console.log('[speaker]',ORCH_FLAG);
+  try { tavo.set(ORCH_FLAG, false, 'chat'); } catch (e) {} });
+tavo.plugin.on('generation:error', async () => {
+   console.log('[speaker]',ORCH_FLAG);
+  try { tavo.set(ORCH_FLAG, false, 'chat'); } catch (e) {} });
+tavo.plugin.on('generation:cancelled', async () => {
+   console.log('[speaker]',ORCH_FLAG);
+  try { tavo.set(ORCH_FLAG, false, 'chat'); } catch (e) {} });
 
 // 侧边栏：测试生成一句当前角色台词（隐藏消息）
 tavo.plugin.onSidebarAction('speaker-test', async () => {

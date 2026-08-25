@@ -46,6 +46,7 @@ async function migrateClearHidden() {
         }
       }
     }
+    console.log('[event_manager][tf_story][writeBoot] [tf_story.boot]: ' + JSON.stringify(b));
     try { tavo.set('tf_style.migrated_v130', '1', 'global'); } catch (e) {}
   } catch (e) {}
 }

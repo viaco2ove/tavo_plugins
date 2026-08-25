@@ -587,16 +587,15 @@ const STAGE_PLUGIN_ID = 'com.toonflow.multi-character-stage';
 let _currentChatId = null; // 当前聊天 ID，用于构建带 chat_id 的全局变量名
 
 // 变量命名规则（对齐变量设计.原则）：
-//   chat scope  → tf_story.{name}（不带 chat_id，chat scope 本身就是聊天级别的）
-//   global scope → tf_story_{chat_id}.{name}（带 chat_id，global scope 是所有聊天共享的）
+//   chat scope  → tf_story.{name}（不带 chat_id，chat scope 本身就是聊天级别的，reset 后会清空）
+//   global scope → tf_story_db_{chat_id}.{name}（带 chat_id，global scope 是所有聊天共享的）
 function ns(name) { return NS_BASE + '.' + name; }              // chat scope 用
-function nsGlobal(name) {                                        // global scope 用
-  return _currentChatId ? (NS_BASE + '_' + _currentChatId + '.' + name) : (NS_BASE + '.' + name);
+function nsGlobal(name) {                                        // global scope 用 (tf_story_db_{chatId}.*)
+  return _currentChatId ? ('tf_story_db_' + _currentChatId + '.' + name) : (NS_BASE + '.' + name);
 }
 function progressNs() { return PROGRESS_NS_BASE; }               // chat scope 用
-function progressNsGlobal() {                                    // global scope 用
-  return _currentChatId ? (PROGRESS_NS_BASE + '_' + _currentChatId) : PROGRESS_NS_BASE;
-}
+// tf_progress 已废除 global scope（动态数据，只写 chat）
+function progressNsGlobal() { return null; } // 废弃，以防\u4ece chat 备份的老代码
 
 // 向后兼容：NS 和 PROGRESS_NS 仍然指向基础名（不带 chat_id）
 // 主要用于 boot 状态等不需要区分聊天的变量
@@ -931,7 +930,8 @@ function getProgress() {
 }
 
 function setProgress(p) {
-  try { writeVarDual(progressNs(), progressNsGlobal(), p); return true; } catch (e) { return false; }
+  // tf_progress 动态数据：只写 chat scope（reset 后重始就清空）
+  try { tavo.set(progressNs(), p, 'chat'); return true; } catch (e) { return false; }
 }
 
 // 章节推进时同步写入 tf_story.edit.currentChapterIndex（供 sprite 等插件监听）
@@ -1198,7 +1198,7 @@ async function syncEditToWorldbook(edit) {
 }
 
 function getEdit() {
-  // 先查 chat scope（tf_story.edit），再查 global scope（tf_story_{chat_id}.edit）
+  // 读 chat scope（tf_story.edit）→ fallback 读 global scope（tf_story_db_{chat_id}.edit）
   let v = readChatVar(ns('edit'));
   if (!(v && typeof v === 'object')) {
     try {
@@ -1214,8 +1214,10 @@ function getEdit() {
   return (v && typeof v === 'object') ? v : defaultEditData();
 }
 function setEdit(edit) {
-  console.log('[event_manager][tf_story_game] [setEdit][tf_story_game]');
-  try { writeVarDual(ns('edit'), nsGlobal('edit'), edit); return true; } catch (e) { return false; }
+  // tf_story.edit 只写 chat scope�88reset 时会被清，需要恢刷新读 global 进来）
+  // 静态数据（intro/globalBackground/chapters/runtimeOutline）只存 global scope: tf_story_db_{chatId}.edit
+  console.log('[event_manager][tf_story_game][setEdit][tf_story]');
+  try { tavo.set(ns('edit'), edit, 'chat'); return true; } catch (e) { return false; }
 }
 
 function isValidChapter(ch) {
@@ -1271,55 +1273,25 @@ function notifyBootStage(stage, detail) {
 
 // 恢复静态数据：global -> chat（tavo_chat_reset 清了 chat，global 是权威备份）
 function restoreStaticData() {
-  let restored = false;
-  // chat scope 名（不带 chat_id）→ 写回 chat 用
-  const editName = ns('edit');
-  // global scope 名（带 chat_id）→ 从 global 读用
-  const editGlobalName = nsGlobal('edit');
-  const staticName = 'tmm_story_static' + (_currentChatId ? '_' + _currentChatId : '');
-  // 遍历 [chatName, globalReadName] 对
-  const pairs = [
-    { chat: editName, global: editGlobalName },
-    { chat: staticName, global: staticName },
-  ];
-  for (const { chat, global: globalName } of pairs) {
-    console.log('[event_manager][tf_story_game][restore] checking chat=' + chat + ' global=' + globalName);
-    try {
-      // chat 里还有就跳过（正常续玩）
-      const cv = readChatVar(chat);
-      if (cv && typeof cv === 'object' && Object.keys(cv).length) continue;
-      // 从 global 恢复（用带 chat_id 的 global 变量名）
-      const gv = (() => {
-        try {
-          let g = tavo.get(globalName, 'global');
-          let guard = 0;
-          while (g && typeof g === 'object' && g.found !== undefined && 'value' in g && guard < 5) { g = g.value; guard++; }
-          return g;
-        } catch (e) { return null; }
-      })();
-      console.log('[event_manager][tf_story_game][restore] chat=' + chat + ' gv=' + (gv ? JSON.stringify(gv).slice(0, 200) : 'null'));
-      // 检查 global 数据是否有实质内容
-      const hasContent = (gv && typeof gv === 'object') ? (() => {
-        if (chat === editName) {
-          // tf_story.edit: 只要有 chapters 数组（哪怕是空的 [{title:...}]）就算有内容
-          return Array.isArray(gv.chapters) && gv.chapters.length > 0;
-        } else if (chat === staticName) {
-          // tmm_story_static: 只要有 characters 数组就算有内容
-          return Array.isArray(gv.characters) && gv.characters.length > 0;
-        }
-        return Object.keys(gv).length > 0;
-      })() : false;
-      console.log('[event_manager][tf_story_game][restore] hasContent=' + hasContent);
-      if (hasContent) {
-        tavo.set(chat, gv, 'chat');
-        console.log('[event_manager][tf_story_game][restore] restored: ' + chat);
-        restored = true;
-      }
-    } catch (e) {
-      console.warn('[event_manager][tf_story_game][restore] error for ' + chat + ': ' + (e && e.message));
+  // 只恢复 tf_story.edit（chat scope），原数据在 tf_story_db_{chatId}.edit（global scope）
+  const chat = ns('edit');
+  const globalName = nsGlobal('edit');
+  try {
+    const cv = readChatVar(chat);
+    if (cv && typeof cv === 'object' && Object.keys(cv).length) return false; // chat 已有数据
+    let g = tavo.get(globalName, 'global');
+    let guard = 0;
+    while (g && typeof g === 'object' && g.found !== undefined && 'value' in g && guard < 5) { g = g.value; guard++; }
+    // 只有 chapters 数组有实质内容才恢复
+    if (g && typeof g === 'object' && Array.isArray(g.chapters) && g.chapters.length > 0) {
+      tavo.set(chat, g, 'chat');
+      return true;
     }
+    return false;
+  } catch (e) {
+    console.warn('[event_manager][tf_story_game][restore] error: ' + (e && e.message));
+    return false;
   }
-  return restored;
 }
 
 // 重建动态数据（对齐 Toonflow「重启聊天 = 动态数据重新生成」）：
@@ -1562,8 +1534,8 @@ async function bootSequence() {
   let sessionStage;
   const chatBoot = readChatVar(BOOT_NS);
   const globalHasData = (() => {
-    // 读 global 的 tf_story_{chat_id}.edit（带 chat_id）
-    const editVar = chatId ? ('tf_story_' + chatId + '.edit') : 'tf_story.edit';
+    // 读 global 的 tf_story_db_{chat_id}.edit（带 chat_id）
+    const editVar = chatId ? ('tf_story_db_' + chatId + '.edit') : 'tf_story.edit';
     const gv = (() => { try { let g = tavo.get(editVar, 'global'); let i=0; while (g && typeof g==='object' && 'value' in g && i<5){g=g.value;i++;} return g; } catch(e){return null;} })();
     return !!(gv && typeof gv === 'object' && Array.isArray(gv.chapters) && gv.chapters.length);
   })();

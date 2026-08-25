@@ -102,6 +102,7 @@ function getWorldbookState() {
 
 // 写入世界书延时状态
 function setWorldbookState(state) {
+  console.log('[multi-character_stage][setWorldbookState] [mcs_wb_state]: ' + JSON.stringify(state));
   try { tavo.set('mcs_wb_state', state, 'chat'); } catch (e) {}
 }
 
@@ -435,6 +436,7 @@ tavo.plugin.on('message:added', async () => {
   const lastVal = (() => { try { return readChatVar('mcs_free_mode_seen'); } catch (e) { return false; } })();
   if (freeMode !== lastVal) {
     try {
+      console.log('[multi-character_stage] [mcs_free_mode_seen]');
       tavo.set('mcs_free_mode_seen', freeMode, 'chat');
       await tavo.chat.update({ overrideScenario: await getEffectiveScenarioPrompt() });
     } catch (e) {}
@@ -1135,6 +1137,7 @@ function game_orchestration(userText,intentResult){
   // 后台异步执行编排 + 发言（不阻塞 handler）
   (async () => {
     try {
+      console.log('[multi-character_stage] ',ORCH_FLAG);
       tavo.set(ORCH_FLAG, true, 'chat');
 
       // 1. append 用户消息
@@ -1363,7 +1366,7 @@ function game_orchestration(userText,intentResult){
       const charId = await findCharacterId(speaker);
       if(speaker !="player" && speaker !="用户"){
 
-        console.log('[multi-character_stage][' + ts() + '] 🎭 [mcs] findCharacterId("' + speaker + '") = ' + charId);
+        console.log('[multi-character_stage][tf_last_speaker][' + ts() + '] 🎭 [mcs] findCharacterId("' + speaker + '") = ' + charId);
 
         tavo.set('tf_last_speaker', { name: speaker, characterId: charId || '' }, 'chat');
         console.log('[multi-character_stage][' + ts() + '] 🎭 [mcs] tf_last_speaker → ' + speaker + ' (id=' + charId + ')');
@@ -1439,6 +1442,7 @@ function game_orchestration(userText,intentResult){
       console.error('[multi-character_stage][' + ts() + '] ❌ [mcs] 后台编排异常:', e);
     } finally {
       _mcsBusy = false;
+      console.log('[multi-character_stage]',ORCH_FLAG);
       try { tavo.set(ORCH_FLAG, false, 'chat'); } catch (e) {}
     }
   })();

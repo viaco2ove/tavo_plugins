@@ -62,6 +62,7 @@ function readVar(name, scope) {
 
 function writeVar(name, value, scope) {
   try {
+    console.log('[voice]['+name+']set');
     tavo.set(name, value, scope || 'chat');
     if ((scope || 'chat') === 'chat') {
       try { tavo.set(name, value, 'global'); } catch (e) {}
@@ -145,11 +146,12 @@ function tf_voice_funs () {
         const files = getVoiceFiles();
         console.log('[voice][API][voice] bindVoiceFile files: ' + JSON.stringify(files));
         files[name] = { mode: 'clone_voice', prompt: '', audioRef: file, enabled: true };
-        console.log('[voice][API][voice] bindVoiceFile files name:' + name, JSON.stringify(files[name]));
+        console.log('[voice][API][voice]['+VOICE_FILE_NS+'] bindVoiceFile files name:' + name, JSON.stringify(files[name]));
         // chat scope: tf_character_voices（不带 chat_id）
         try { tavo.set(VOICE_FILE_NS, files, 'chat'); } catch (e) { vw('bindVoiceFile write chat error', e.message); }
         // global scope: tf_character_voices_{chat_id}（带 chat_id）
         const globalNs = voiceFileNsGlobal();
+        console.log('[voice]['+globalNs+']set');
         try { tavo.set(globalNs, files, 'global'); } catch (e) { vw('bindVoiceFile write global error', e.message); }
         // 文件变了，旧 voiceId 作废
         tf_voice_funs().invalidateVoiceId(charId);

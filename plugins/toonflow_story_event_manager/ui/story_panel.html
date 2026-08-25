@@ -1089,7 +1089,6 @@
     <script>
         (function () {
             let T = (typeof tavo !== 'undefined') ? tavo : (window.tavo || null);
-            let STORY_NS = 'tf_story';
 
             // 获取带 chat_id 的变量名（挂 window 确保跨作用域可访问）
             var _panelChatId = null;
@@ -1112,8 +1111,8 @@
             }
 
             function panelNsGlobal(name) {
-                // global scope: tf_story_{chat_id}.{name}（带 chat_id）
-                return _panelChatId ? ('tf_story_' + _panelChatId + '.' + name) : ('tf_story.' + name);
+                // global scope: tf_story_db_{chat_id}.{name}（带 chat_id）
+                return _panelChatId ? ('tf_story_db_' + _panelChatId + '.' + name) : ('tf_story.' + name);
             }
 
             function tmmNs(name) {
@@ -2180,17 +2179,37 @@
                     if (phases.length) {
                         h += '<div class="tf-card__text">事件进度 (' + phases.length + ' 阶段):</div>';
                         h += '<div class="tf-event-list">';
+                        var curPhaseIdx = p.currentPhase || 0;
+                        var curEventIdx = p.currentEvent || 0;
                         phases.forEach(function (ph, pi) {
-                            var mark = pi < (p.currentPhase || 0) ? '[s]' : (pi === (p.currentPhase || 0) ? '[i]' : '[ ]');
+                            var mark = pi < curPhaseIdx ? '[s]' : (pi === curPhaseIdx ? '[i]' : '[ ]');
                             h += '<div class="tf-event-item"><div class="tf-event-item__head">'
                                 + '<span class="tf-event-item__index">' + mark + ' 阶段 ' + (pi + 1) + ': ' + esc(ph.name || '') + '</span></div>';
                             if (ph.events && ph.events.length) {
                                 h += '<div class="tf-event-item__summary">';
                                 ph.events.forEach(function (ev, ei) {
-                                    var em = pi < (p.currentPhase || 0) ? '[s]' : (pi === (p.currentPhase || 0) && ei <= (p.currentEvent || 0) ? '[s]' : '[ ]');
-                                    h += '<span class="tf-tag" style="margin:2px 4px 2px 0;">' + em + ' ' + esc(ev.name || '') + '</span>';
+                                    var em = pi < curPhaseIdx ? '[s]' : (pi === curPhaseIdx && ei <= curEventIdx ? '[s]' : '[ ]');
+                                    var evStatus = ev.status ? ' (' + ev.status + ')' : '';
+                                    h += '<span class="tf-tag" style="margin:2px 4px 2px 0;">' + em + ' ' + esc(ev.name || '') + evStatus + '</span>';
                                 });
                                 h += '</div>';
+                            }
+                            // 当前 phase 的 LLM 摘要 + 事实（对齐 toonflow dynamicEvents）
+                            if (pi === curPhaseIdx) {
+                                var curPhase = ph;
+                                var curEv = (curPhase.events || [])[curEventIdx];
+                                if (curEv && (curEv.summary || (curEv.facts && curEv.facts.length))) {
+                                    if (curEv.summary) {
+                                        h += '<div class="tf-card__text" style="margin-top:6px;color:#7cb3ff;">📝 ' + esc(curEv.summary) + '</div>';
+                                    }
+                                    if (curEv.facts && curEv.facts.length) {
+                                        h += '<ul style="margin:4px 0 0 16px;padding:0;color:#a0a0a0;font-size:12px;">';
+                                        curEv.facts.forEach(function (f) {
+                                            h += '<li>' + esc(f) + '</li>';
+                                        });
+                                        h += '</ul>';
+                                    }
+                                }
                             }
                             h += '</div>';
                         });
@@ -2302,13 +2321,11 @@
             }
 
             function saveEditVar() {
-                // 双写：chat scope → tf_story.edit，global scope → tf_story_{chat_id}.edit
+                console.log('[event_manager][tf_story_game][writeBoot] [saveEditVar]: ' + JSON.stringify(_edit ));
+                // 静态数据（tf_story.edit）只写 chat scope
+                // global 备份（tf_story_db_{chat_id}.edit）由 sync_story 负责
                 try {
                     T.set(panelNs('edit'), _edit, 'chat');
-                } catch (e) {
-                }
-                try {
-                    T.set(panelNsGlobal('edit'), _edit, 'global');
                 } catch (e) {
                 }
             }
@@ -2429,7 +2446,7 @@
                 root.querySelectorAll('[data-edit]').forEach(function (el) {
                     el.addEventListener('input', function () {
                         _edit[el.getAttribute('data-edit')] = el.value;
-                        saveEditVar();
+                        //saveEditVar();
                     });
                 });
                 // 章节字段
@@ -2439,7 +2456,7 @@
                     var ev = (el.tagName === 'SELECT' || el.type === 'checkbox') ? 'change' : 'input';
                     el.addEventListener(ev, function () {
                         ch[k] = el.type === 'checkbox' ? el.checked : el.value;
-                        saveEditVar();
+                        //saveEditVar();
                         if (k === 'content') {
                             var cnt = root.querySelector('.tf-edit-count');
                             if (cnt) {
@@ -2467,7 +2484,7 @@
                         }
                         _edit.chapters.splice(i, 1);
                         if (_editChapter >= _edit.chapters.length) _editChapter = _edit.chapters.length - 1;
-                        saveEditVar();
+                        //saveEditVar();
                         renderBody();
                     });
                 });
@@ -2485,7 +2502,7 @@
                         musicAutoPlay: false
                     });
                     _editChapter = _edit.chapters.length - 1;
-                    saveEditVar();
+                    //saveEditVar();
                     renderBody();
                 });
                 // 编写说明折叠
@@ -2510,7 +2527,7 @@
                 });
                 var cacheBtn = root.querySelector('[data-editcache]');
                 if (cacheBtn) cacheBtn.addEventListener('click', function () {
-                    saveEditVar();
+                    //saveEditVar();
                     if (T && T.utils) T.utils.toast('已暂存到本地变量');
                 });
                 // 背景图点击聚焦输入
@@ -2523,12 +2540,12 @@
                 var orchSel = root.querySelector('[data-orch]');
                 if (orchSel) orchSel.addEventListener('change', function () {
                     _edit.orchestration = orchSel.value;
-                    saveEditVar();
+                    //saveEditVar();
                     if (T && T.plugin) T.plugin.emit('sidebar:action', 'tf-story-apply-mode');
                 });
                 var orchApply = root.querySelector('[data-orch-apply]');
                 if (orchApply) orchApply.addEventListener('click', function () {
-                    saveEditVar();
+                    //saveEditVar();
                     if (T && T.plugin) T.plugin.emit('sidebar:action', 'tf-story-apply-mode');
                 });
                 // 台词数量（数字，存为整数）
@@ -2537,13 +2554,13 @@
                     var v = parseInt(lc.value, 10);
                     if (isNaN(v) || v < 1) v = 20;
                     _edit.lineCount = v;
-                    saveEditVar();
+                    //saveEditVar();
                 });
                 // 意图识别模式
                 var im = root.querySelector('[data-intent-mode]');
                 if (im) im.addEventListener('change', function () {
                     _edit.intentMode = im.value;
-                    saveEditVar();
+                    //saveEditVar();
                 });
                 // 检测编排器插件并提示
                 if (root.querySelector('#tf-orch-note')) detectStagePlugin();
