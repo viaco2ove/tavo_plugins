@@ -1250,31 +1250,38 @@ function notifyBootStage(stage, detail) {
 // 恢复静态数据：global -> chat（tavo_chat_reset 清了 chat，global 是权威备份）
 function restoreStaticData() {
   let restored = false;
+  // chat scope 名（不带 chat_id）→ 写回 chat 用
   const editName = ns('edit');
+  // global scope 名（带 chat_id）→ 从 global 读用
+  const editGlobalName = nsGlobal('edit');
   const staticName = 'tmm_story_static' + (_currentChatId ? '_' + _currentChatId : '');
-  const names = [editName, staticName];
-  for (const name of names) {
-    console.log('[event_manager][tf_story][restore] checking name=' + name);
+  // 遍历 [chatName, globalReadName] 对
+  const pairs = [
+    { chat: editName, global: editGlobalName },
+    { chat: staticName, global: staticName },
+  ];
+  for (const { chat, global: globalName } of pairs) {
+    console.log('[event_manager][tf_story][restore] checking chat=' + chat + ' global=' + globalName);
     try {
       // chat 里还有就跳过（正常续玩）
-      const cv = readChatVar(name);
+      const cv = readChatVar(chat);
       if (cv && typeof cv === 'object' && Object.keys(cv).length) continue;
-      // 从 global 恢复
+      // 从 global 恢复（用带 chat_id 的 global 变量名）
       const gv = (() => {
         try {
-          let g = tavo.get(name, 'global');
+          let g = tavo.get(globalName, 'global');
           let guard = 0;
           while (g && typeof g === 'object' && g.found !== undefined && 'value' in g && guard < 5) { g = g.value; guard++; }
           return g;
         } catch (e) { return null; }
       })();
-      console.log('[event_manager][tf_story][restore] name=' + name + ' gv=' + (gv ? JSON.stringify(gv).slice(0, 200) : 'null'));
-      // 检查 global 数据是否有实质内容（防止 {chapters:[{...}]} 被 Object.keys().length===1 误判为空）
+      console.log('[event_manager][tf_story][restore] chat=' + chat + ' gv=' + (gv ? JSON.stringify(gv).slice(0, 200) : 'null'));
+      // 检查 global 数据是否有实质内容
       const hasContent = (gv && typeof gv === 'object') ? (() => {
-        if (name === editName) {
+        if (chat === editName) {
           // tf_story.edit: 只要有 chapters 数组（哪怕是空的 [{title:...}]）就算有内容
           return Array.isArray(gv.chapters) && gv.chapters.length > 0;
-        } else if (name === staticName) {
+        } else if (chat === staticName) {
           // tmm_story_static: 只要有 characters 数组就算有内容
           return Array.isArray(gv.characters) && gv.characters.length > 0;
         }
@@ -1282,12 +1289,12 @@ function restoreStaticData() {
       })() : false;
       console.log('[event_manager][tf_story][restore] hasContent=' + hasContent);
       if (hasContent) {
-        tavo.set(name, gv, 'chat');
-        console.log('[event_manager][tf_story][restore] restored: ' + name);
+        tavo.set(chat, gv, 'chat');
+        console.log('[event_manager][tf_story][restore] restored: ' + chat);
         restored = true;
       }
     } catch (e) {
-      console.warn('[event_manager][tf_story][restore] error for ' + name + ': ' + (e && e.message));
+      console.warn('[event_manager][tf_story][restore] error for ' + chat + ': ' + (e && e.message));
     }
   }
   return restored;
