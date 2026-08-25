@@ -881,6 +881,7 @@ async function runMemoryAgent(directive) {
     const llm = (typeof window !== 'undefined') ? window.tf_llm : null;
     let raw;
     let timeoutHandle;
+     console.log('[memory_manager][tmm] runMemoryAgent: calling tf_llm.callDirect prompt:',prompt);
     if (llm && typeof llm.callDirect === 'function') {
       try {
         raw = await Promise.race([

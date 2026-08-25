@@ -420,6 +420,23 @@ async function _llmJudgeEventProgress(progress, chapters, recentDialogue) {
   const curEvent = (curPhase && curPhase.events) ? (curPhase.events[eventIdx] || null) : null;
   if (!curEvent) return null;
 
+  // Parse recentDialogue into object array (align to toonflow-game-app)
+  let recentDialogueList = [];
+  if (typeof recentDialogue === 'string') {
+    try { recentDialogueList = JSON.parse(recentDialogue); } catch (_) {
+      recentDialogueList = String(recentDialogue || '').split(/\n/).filter(Boolean).map(line => {
+        const colonIdx = line.indexOf(':');
+        if (colonIdx > 0) {
+          return { role: line.slice(0, colonIdx).trim(), content: line.slice(colonIdx + 1).trim() };
+        }
+        return { role: 'user', content: line };
+      });
+    }
+  } else if (Array.isArray(recentDialogue)) {
+    recentDialogueList = recentDialogue;
+  }
+  recentDialogueList = recentDialogueList.slice(-10);
+
   const snapshot = {
     chapter: { id: idx, title: chapter.title || '' },
     current_event: {
@@ -431,13 +448,33 @@ async function _llmJudgeEventProgress(progress, chapters, recentDialogue) {
       facts: curEvent.facts || [],
       label: curEvent.label || curEvent.name || '',
     },
-    current_stage: curPhase ? { index: phaseIdx, name: curPhase.name || '', label: curPhase.label || curPhase.name || '' } : null,
-    next_stage: phases[phaseIdx + 1] ? { index: phaseIdx + 1, name: phases[phaseIdx + 1].name || '', label: phases[phaseIdx + 1].label || phases[phaseIdx + 1].name || '' } : null,
+    current_progress: {
+      phase_index: phaseIdx,
+      stage_index: 0,
+      total_stages: (curPhase && curPhase.events) ? curPhase.events.length : 0,
+      completed_events: progress.completedEvents || [],
+      user_speak_count: 0,
+      user_speak_required: null,
+    },
+    current_stage: curPhase ? {
+      index: phaseIdx,
+      label: curPhase.label || curPhase.name || '',
+      summary: curEvent.summary || '',
+      user_speak_required: null,
+    } : null,
+    next_stage: phases[phaseIdx + 1] ? {
+      index: phaseIdx + 1,
+      label: phases[phaseIdx + 1].label || phases[phaseIdx + 1].name || '',
+      summary: (phases[phaseIdx + 1].events && phases[phaseIdx + 1].events[0]) ? (phases[phaseIdx + 1].events[0].summary || '') : '',
+    } : null,
     next_event: (curPhase && curPhase.events) ? (curPhase.events[eventIdx + 1] || null) : null,
-    recent_dialogue: String(recentDialogue || '').slice(-1500),
+    latest_message: {
+      role: 'user',
+      content: String(recentDialogue || '').slice(-500),
+    },
+    recent_dialogue: recentDialogueList,
   };
   const userPrompt = JSON.stringify(snapshot, null, 2);
-  console.log("[event_manager][_llmJudgeEventProgress] userPrompt:", userPrompt);
   console.log("[event_manager][_llmJudgeEventProgress] userPrompt:", userPrompt);
   let raw = null;
   try {
@@ -2317,6 +2354,7 @@ result=continue:
 `;
 
 // 构建章节判定输入快照
+// build chapter judge input snapshot (align to toonflow-game-app)
 async function buildChapterJudgeSnapshot(chapter, progress, latestMessageContent, recentDialogue) {
   const phases = progress.phases || [];
   const phaseIdx = Math.max(0, progress.currentPhase || 0);
@@ -2327,23 +2365,49 @@ async function buildChapterJudgeSnapshot(chapter, progress, latestMessageContent
   const nextEv = events[eventIdx + 1] || null;
   const isUserNode = /用户发言/.test(curEv.name || '');
 
+  // ending_rules from runtimeOutline
+  const runtimeOutline = chapter && chapter.runtimeOutline;
+  const endingRules = runtimeOutline && runtimeOutline.endingRules ? runtimeOutline.endingRules : null;
+
   const nextEventInfo = nextEv ? {
     index: eventIdx + 2,
     kind: /用户发言/.test(nextEv.name || '') ? 'user' : 'scene',
     label: nextEv.name || '',
-    summary: nextEv.name || '',
-    transition_hint: '',
+    summary: nextEv.summary || nextEv.name || '',
+    transition_hint: nextEv.transitionHint || '',
   } : null;
 
-  // 读取全局背景
+  // read global background
   const edit = getEdit();
   const worldGlobalBackground = (edit.globalBackground || '').slice(0, 500);
+
+  // recent_dialogue as object array (align to toonflow-game-app)
+  let recentDialogueList = [];
+  if (Array.isArray(recentDialogue)) {
+    recentDialogueList = recentDialogue.map(item => ({
+      role: item.role || 'user',
+      role_type: item.role_type || (item.role === 'user' ? 'player' : 'npc'),
+      content: String(item.content || '').replace(/<[^>]+>/g, '').slice(0, 160),
+    })).filter(item => item.content);
+  } else if (typeof recentDialogue === 'string') {
+    recentDialogueList = String(recentDialogue || '').split(/\n/).filter(Boolean).slice(-10).map(line => {
+      const colonIdx = line.indexOf(':');
+      return {
+        role: colonIdx > 0 ? line.slice(0, colonIdx).trim() : 'user',
+        role_type: colonIdx > 0 ? 'npc' : 'player',
+        content: colonIdx > 0 ? line.slice(colonIdx + 1).trim() : line,
+      };
+    });
+  }
+
+  // current_event.status from curEv.state or progress
+  const curEventStatus = curEv.state || (curEv.status || 'active');
 
   return {
     chapter: {
       title: chapter?.title || '未命名章节',
       completion_condition: chapter?.successCondition || null,
-      ending_rules: null,
+      ending_rules: endingRules,
       content: (chapter?.content || '').slice(0, 500),
     },
     world_intro: (edit.intro || '').slice(0, 300),
@@ -2351,21 +2415,20 @@ async function buildChapterJudgeSnapshot(chapter, progress, latestMessageContent
     current_event: {
       index: eventIdx + 1,
       kind: isUserNode ? 'user' : 'scene',
-      flow: 'chapter_content',
-      status: curEv.state || 'active',
-      summary: (phase.name || chapter?.title || '') + (curEv.name ? ' > ' + curEv.name : ''),
-      facts: [phase.name || '', curEv.name || ''].filter(Boolean),
+      flow: curEv.flow || 'chapter_content',
+      status: curEventStatus,
+      summary: curEv.summary || curEv.name || '现场',
+      facts: Array.isArray(curEv.facts) ? curEv.facts : ([phase.name || '', curEv.name || '']).filter(Boolean),
     },
     next_event: nextEventInfo,
     runtime_state: {
-      completed_events: [],
-      message_content: (latestMessageContent || '').replace(/<[^>]+>/g, '').slice(0, 200),
+      completed_events: progress.completedEvents || [],
+      message_content: String(latestMessageContent || '').replace(/<[^>]+>/g, '').slice(0, 200),
       event_type: 'on_message',
     },
-    recent_dialogue: recentDialogue,
+    recent_dialogue: recentDialogueList,
   };
 }
-
 // 调用 LLM 判断章节结局（对齐官方 evaluateChapterOutcomeByAi）
 async function evaluateChapterOutcomeByAi(chapter, progress, latestMessageContent) {
   if (!chapter) return null;
