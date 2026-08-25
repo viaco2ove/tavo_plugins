@@ -55,7 +55,7 @@ function readVar(name, scope) {
 }
 
 function writeVar(name, value, scope) {
-  console.log('[event_manager][tf_story][writeVar]: ' + JSON.stringify({name:name,scope:scope}));
+  console.log('[event_manager][tf_story_game][writeVar]: ' + JSON.stringify({name:name,scope:scope}));
   try { tavo.set(name, value, scope || 'chat'); } catch(e) { warn('writeVar error', e.message); }
 }
 

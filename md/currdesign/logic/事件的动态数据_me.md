@@ -88,3 +88,8 @@ tf_story.edit 变成了空的
 修之前确认一下程序sync_story 有没有同步globla 的 tf_story_{chat_id} ，插件读写的是不是global的 tf_story_{chat_id}
 
 验证：tf_story_{chat_id} 数据的初始值没有问题
+
+## 
+[i]阶段 1: 苏醒
+[]穿越醒来 []发现身份 []用户发言
+[]穿越醒来 []发现身份 []用户发言
