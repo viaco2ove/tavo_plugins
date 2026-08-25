@@ -2157,7 +2157,6 @@
                 } catch (e) {
                 }
                 console.log('[event_manager][_llmJudgeEventProgress][progressHtml][tf_progress]progress:', JSON.stringify(p) );
-
                 if (!p) return '<div class="tf-card"><div class="tf-card__text">尚未开始判定（用户还没发言）</div></div>';
                 var chapters = (_edit && _edit.chapters) || [];
                 var total = chapters.length;

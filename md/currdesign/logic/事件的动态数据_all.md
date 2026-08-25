@@ -1,4 +1,4 @@
-# 事件的动态数据
+# 事件的动态数据-all
 
 > 基于 `plugins/toonflow_story_event_manager/entry.js` v1.4.0 实际代码。
 

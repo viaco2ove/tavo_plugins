@@ -1,4 +1,4 @@
-# 事件的动态数据 生命周期
+# 事件的动态数据 生命周期-ui 篇
 ## 初始化的静态数据来源：
 1. sync_story 把 story_sync_config.json 的数据写入 tf_story.edit
 2. rebuildDynamicData() 读 tf_story.edit.chapters[0].content（就是那些 ## 第一阶段 ### 事件1 的文本）
