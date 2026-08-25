@@ -1,5 +1,5 @@
 {
-  "story_sync_mode": "--all --force",
-  "story_sync_file": ".cache/story/avd_sj/谁让这个山大王修仙的/story_sync_config.json",
-  "story_sync_cache":".cache/story/avd_sj/谁让这个山大王修仙的/story_cache"
+  "story_sync_mode": "--all --force --duplicate-delete -clean-cache",
+  "story_sync_file": ".cache/story/real_sj/谁让这个山大王修仙的/story_sync_config.json",
+  "story_sync_cache":".cache/story/real_sj/谁让这个山大王修仙的/story_cache"
 }

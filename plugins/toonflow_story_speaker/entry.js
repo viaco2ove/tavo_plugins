@@ -437,7 +437,8 @@ async function voice_gen_play(steamCharEntry,speechText){
           }
 }
 async function voice_gen_play_steam(steamCharEntry, speechText){
-   // 8. 流式完成后 - 调用 voice 插件生成 + 播放语音
+          // 8. 流式完成后 - 调用 voice 插件生成 + 播放语音
+          await new Promise(resolve => setTimeout(resolve, 200));
           console.log('[speaker][tf_speaker][steam] 检查 voice 插件: charEntry=' + (steamCharEntry ? steamCharEntry.id : 'null') + ' tf_voice=' + (window.tf_voice ? 'exists' : 'MISSING') + ' playFor=' + (window.tf_voice && typeof window.tf_voice().playFor));
           if (steamCharEntry && steamCharEntry.id && speechText && window.tf_voice) {
             try {
@@ -462,7 +463,7 @@ async function voice_gen_play_steam(steamCharEntry, speechText){
           } else {
             console.warn('[speaker][tf_speaker][steam] voice 跳过: charEntry=' + (steamCharEntry ? steamCharEntry.id : 'null') + ' text=' + (speechText ? speechText.length : 0));
           }
-          await new Promise(resolve => setTimeout(resolve, 500));
+          await new Promise(resolve => setTimeout(resolve, 1000));
 
 }
 

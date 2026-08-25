@@ -362,6 +362,47 @@ def _sync_sprites(client, chat_id, char_ids, story_dir, config, echo, sprite_ids
     # NPC 角色（非 narrator，非 persona）
     persona_name = config.get("persona", {}).get("name", "")
 
+    # 加载 roles.json，获取 files.avatar 路径
+    roles_index = {}
+    roles_json_path = os.path.join(story_dir, "ex", "roles.json")
+    if os.path.isfile(roles_json_path):
+        try:
+            with open(roles_json_path, encoding="utf-8") as f:
+                roles_data = json.load(f)
+            for key in ("npc", "player", "narrator"):
+                v = roles_data.get(key)
+                if isinstance(v, list):
+                    for role in v:
+                        if role.get("name"):
+                            roles_index[role["name"]] = role
+                elif isinstance(v, dict) and v.get("name"):
+                    roles_index[v["name"]] = v
+        except Exception as e:
+            echo(f"  [WARN] roles.json 读取失败: {e}")
+
+    def _resolve_avatar_from_roles(name):
+        """从 roles.json 解析 avatar 路径"""
+        role = roles_index.get(name, {})
+        avatar_rel = (role.get("files") or {}).get("avatar", "")
+        if avatar_rel:
+            # 处理反斜杠路径
+            avatar_rel = avatar_rel.replace("\\", "/")
+            # 尝试多种路径：直接、ex/ 前缀、ex/avatars/ 前缀
+            candidates = [
+                os.path.join(story_dir, avatar_rel),
+                os.path.join(story_dir, "ex", avatar_rel),
+                os.path.join(story_dir, "ex", "avatars", avatar_rel.split("/", 1)[-1] if "/" in avatar_rel else avatar_rel),
+            ]
+            for avatar_abs in candidates:
+                if os.path.isfile(avatar_abs):
+                    ext = os.path.splitext(avatar_abs)[1]
+                    echo(f"  [DEBUG] roles.json avatar for {name}: {avatar_rel} -> found: {avatar_abs} ({ext})")
+                    return avatar_abs, ext
+            echo(f"  [DEBUG] roles.json avatar for {name}: {avatar_rel} -> NOT FOUND in candidates: {candidates}")
+        else:
+            echo(f"  [DEBUG] roles.json has no avatar for {name}")
+        return None, ".png"
+
     for name, cid in use_ids.items():
         # 跳过 narrator 和 persona
         if name == persona_name:
@@ -373,9 +414,11 @@ def _sync_sprites(client, chat_id, char_ids, story_dir, config, echo, sprite_ids
         entry = {"id": cid, "name": name, "roleType": "npc", "fg": "", "bg": ""}
         ex_dir = os.path.join(story_dir, "ex", "avatars", name)
 
-        fg_path = None; fg_ext = ".png"
-        if os.path.isdir(ex_dir):
-            # 优先 avatar.webp（AI 高清增强版），其次 original.png，最后 avatars/name.png
+        # 优先从 roles.json 读取 avatar 路径
+        fg_path, fg_ext = _resolve_avatar_from_roles(name)
+
+        # 兜底：如果 roles.json 没有 avatar，硬编码搜索
+        if not fg_path and os.path.isdir(ex_dir):
             for fn, ext in [("avatar.webp", ".webp"), ("original.png", ".png")]:
                 p = os.path.join(ex_dir, fn)
                 if os.path.isfile(p):
@@ -412,7 +455,18 @@ def _sync_sprites(client, chat_id, char_ids, story_dir, config, echo, sprite_ids
     # persona（固定 sprite_fg_1.{ext}）
     p_entry = {"id": "", "name": persona_name, "roleType": "npc", "fg": "", "bg": ""}
     ex_dir = os.path.join(story_dir, "ex", "avatars", persona_name)
-    if os.path.isdir(ex_dir):
+
+    # 优先从 roles.json 读取 persona 的 avatar
+    persona_avatar_path, persona_avatar_ext = _resolve_avatar_from_roles(persona_name)
+    if persona_avatar_path:
+        with open(persona_avatar_path, "rb") as f:
+            b64 = base64.b64encode(f.read()).decode()
+        dest = f"sprite_fg_1{persona_avatar_ext}"
+        r = client.file_save(chat_id, dest, b64, scope="chat")
+        p_entry["fg"] = r.get("path", "")
+        echo(f"  persona fg (from roles.json) -> {p_entry['fg']}")
+    elif os.path.isdir(ex_dir):
+        # 兜底：硬编码搜索
         for fn, ext in [("avatar.webp", ".webp"), ("original.png", ".png")]:
             p = os.path.join(ex_dir, fn)
             if os.path.isfile(p):
@@ -423,6 +477,7 @@ def _sync_sprites(client, chat_id, char_ids, story_dir, config, echo, sprite_ids
                 p_entry["fg"] = r.get("path", "")
                 echo(f"  persona fg -> {p_entry['fg']}")
                 break
+    if os.path.isdir(ex_dir):
         bp = os.path.join(ex_dir, "background.png")
         if os.path.isfile(bp):
             with open(bp, "rb") as f:

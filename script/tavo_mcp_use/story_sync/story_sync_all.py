@@ -933,6 +933,41 @@ def sync_sprites(http_url, token, chat_id, config, story_dir, dry):
     img_dir = os.path.join(story_dir, "image")
     char_map = config.get("_char_id_map", {})  # {name: tavo_id}
 
+    # 加载 roles.json，获取 files.avatar 路径
+    roles_index = {}
+    roles_json_path = os.path.join(story_dir, "ex", "roles.json")
+    if os.path.isfile(roles_json_path):
+        try:
+            with open(roles_json_path, encoding="utf-8") as f:
+                roles_data = json.load(f)
+            for key in ("npc", "player", "narrator"):
+                v = roles_data.get(key)
+                if isinstance(v, list):
+                    for role in v:
+                        if role.get("name"):
+                            roles_index[role["name"]] = role
+                elif isinstance(v, dict) and v.get("name"):
+                    roles_index[v["name"]] = v
+        except Exception as e:
+            print("  [WARN] roles.json 读取失败: %s" % e)
+
+    def _resolve_avatar_from_roles(name):
+        """从 roles.json 解析 avatar 路径"""
+        role = roles_index.get(name, {})
+        avatar_rel = (role.get("files") or {}).get("avatar", "")
+        if avatar_rel:
+            avatar_rel = avatar_rel.replace("\\", "/")
+            candidates = [
+                os.path.join(story_dir, avatar_rel),
+                os.path.join(story_dir, "ex", avatar_rel),
+                os.path.join(story_dir, "ex", "avatars", avatar_rel.split("/", 1)[-1] if "/" in avatar_rel else avatar_rel),
+            ]
+            for avatar_abs in candidates:
+                if os.path.isfile(avatar_abs):
+                    ext = os.path.splitext(avatar_abs)[1]
+                    return avatar_abs, ext
+        return None, ".png"
+
     # 先处理 persona 立绘
     p = config.get("persona", {})
     persona_name = p.get("name", "")
@@ -940,12 +975,14 @@ def sync_sprites(http_url, token, chat_id, config, story_dir, dry):
     if persona_name and persona_id:
         persona_entry = {"id": persona_id, "name": persona_name, "roleType": "persona", "fg": "", "bg": ""}
         persona_ex_dir = os.path.join(ex_avatars, persona_name)
-        # fg: 优先 original.png, 再 avatar.webp
-        fg_path = None; fg_ext = ".png"
-        for src_fname, ext in [("original.png", ".png"), ("avatar.webp", ".webp")]:
-            src = os.path.join(persona_ex_dir, src_fname) if os.path.isdir(persona_ex_dir) else None
-            if src and os.path.isfile(src):
-                fg_path = src; fg_ext = ext; break
+        # 优先从 roles.json 读取 avatar 路径
+        fg_path, fg_ext = _resolve_avatar_from_roles(persona_name)
+        # 兜底：硬编码搜索
+        if not fg_path:
+            for src_fname, ext in [("original.png", ".png"), ("avatar.webp", ".webp")]:
+                src = os.path.join(persona_ex_dir, src_fname) if os.path.isdir(persona_ex_dir) else None
+                if src and os.path.isfile(src):
+                    fg_path = src; fg_ext = ext; break
         # bg: background.png
         bg_src = None
         if os.path.isdir(persona_ex_dir):
@@ -980,13 +1017,15 @@ def sync_sprites(http_url, token, chat_id, config, story_dir, dry):
             continue  # 跳过 persona
         entry = {"id": tavo_id, "name": char_name, "roleType": "npc", "fg": "", "bg": ""}
 
-        # 三层 fallback
-        fg_path = None; fg_ext = ".png"
+        # 优先从 roles.json 读取 avatar 路径
+        fg_path, fg_ext = _resolve_avatar_from_roles(char_name)
         ex_dir = os.path.join(ex_avatars, char_name)
-        for src_fname, ext in [("original.png", ".png"), ("avatar.webp", ".webp")]:
-            src = os.path.join(ex_dir, src_fname) if os.path.isdir(ex_dir) else None
-            if src and os.path.isfile(src):
-                fg_path = src; fg_ext = ext; break
+        # 兜底：硬编码搜索
+        if not fg_path:
+            for src_fname, ext in [("original.png", ".png"), ("avatar.webp", ".webp")]:
+                src = os.path.join(ex_dir, src_fname) if os.path.isdir(ex_dir) else None
+                if src and os.path.isfile(src):
+                    fg_path = src; fg_ext = ext; break
         if not fg_path:
             old = os.path.join(old_avatars, char_name + ".png")
             if os.path.isfile(old):

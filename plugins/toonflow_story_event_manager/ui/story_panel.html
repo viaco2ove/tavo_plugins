@@ -2186,6 +2186,7 @@
             var idx = Math.min(p.currentChapterIndex || 0, Math.max(total - 1, 0));
             var cur = chapters[idx];
             var h = '<div class="tf-card">';
+            h += '<div id="tf-progress-card">'
             h += '<div class="tf-card__title">故事进度</div>';
             h += '<div class="tf-card__text">总章节: ' + total + ' | 已完成: ' + (p.completedChapters || []).length + ' | 失败尝试: ' + (p.failedAttempts || 0) + '</div>';
             if (p.storyCompleted) h += '<div class="tf-card__text" style="color:#fbbf24;">🎉 故事已完成！</div>';
@@ -2242,8 +2243,25 @@
                 }
             }
             h += '</div>';
+            h += '</div>'; // close #tf-progress-card
             return h;
         }
+
+        // 即时刷新故事进度单元格（不重建整个 panel）
+        window.tfRefreshProgress = function () {
+            try {
+                var el = document.getElementById('tf-progress-card');
+                if (el) {
+                    // progressHtml() 输出已包含 <div id="tf-progress-card">宫套标签
+                    // 拆宫标签后用 innerHTML 直接填入
+                    var html = progressHtml();
+                    var openTagEnd = html.indexOf('>');
+                    if (openTagEnd > 0) {
+                        el.innerHTML = html.substring(openTagEnd + 1).replace(/<\/div>\s*$/, '');
+                    }
+                }
+            } catch (e) { console.warn('[event_manager][tfRefreshProgress] error:', e && e.message); }
+        };
 
         /* ================= 编辑器 ================= */
         var _edit = null;

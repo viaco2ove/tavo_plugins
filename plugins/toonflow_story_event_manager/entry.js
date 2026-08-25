@@ -437,8 +437,8 @@ async function _llmJudgeEventProgress(progress, chapters, recentDialogue) {
     recent_dialogue: String(recentDialogue || '').slice(-1500),
   };
   const userPrompt = JSON.stringify(snapshot, null, 2);
-
-  console.log("[game_orchestration] orchPrompt:", userPrompt);
+  console.log("[event_manager][_llmJudgeEventProgress] userPrompt:", userPrompt);
+  console.log("[event_manager][_llmJudgeEventProgress] userPrompt:", userPrompt);
   let raw = null;
   try {
     if (window.tf_llm && window.tf_llm.callDirect) {
@@ -506,8 +506,27 @@ async function tfEventProgress_advance(messageContext) {
     const recentDialogue = (messageContext && (messageContext.allMessages || messageContext.content)) || '';
     const llmRes = await _llmJudgeEventProgress(progress, chapters, recentDialogue);
     console.log('[event_manager][_llmJudgeEventProgress][tfEventProgress_advance][tf_progress]llmRes', JSON.stringify(llmRes) );
-    tavo.utils.toast('🎉 进度阿推进 llmRes.ended'+llmRes.ended+", reason:"+llmRes.reason);
-    if (!llmRes || !llmRes.ended) return { advanced: false, reason: (llmRes && llmRes.reason) || 'not_ended' };
+    try { if (typeof tavo.utils.toast === 'function') tavo.utils.toast('🎉 进度 llmRes.ended=' + (llmRes && llmRes.ended) + ' reason=' + (llmRes && llmRes.reason)); } catch(e){}
+
+    // 多条件推进判断（对齐 toonflow applyAiEventProgressResolution）
+    // 1) ended=true → 直接推进
+    // 2) progress_summary 包含完成提示
+    // 3) 连续 waiting_input ≥ 5 次 → stall force complete
+    const _summary = (llmRes && llmRes.progress_summary) || '';
+    const _summarySaysComplete = /(已完成.*推进至|已完成.*等待|已完成.*进入|场景.*阶段|阶段.*阶段|推进到.*阶段)/i.test(_summary);
+    if (typeof progress.vars !== 'object' || progress.vars === null) progress.vars = {};
+    if (progress.vars.eventStallCount === undefined || progress.vars.eventStallCount === null) progress.vars.eventStallCount = 0;
+    const _isStall = !!(llmRes && String(llmRes.event_status || '').trim() === 'waiting_input' && !llmRes.ended);
+    const _newStall = _isStall ? (progress.vars.eventStallCount + 1) : 0;
+    progress.vars.eventStallCount = _newStall;
+    const STALL_THRESHOLD = 5;
+    const _stallForce = _newStall >= STALL_THRESHOLD;
+    if (_stallForce) progress.vars.eventStallCount = 0;
+    const _shouldAdvance = !!(llmRes && (llmRes.ended || _summarySaysComplete || _stallForce));
+    console.log('[event_manager][_llmJudgeEventProgress][tfEventProgress_advance] shouldAdvance=' + _shouldAdvance + ' summarySays=' + _summarySaysComplete + ' stall=' + _newStall + ' force=' + _stallForce);
+    if (!llmRes || !_shouldAdvance) return { advanced: false, reason: (llmRes && llmRes.reason) || 'not_ended' };
+    if (!llmRes.ended) llmRes.ended = true;
+
 
     // 推进：对齐 applySessionUserEventProgress 的 completedEvents 标记逻辑
     const phaseIdx = progress.currentPhase || 0;
@@ -562,7 +581,10 @@ async function tfEventProgress_advance(messageContext) {
     const newPhase = phases[newPhaseIdx];
     if (newPhase && newPhase.events && newPhase.events[newEventIdx] && !newPhase.events[newEventIdx].state) {
       newPhase.events[newEventIdx].state = '[i]';
-      tavo.utils.toast('🎉 进度推进'+"newEventIdx:"+newEventIdx+ ":"+progress.progressFacts);
+      const _facts = Array.isArray(progress.progressFacts) ? progress.progressFacts.join('、') : (progress.progressFacts || '');
+      try { if (typeof tavo.utils.toast === 'function')
+        tavo.utils.toast('🎉 进度推进 newEventIdx:' + newEventIdx + ' | ' + _facts);
+      } catch(e){}
     }
     progress.updatedAt = Date.now();
 
@@ -941,7 +963,13 @@ function getProgress() {
 
 function setProgress(p) {
   // tf_progress 动态数据：只写 chat scope（reset 后重始就清空）
-  try { tavo.set(progressNs(), p, 'chat'); return true; } catch (e) { return false; }
+  let ok = false;
+  try { tavo.set(progressNs(), p, 'chat'); ok = true; } catch (e) { console.warn('[event_manager][tf_story_game][setProgress] chat write failed: ' + (e && e.message)); }
+  // 即时刷新 panel 故事进度单元格（如果 panel 打开）
+  try {
+    if (typeof window !== 'undefined' && window.tfRefreshProgress) window.tfRefreshProgress();
+  } catch (e) { /* ignore */ }
+  return ok;
 }
 
 // 章节推进时同步写入 tf_story.edit.currentChapterIndex（供 sprite 等插件监听）
@@ -2189,7 +2217,26 @@ async function applySessionUserEventProgress(chapter, progress, latestMessageCon
     return { advanced: false };
   }
 
+    // 多条件判断（对齐 toonflow）
+  const _sum2 = (resolution.progress_summary) || '';
+  const _sumComplete = /(已完成.*推进至|已完成.*等待|已完成.*进入|场景.*阶段|阶段.*阶段|推进到.*阶段)/i.test(_sum2);
+  if (typeof progress.vars !== 'object' || progress.vars === null) progress.vars = {};
+  if (progress.vars.eventStallCount === undefined || progress.vars.eventStallCount === null) progress.vars.eventStallCount = 0;
+  const _isStall2 = String(resolution.event_status || '').trim() === 'waiting_input' && !resolution.ended;
+  const _newStall2 = _isStall2 ? (progress.vars.eventStallCount + 1) : 0;
+  progress.vars.eventStallCount = _newStall2;
+  const _stallForce2 = _newStall2 >= 5;
+  if (_stallForce2) progress.vars.eventStallCount = 0;
+  const _shouldAdvance2 = !!(resolution.ended || _sumComplete || _stallForce2);
+  console.log('[event_manager][tf_story_game][event_progress] shouldAdvance=' + _shouldAdvance2 + ' summarySays=' + _sumComplete + ' stall=' + _newStall2);
+  if (!_shouldAdvance2) {
+    console.log('[event_manager][tf_story_game][event_progress] LLM ended=false (not forced): ' + (resolution.reason || '').slice(0, 80));
+    return { advanced: false };
+  }
+  if (!resolution.ended) resolution.ended = true;
+
   if (resolution.ended) {
+
     console.log('[event_manager][tf_story_game][event_progress] LLM ended=true: ' + (resolution.reason || '').slice(0, 80));
     _markPhaseCompleted(progress, pi, phaseName);
 
