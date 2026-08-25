@@ -83,10 +83,12 @@ function tfStoryJudge_checkAndAdvance(messageContext) {
     const chapter = chapters[idx];
     if (!chapter) return { chapterStatus: 'completed' };
 
-    // 解析 phases（首次进入新章节时）
+    // 读 chapter.runtimeOutline.phases（sync 预解析），fallback parseProgress
     let prog = Object.assign({}, progress);
     if (!prog.phases || prog.chaptersKey !== chapters.length + ':' + idx) {
-      prog.phases = parseProgress(chapter.content || '');
+      prog.phases = (chapter && chapter.runtimeOutline && Array.isArray(chapter.runtimeOutline.phases) && chapter.runtimeOutline.phases.length)
+        ? chapter.runtimeOutline.phases
+        : parseProgress(chapter.content || '');
       prog.currentPhase = 0;
       prog.currentEvent = 0;
       prog.chaptersKey = chapters.length + ':' + idx;
@@ -540,6 +542,7 @@ async function tfEventProgress_advance(messageContext) {
       if (llmRes.event_status) writeEvt.status = llmRes.event_status;
     }
     // 兼容：progress 顶层保留快照
+    //状态：[s] 完成 / [i] 进行中 / [] 未开始 / [f] 失败
     if (llmRes.progress_summary) progress.progressSummary = llmRes.progress_summary;
     if (llmRes.progress_facts && llmRes.progress_facts.length) {
       progress.progressFacts = [...(progress.progressFacts || []), ...llmRes.progress_facts].slice(-20);
