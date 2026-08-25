@@ -1470,6 +1470,7 @@ tavo.plugin.onSidebarAction('mcs-toggle', async () => {
   try {
     const edit = (readDualScope(storyNs('edit'), storyNsGlobal('edit')) || {});
     edit.orchestration = next;
+    console.log('[event_manager][tf_story][writeBoot] [tf_story.edit]: ' + JSON.stringify(edit));
     tavo.set('tf_story.edit', edit, 'chat');
   } catch (e) {}
   try {

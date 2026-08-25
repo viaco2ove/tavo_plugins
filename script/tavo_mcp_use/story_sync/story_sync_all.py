@@ -819,6 +819,28 @@ def sync_chat(http_url, token, config, char_ids, lorebook_id, persona_id, existi
 # ---------------------------------------------------------------------------
 # 同步章节到 chat 变量
 # ---------------------------------------------------------------------------
+def parse_chapter_phases(content):
+    """从 chapter.content 解析 phases（对齐 entry.js parseProgress 的逻辑）。
+    - '## xxx' 行 = phase
+    - '### xxx' 行 = event（属于上一个 phase）
+    - 标记 [s]/[i]/[f] = state
+    """
+    import re
+    lines = (content or '').split('\n')
+    phases = []
+    current = None
+    for line in lines:
+        m2 = re.match(r'^##\s+(.+)', line)
+        if m2:
+            current = {'name': m2.group(1).strip(), 'events': [], 'index': len(phases)}
+            phases.append(current)
+        elif re.match(r'^###\s+', line) and current is not None:
+            m3 = re.match(r'^###\s+(?:\[[sif]\])?\s*(.+)', line, re.IGNORECASE)
+            name = m3.group(1).strip() if m3 else line[4:].strip()
+            current['events'].append({'name': name, 'state': ''})
+    return phases
+
+
 def sync_chapters(http_url, token, chat_id, config, story_dir, dry):
     print("\n=== 同步章节 ===")
     ch_cfg = config.get("chapters", {})
@@ -833,18 +855,23 @@ def sync_chapters(http_url, token, chat_id, config, story_dir, dry):
         enabled = False
         if fname.startswith("1") or fname == sorted(_glob.glob(ch_dir + "*.json"))[0]:
             enabled = True
+        # 预解析 phases → 存到 chapter.runtimeOutline（对齐 toonflow-game-app 的设计）
+        # 运行时 entry.js 直接读 runtimeOutline.phases，不再重新解析 chapter.content
+        content = ch.get("content", "")
+        runtime_outline = {'phases': parse_chapter_phases(content)}
         chapters.append({
             "title": ch.get("title", fname.replace(".json","")),
-            "content": ch.get("content",""),
+            "content": content,
             "openingRole": ch.get("openingRole",""),
             "openingLine": ch.get("openingText") or ch.get("openingLine",""),
             "background": ch.get("background",""),
             "events": ch.get("events",[]),
             "successCondition": ch.get("completionCondition") or ch.get("successCondition",""),
             "enabled": enabled,
+            "runtimeOutline": runtime_outline,
         })
-        print("  [chapter] %s %s (enabled=%s)" % (
-            fname, chapters[-1]["title"], enabled))
+        print("  [chapter] %s %s (enabled=%s, phases=%d)" % (
+            fname, chapters[-1]["title"], enabled, len(runtime_outline['phases'])))
 
     if chapters and not dry:
         variable_key = 'tf_story_%s.edit' % chat_id

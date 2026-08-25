@@ -484,7 +484,12 @@ async function tfEventProgress_advance(messageContext) {
     const chapter = chapters[idx];
     if (!chapter) return { advanced: false, reason: 'no_chapter' };
     if (!progress.phases || progress.chaptersKey !== chapters.length + ':' + idx) {
-      progress.phases = parseProgress(chapter.content || '');
+      // 优先读 chapter.runtimeOutline.phases（sync_story 阶段预解析）
+      // fallback 才用 parseProgress(chapter.content) 解析原始文本
+      const outlinePhases = (chapter && chapter.runtimeOutline && Array.isArray(chapter.runtimeOutline.phases) && chapter.runtimeOutline.phases.length)
+      ? chapter.runtimeOutline.phases
+      : parseProgress(chapter.content || '');
+      progress.phases = outlinePhases;
       progress.currentPhase = 0;
       progress.currentEvent = 0;
       progress.completedEvents = [];
@@ -509,6 +514,7 @@ async function tfEventProgress_advance(messageContext) {
     if (!progress.completedEvents) progress.completedEvents = [];
     // 标记当前 event 完成
     const eventMarker = 'phase:' + phaseIdx + ':event:' + eventIdx;
+     console.log('[event_manager][_llmJudgeEventProgress][tfEventProgress_advance][tf_progress]eventMarker', eventMarker );
     if (!progress.completedEvents.includes(eventMarker)) progress.completedEvents.push(eventMarker);
     if (eventIdx + 1 < events.length) {
       progress.currentEvent = eventIdx + 1;
@@ -629,6 +635,9 @@ function readVarAnyScope(name) {
 // chatVarName: chat scope 变量名（不带 chat_id）
 // globalVarName: global scope 变量名（带 chat_id）
 function writeVarDual(chatVarName, globalVarName, value) {
+  console.log('[event_manager][tf_story][writeVarDual] writeVarDual chatVarName: ' + chatVarName );
+  console.log('[event_manager][tf_story][writeVarDual] writeVarDual globalVarName: ' + globalVarName);
+  console.log('[event_manager][tf_story][writeVarDual] writeVarDual value: ' + JSON.stringify(value));
   let ok = false;
   try { tavo.set(chatVarName, value, 'chat'); ok = true; } catch (e) { console.warn('[event_manager][tf_story][writeVarDual] chat write failed: ' + (e && e.message)); }
   try { tavo.set(globalVarName, value, 'global'); console.log('[event_manager][tf_story][writeVarDual] global write: ' + globalVarName); } catch (e) { console.warn('[event_manager][tf_story][writeVarDual] global write failed: ' + (e && e.message)); }
@@ -975,7 +984,10 @@ async function judgeAndAdvance(messageContext) {
     console.log('[event_manager][tf_story][judge] 解析章节 content → phases...');
   // 解析事件进度（首次进入新章节时）
   if (!progress.phases || progress.phaptersKey !== chapters.length + ':' + idx) {
-    progress.phases = parseProgress(chapter.content || '');
+    const outlinePhases = (chapter && chapter.runtimeOutline && Array.isArray(chapter.runtimeOutline.phases) && chapter.runtimeOutline.phases.length)
+      ? chapter.runtimeOutline.phases
+      : parseProgress(chapter.content || '');
+    progress.phases = outlinePhases;
     progress.currentPhase = 0;
     progress.currentEvent = 0;
     progress.chaptersKey = chapters.length + ':' + idx;
@@ -1227,6 +1239,7 @@ function readBoot() {
   return (v && typeof v === 'object') ? v : { status: 'uninitialized', chatId: null, openedAt: 0, openingDone: false, stage: 'uninitialized' };
 }
 function writeBoot(b) {
+  console.log('[event_manager][tf_story][writeBoot] [tf_story.boot]: ' + JSON.stringify(b));
   // boot 状态必须写 global scope，否则 tavo_chat_reset 后丢失，无法感知「已就绪」
   try { tavo.set(BOOT_NS, b, 'global'); } catch (e) {}
   // 同时写 chat scope 用于 hot read
