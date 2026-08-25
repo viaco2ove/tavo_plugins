@@ -300,7 +300,7 @@ result=continue:
 async function _llmJudgeChapter(chapter, cond, ctx) {
   const recentDialogue = String(ctx.allMessages || ctx.latestMessage || '').slice(-1500);
   const snapshot = {
-    chapter: { id: chapter.id || (ctx.chapterIndex || 0), title: chapter.title || '' },
+    chapter: { id: chapter.id || (ctx.chapterIndex || 0), title: chapter.title || '' ,content: chapter?.content || '',},
     successCondition: cond,
     chapterContent: (chapter.content || '').slice(0, 2000),
     message_content: ctx.latestMessage || '',
@@ -438,7 +438,7 @@ async function _llmJudgeEventProgress(progress, chapters, recentDialogue) {
   recentDialogueList = recentDialogueList.slice(-10);
 
   const snapshot = {
-    chapter: { id: idx, title: chapter.title || '' },
+     chapter: { id: chapter.id || (ctx.chapterIndex || 0), title: chapter.title || '' ,content: chapter?.content || '',},
     current_event: {
       index: eventIdx,
       kind: curEvent.kind || '',
@@ -540,7 +540,22 @@ async function tfEventProgress_advance(messageContext) {
     const phases = progress.phases || [];
     if (!phases.length) return { advanced: false, reason: 'no_phases' };
 
-    const recentDialogue = (messageContext && (messageContext.allMessages || messageContext.content)) || '';
+    // Fetch recent messages directly (messageContext.allMessages is often empty)
+    let recentDialogue = '';
+    try {
+      const _msgCnt = await tavo.message.count();
+      const _msgStart = Math.max(0, (_msgCnt || 0) - 10);
+      const _msgs = await tavo.message.find([_msgStart, Math.max(0, (_msgCnt || 1) - 1)]);
+      if (Array.isArray(_msgs) && _msgs.length) {
+        recentDialogue = JSON.stringify(_msgs.map(m => ({
+          role: m.characterName || (m.role === 'user' ? '用户' : (m.role === 'assistant' ? 'NPC' : m.role)),
+          content: String(m.content || '').replace(/<[^>]+>/g, '').slice(0, 400),
+        })));
+      }
+    } catch(_) {}
+    if (!recentDialogue) {
+      recentDialogue = (messageContext && (messageContext.allMessages || messageContext.content)) || '';
+    }
     const llmRes = await _llmJudgeEventProgress(progress, chapters, recentDialogue);
     console.log('[event_manager][_llmJudgeEventProgress][tfEventProgress_advance][tf_progress]llmRes', JSON.stringify(llmRes) );
     try { if (typeof tavo.utils.toast === 'function') tavo.utils.toast('🎉 进度 llmRes.ended=' + (llmRes && llmRes.ended) + ' reason=' + (llmRes && llmRes.reason)); } catch(e){}
@@ -2081,10 +2096,7 @@ async function buildEventProgressSnapshot(chapter, progress, latestMessageConten
   const userSpeakCount = recentDialogue.filter(m => m.role === '用户').length;
 
   return {
-    chapter: {
-      id: 0,
-      title: chapter?.title || '未命名章节',
-    },
+     chapter: { id: chapter.id || (ctx.chapterIndex || 0), title: chapter.title || '' ,content: chapter?.content || '',},
     current_event: {
       index: eventIdx + 1,
       kind: isUserNode ? 'user' : 'scene',
