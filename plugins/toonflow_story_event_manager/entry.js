@@ -1554,7 +1554,7 @@ async function bootSequence() {
   notifyBootStage(sessionStage, '检测会话：' + sessionStage);
 
   const restored = restoreStaticData();
-  console.log('[event_manager][tf_story][boot] restored=' + restored);
+  console.log('[event_manager][tf_story][boot][restoreStaticData] restored=' + restored);
   notifyBootStage(sessionStage, '恢复静态数据' + (restored ? '（global -> chat）' : '（无 global 备份）'));
 
   const rebuilt = rebuildDynamicData();
