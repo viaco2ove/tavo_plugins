@@ -246,7 +246,7 @@ async function getCurrentEventText() {
     const ch = chapters[idx];
     if (!ch) return '';
     let s = '【当前章节】' + (ch.title || '未命名') + '\n';
-    s += (ch.content || '').slice(0, 1500);
+    s += (ch.content || '').slice(0, 150000000);
     return s;
   } catch (e) { return ''; }
 }
@@ -260,7 +260,7 @@ async function buildRecentDialogue(n) {
     const msgs = await tavo.message.find([start, count - 1]);
     const lines = (msgs || []).map((m) => {
       const name = m.characterName || (m.role === 'user' ? '用户' : '旁白');
-      return name + '：' + String(m.content || '').replace(/\s+/g, ' ').slice(0, 200);
+      return name + '：' + String(m.content || '').replace(/\s+/g, ' ').slice(0, 2000000);
     });
     return lines.join('\n');
   } catch (e) { return ''; }

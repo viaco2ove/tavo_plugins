@@ -123,7 +123,7 @@ function tfStoryJudge_checkAndAdvance(messageContext) {
       progress: { currentChapterIndex: prog.currentChapterIndex, currentPhase: prog.currentPhase, currentEvent: prog.currentEvent, phases: prog.phases },
       chapterInfo: {
         title: chapter.title || '未命名章节',
-        condition: hasCondition ? cond.slice(0, 100) : null,
+        condition: hasCondition ? cond.slice(0, 100000) : null,
       },
     };
   } catch (e) {
@@ -149,7 +149,7 @@ async function tfStoryJudge_checkChapterDoneLLM(messageContext) {
     const recent = (await getAllMessagesText()) || '';
     const prompt = '判断当前章节是否完成。章节：'
         + (chapter.title||'') + '完成条件：'
-        + cond + '最近对话：' + recent.slice(-1500)
+        + cond + '最近对话：' + recent.slice(-150000)
         + '返回 JSON: {"result":"continue"或"done","reason":"一句话"}';
     let raw;
     try {
@@ -298,11 +298,22 @@ result=continue:
 `;
 
 async function _llmJudgeChapter(chapter, cond, ctx) {
-  const recentDialogue = String(ctx.allMessages || ctx.latestMessage || '').slice(-1500);
+  // Fetch recent messages directly (ctx.allMessages is often empty from callers)
+  let recentDialogue = String(ctx.allMessages || ctx.latestMessage || '').slice(-150000);
+  if (!recentDialogue || recentDialogue.length < 10) {
+    try {
+      const _jc = await tavo.message.count();
+      const _js = Math.max(0, (_jc || 0) - 10);
+      const _jm = await tavo.message.find([_js, Math.max(0, (_jc || 1) - 1)]);
+      if (Array.isArray(_jm) && _jm.length) {
+        recentDialogue = _jm.map(m => (m.characterName || (m.role === 'user' ? '用户' : 'NPC')) + '：' + String(m.content || '').replace(/<[^>]+>/g, '').slice(0, 400)).join('\n');
+      }
+    } catch(_) {}
+  }
   const snapshot = {
     chapter: { id: chapter.id || (ctx.chapterIndex || 0), title: chapter.title || '' ,content: chapter?.content || '',},
     successCondition: cond,
-    chapterContent: (chapter.content || '').slice(0, 2000),
+    chapterContent: (chapter.content || '').slice(0, 222000),
     message_content: ctx.latestMessage || '',
     messageCount: ctx.messageCount || 0,
     recentDialogue,
@@ -470,7 +481,7 @@ async function _llmJudgeEventProgress(progress, chapters, recentDialogue) {
     next_event: (curPhase && curPhase.events) ? (curPhase.events[eventIdx + 1] || null) : null,
     latest_message: {
       role: 'user',
-      content: String(recentDialogue || '').slice(-500),
+      content: String(recentDialogue || '').slice(-50000000),
     },
     recent_dialogue: recentDialogueList,
   };
@@ -549,7 +560,7 @@ async function tfEventProgress_advance(messageContext) {
       if (Array.isArray(_msgs) && _msgs.length) {
         recentDialogue = JSON.stringify(_msgs.map(m => ({
           role: m.characterName || (m.role === 'user' ? '用户' : (m.role === 'assistant' ? 'NPC' : m.role)),
-          content: String(m.content || '').replace(/<[^>]+>/g, '').slice(0, 400),
+          content: String(m.content || '').replace(/<[^>]+>/g, '').slice(0, 4000000000),
         })));
       }
     } catch(_) {}
@@ -2063,7 +2074,7 @@ async function buildEventProgressSnapshot(chapter, progress, latestMessageConten
         return {
           role: role,
           role_type: role_type,
-          content: String(m.content || '').replace(/<[^>]+>/g, '').slice(0, 160),
+          content: String(m.content || '').replace(/<[^>]+>/g, '').slice(0, 160000000),
         };
       });
     }

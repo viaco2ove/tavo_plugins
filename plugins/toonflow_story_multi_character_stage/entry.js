@@ -508,7 +508,7 @@ async function buildMemoryContext() {
       if (c.level_desc) parts.push(c.level_desc);
       if (c.hp != null && c.hp !== '') parts.push('HP' + c.hp + '/' + (100 + (c.level || 1) * 10));
       if (c.mp != null && c.mp !== '') parts.push('MP' + c.mp + '/' + (100 + (c.level || 1) * 10));
-      if (c.role_key_information) parts.push('当前:' + String(c.role_key_information).slice(0, 60));
+      if (c.role_key_information) parts.push('当前:' + String(c.role_key_information).slice(0, 60000));
       castBlock += '- ' + parts.join(' | ') + '\n';
       cards.push({ name: ch.name, roleType, card: c });
     }
@@ -605,7 +605,7 @@ async function buildOrchestrationPrompt(userInput) {
       recentDialogue = msgs.map(m => {
         const name = m.characterName || (m.role === 'user' ? '用户' : '旁白');
         console.log('[multi-character_stage][buildOrchestrationPrompt ]promptParts get 2');
-        return { speaker: name, content: String(m.content || '').slice(0, 150) };
+        return { speaker: name, content: String(m.content || '').slice(0, 150000000) };
       });
     }
   } catch (e) {}
@@ -690,12 +690,12 @@ async function buildOrchestrationPrompt(userInput) {
   const snapshotJson = {
     world: {
       name: '故事世界',
-      worldGlobalBackground: (edit.globalBackground || '').slice(0, 500),
+      worldGlobalBackground: (edit.globalBackground || '').slice(0, 50000000),
     },
     chapter: {
       title: chapter?.title || '未命名章节',
-      directive: (chapter?.background || '').slice(0, 300),
-      opening: (chapter?.openingLine || '').slice(0, 200),
+      directive: (chapter?.background || '').slice(0, 3000),
+      opening: (chapter?.openingLine || '').slice(0, 2000),
       completion_condition: chapter?.successCondition || null,
       condition: (storyStatus && storyStatus.chapterInfo && storyStatus.chapterInfo.condition) || null,
     },
@@ -1163,10 +1163,22 @@ function game_orchestration(userText,intentResult){
       // 触发 1: 章节判定 agent (LLM 为主)
       try {
         if (window.tfStoryJudge && typeof window.tfStoryJudge.checkChapterDoneLLM === 'function') {
+          // Fetch recent messages for chapter judge
+          let _judgeMsgs = '';
+          let _judgeMsgCount = 0;
+          try {
+            const _jc = await tavo.message.count();
+            const _js = Math.max(0, (_jc || 0) - 10);
+            const _jm = await tavo.message.find([_js, Math.max(0, (_jc || 1) - 1)]);
+            if (Array.isArray(_jm) && _jm.length) {
+              _judgeMsgCount = _jm.length;
+              _judgeMsgs = _jm.map(m => (m.characterName || (m.role === 'user' ? '用户' : 'NPC')) + '：' + String(m.content || '').replace(/<[^>]+>/g, '').slice(0, 400)).join('\n');
+            }
+          } catch(_) {}
           const r = await window.tfStoryJudge.checkChapterDoneLLM({
             content: userText || '',
-            allMessages: '',
-            messageCount: 0,
+            allMessages: _judgeMsgs,
+            messageCount: _judgeMsgCount,
           });
           console.log('[multi-character_stage][' + ts() + '] [mcs] 章节判定 result=' + (r && r.result) + ' reason=' + (r && r.reason));
         }
@@ -1175,9 +1187,22 @@ function game_orchestration(userText,intentResult){
       // 触发 2: 事件进度推进 (LLM 为主，对齐 agent_story_event_progress)
       try {
         if (window.tfEventProgress && typeof window.tfEventProgress.advance === 'function') {
+          // Fetch recent messages for event progress
+          let _epMsgs = '';
+          try {
+            const _ec = await tavo.message.count();
+            const _es = Math.max(0, (_ec || 0) - 10);
+            const _em = await tavo.message.find([_es, Math.max(0, (_ec || 1) - 1)]);
+            if (Array.isArray(_em) && _em.length) {
+              _epMsgs = JSON.stringify(_em.map(m => ({
+                role: m.characterName || (m.role === 'user' ? '用户' : 'NPC'),
+                content: String(m.content || '').replace(/<[^>]+>/g, '').slice(0, 400),
+              })));
+            }
+          } catch(_) {}
           const ep = await window.tfEventProgress.advance({
             content: userText || '',
-            allMessages: '',
+            allMessages: _epMsgs,
           });
           console.log('[multi-character_stage][' + ts() + '] [mcs] 事件进度推进 result=' + JSON.stringify(ep));
         } else {

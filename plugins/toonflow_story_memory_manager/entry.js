@@ -586,7 +586,7 @@ async function buildStaticStory(force, maxRetries) {
       const merged = characters.map(c => prevById[c.id] || c);
       const staticStory = {
         name: chat.name || '故事信息',
-        synopsis: scalarText(synopsis).slice(0, 1200),
+        synopsis: scalarText(synopsis).slice(0, 120000),
         characters: merged,
       };
       // 静态基准卡必须写 global scope 才能抗 tavo_chat_reset！
@@ -770,7 +770,7 @@ async function getEventState() {
     const ch = chapters[idx];
     if (!ch) return '（自由模式，无进行中章节）';
     let s = '【当前章节】' + (ch.title || '') + '\n';
-    if (ch.content) s += (ch.content).slice(0, 1200) + '\n';
+    if (ch.content) s += (ch.content).slice(0, 12000000) + '\n';
     if (ch.successCondition) s += '【本章完成条件】' + ch.successCondition + '\n';
     return s;
   } catch (e) { return '（无）'; }
@@ -829,7 +829,7 @@ async function runMemoryAgent(directive) {
     ]);
     const recentDialogue = (Array.isArray(messages) ? messages : []).map(m => ({
       role: m.characterName || (m.role === 'user' ? '用户' : (m.role === 'assistant' ? 'NPC' : m.role)),
-      content: (m.content || '').replace(/<[^>]+>/g, '').slice(0, 400),
+      content: (m.content || '').replace(/<[^>]+>/g, '').slice(0, 400000000),
     }));
     const cur = readChatVar(NS) || defaultState();
     const cardList = buildCharacterCardList();
@@ -992,7 +992,7 @@ async function runMemoryAgent(directive) {
       }
 
       const state = readChatVar(NS) || defaultState();
-      if (finalPatch.summary) state.summary = String(finalPatch.summary).slice(0, 800);
+      if (finalPatch.summary) state.summary = String(finalPatch.summary).slice(0, 8000000000);
       if (Array.isArray(finalPatch.facts)) {
         const newFacts = finalPatch.facts.filter(f => !state.facts.includes(f));
         state.facts = [...state.facts, ...newFacts].slice(-cfg.factCap);
