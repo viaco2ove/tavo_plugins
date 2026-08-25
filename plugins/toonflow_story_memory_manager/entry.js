@@ -817,13 +817,19 @@ async function runMemoryAgent(directive) {
     }
 
     const count = Math.max(cfg.dialogueWindow || 12, 10);
+    // Use count() + positive range (negative indices not supported by tavo.message.find)
+    const msgCnt = await Promise.race([
+      tavo.message.count(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('tavo.message.count timeout 5s')), 5000))
+    ]);
+    const msgStart = Math.max(0, (msgCnt || 0) - count);
     const messages = await Promise.race([
-      tavo.message.find([-count, -1]),
+      tavo.message.find([msgStart, Math.max(0, (msgCnt || 1) - 1)]),
       new Promise((_, reject) => setTimeout(() => reject(new Error('tavo.message.find timeout 5s')), 5000))
     ]);
-    const recentDialogue = messages.map(m => ({
+    const recentDialogue = (Array.isArray(messages) ? messages : []).map(m => ({
       role: m.characterName || (m.role === 'user' ? '用户' : (m.role === 'assistant' ? 'NPC' : m.role)),
-      content: (m.content || '').slice(0, 400),
+      content: (m.content || '').replace(/<[^>]+>/g, '').slice(0, 400),
     }));
     const cur = readChatVar(NS) || defaultState();
     const cardList = buildCharacterCardList();
@@ -858,22 +864,55 @@ async function runMemoryAgent(directive) {
       + ' npcs数量=' + Object.keys((cur.cards&&cur.cards.npcs)||{}).length);
     console.log('[memory_manager][tmm] └─────────────────────────────────────────────');
 
+    // Build prompt aligned to toonflow-game-app buildFullMemoryPromptSections
+    // Read current event info from progress
+    const _mProg = readChatVar(progressVarName()) || {};
+    const _mEventIndex = (_mProg.currentEvent || 0) + 1;
+    const _mPhases = _mProg.phases || [];
+    const _mPhaseIdx = Math.max(0, _mProg.currentPhase || 0);
+    const _mEvtIdx = Math.max(0, _mProg.currentEvent || 0);
+    const _mPhase = _mPhases[_mPhaseIdx] || {};
+    const _mEvts = _mPhase.events || [];
+    const _mEvt = _mEvts[_mEvtIdx] || {};
+    const _isUserNode = /用户发言/.test(_mEvt.name || '');
+    const _mEventContent = [
+      'index:' + _mEventIndex,
+      'kind:' + (_mEvt.kind || (_isUserNode ? 'user' : 'scene')),
+      'summary:' + (_mEvt.summary || _mEvt.name || '当前事件未命名'),
+      _mEvt.facts ? 'facts:' + (Array.isArray(_mEvt.facts) ? _mEvt.facts.join(';') : _mEvt.facts) : '',
+    ].filter(Boolean).join('\n') || '无';
+
+    // Separate player/narrator/npc cards from tmm_story
+    let _playerCardText = '无';
+    let _narratorCardText = '无';
+    try {
+      const _tmmStory = readChatVar(tmmNs('story')) || readChatVar(tmmNs('story_static')) || {};
+      const _tmmChars = Array.isArray(_tmmStory.characters) ? _tmmStory.characters : [];
+      for (const ch of _tmmChars) {
+        const rt = (ch.roleType || 'npc').toLowerCase();
+        if (rt === 'player') _playerCardText = JSON.stringify(ch.card || {}, null, 2);
+        else if (rt === 'narrator') _narratorCardText = JSON.stringify(ch.card || {}, null, 2);
+      }
+    } catch(_) {}
+
     let prompt = '';
-    prompt += '【历史记忆】\n';
-    prompt += '摘要: ' + (cur.summary || '（尚无）') + '\n';
-    prompt += '事实: ' + (cur.facts || []).join('; ') + '\n';
-    prompt += '标签: ' + (cur.tags || []).join(', ') + '\n';
-    prompt += '动态全局背景: ' + (cur.dynamic_world_global_background || '（尚无）') + '\n\n';
-    prompt += '【全局原始背景】\n' + globalBg + '\n\n';
-    prompt += '【当前事件状态】\n' + eventState + '\n\n';
-    prompt += '【新增对话(JSON数组)】\n' + JSON.stringify(recentDialogue) + '\n\n';
-    prompt += '【角色动态参数卡列表(JSON数组)】\n' + cardList + '\n\n';
-    if (worldClock) prompt += '【世界时钟】\n' + JSON.stringify(worldClock) + '\n\n';
+    prompt += '[世界]名称: ' + (edit.title || '未命名') + '\n\n';
+    prompt += '[章节]标题: ' + (ch && ch.title ? ch.title : '无') + '\n\n';
+    prompt += '[当前事件]\n' + _mEventContent + '\n\n';
+    prompt += '[事件增量]\n' + (eventState || '无') + '\n\n';
+    prompt += '[现有记忆摘要]\n' + (cur.summary || '无') + '\n\n';
+    prompt += '[当前事实]\n' + (cur.facts || []).join('; ') + '\n\n';
+    prompt += '[当前标签]\n' + (cur.tags || []).join(', ') + '\n\n';
+    prompt += '[全局原始背景]\n' + globalBg + '\n\n';
+    prompt += '[用户参数卡]\n' + _playerCardText + '\n\n';
+    prompt += '[旁白参数卡]\n' + _narratorCardText + '\n\n';
+    prompt += '[角色动态参数卡列表(JSON数组)]\n' + cardList + '\n\n';
+    prompt += '[新增对话(JSON数组)]\n' + JSON.stringify(recentDialogue) + '\n\n';
+    if (worldClock) prompt += '[世界时钟]\n' + JSON.stringify(worldClock) + '\n\n';
     if (pendingDirective) {
-      prompt += '\n【用户直接指令】\n' + pendingDirective + '\n（按「@记忆管理 特殊指令优先级规则」处理：直接同步更新对应角色卡与记忆，无需等待NPC/旁白回应）\n';
+      prompt += '\n[用户直接指令]\n' + pendingDirective + '（按「@记忆管理 特殊指令优先级规则」处理）\n';
     }
     prompt += '\n请基于以上上下文，输出唯一的 JSON 记忆更新结果。';
-
     console.log('[memory_manager][tmm] runMemoryAgent: calling tf_llm.callDirect (prompt len=' + prompt.length + ')');
     // 改用 tf_llm.callDirect（跟 mcs / llm-opt / classifyLLM 同一通道，已验证能通）
     // 不再用 tavo.generate — 那条 tavo 自带 LLM 通道会卡死

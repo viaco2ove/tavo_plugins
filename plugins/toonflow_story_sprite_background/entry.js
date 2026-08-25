@@ -13,7 +13,7 @@ const sw = (...a) => console.warn('[sprite_background][' + ts() + '] ' + a.join(
 // 背景：tavo.chat.update({ background: { image: '...' } }) 原生 API
 // 前景：DOM 层 #tf-sprite-fg
 
-const NS = 'tf_sprites';
+const NS_SPRITE = 'tf_sprites';
 const BG_NS = 'tf_chapter_backgrounds';
 const FB_NS = 'tf_sprite_fallback_bg';
 const PERSONA_KEY = 'tf_sprite_persona_name'; // 变量名：存 persona 角色名
@@ -50,30 +50,39 @@ async function refreshChatId() {
   return _chatId;
 }
 
+function readGlobalVar(name) {
+  try {
+    let v = tavo.get(name, 'global');
+    let guard = 0;
+    while (v && typeof v === 'object' && v.found !== undefined && 'value' in v && guard < 5) {
+      v = v.value; guard++;
+    }
+    return v;
+  } catch (e) { return null; }
+}
+
 function readVar(name) {
   try {
-    // 先 chat scope 再 global scope
     let raw = null;
-    try { raw = tavo.get(name, 'chat'); } catch(e) {}
-    if (!raw) {
-      try { raw = tavo.get(name, 'global'); } catch(e) {}
-    }
-    // 如果没找到，尝试带 chat_id 的版本（MCP同步脚本写入的格式）
-    // - tf_chapter_backgrounds_{chat_id}（BG_NS）
-    // - tf_story_{chat_id}.edit（name = 'tf_story.edit'）
-    // - tf_sprites_{chat_id}（NS）
-    if (!raw && (name === BG_NS || name === 'tf_story.edit' || name === NS)) {
+    // 对于立绘变量，优先读 global scope 的 tf_sprites_{chatId}（同步脚本写入的格式）
+    if (name === NS_SPRITE || name === BG_NS || name === 'tf_story.edit') {
       const cid = getChatId();
       if (cid) {
         const nameWithId = (name === 'tf_story.edit')
           ? ('tf_story_' + cid + '.edit')
           : (name + '_' + cid);
-        try { raw = tavo.get(nameWithId, 'chat'); } catch(e) {}
-        if (!raw) {
-          try { raw = tavo.get(nameWithId, 'global'); } catch(e) {}
+        try { raw = tavo.get(nameWithId, 'global'); } catch(e) {}
+        if (raw) {
+          sl('[sprite] readVar found global ' + nameWithId);
         }
-        if (raw) sl('[sprite] readVar found with chat_id: ' + nameWithId);
       }
+    }
+    // 兜底：先 chat scope 再 global scope
+    if (!raw) {
+      try { raw = tavo.get(name, 'chat'); } catch(e) {}
+    }
+    if (!raw) {
+      try { raw = tavo.get(name, 'global'); } catch(e) {}
     }
     sl('[sprite] readVar "' + name + '" raw=' + (raw ? JSON.stringify(raw).slice(0, 200) : 'null/undefined'));
     let v = raw;
@@ -164,7 +173,7 @@ async function setBackground(bgPath) {
 // ===== 变量同步恢复：chat reset 后从 global 重建 chat scope =====
 // tavo_chat_reset 清 chat scope 但 global 不清；初始化时恢复
 function syncVarsFromGlobal() {
-  for (const ns of [NS, BG_NS, FB_NS]) {
+  for (const ns of [NS_SPRITE, BG_NS, FB_NS]) {
     try {
       const chatVal = readVar(ns);
       if (chatVal && typeof chatVal === 'object' && Object.keys(chatVal).length) {
@@ -233,7 +242,7 @@ function updateSprite(speakerName) {
     return;
   }
 
-  const sprites = readVar(NS) || {};
+  const sprites = readVar(NS_SPRITE) || {};
   sl('[sprite] tf_sprites=' + JSON.stringify(sprites).slice(0, 300));
 
   const byName = sprites.byName || {};
@@ -322,7 +331,7 @@ tavo.plugin.on('message:added', async (event) => {
     sl('[sprite] user msg -> 切换用户立绘');
     console.log('sprite_background_fun][tf_last_speaker]set');
     try { tavo.set('tf_last_speaker', null, 'chat'); } catch (e) {}
-    const sprites0 = readVar(NS) || {};
+    const sprites0 = readVar(NS_SPRITE) || {};
     const personaName = readVar(PERSONA_KEY) || '纯小白'; // 默认 persona 名
     const personaEntry = (sprites0.byName || {})[personaName] || null;
     if (personaEntry) {
@@ -343,7 +352,7 @@ tavo.plugin.on('message:added', async (event) => {
   const { name: speakerName, id: speakerId } = resolveSpeaker(msg);
   if (!speakerName) { sl('[sprite] no speakerName resolved, skip'); return; }
 
-  const sprites = readVar(NS) || {};
+  const sprites = readVar(NS_SPRITE) || {};
   const byName = sprites.byName || {};
   const entry = byName[speakerName] || null;
   sl('[sprite] message:added → characterName=' + speakerName + ' characterId=' + speakerId + ' entry=' + JSON.stringify(entry));
