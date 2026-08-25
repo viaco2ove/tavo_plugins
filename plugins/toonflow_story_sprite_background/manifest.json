@@ -4,7 +4,7 @@
   "name": {
     "$t": "plugin.name"
   },
-  "version": "1.0.2",
+  "version": "1.0.3",
   "minAppVersion": "1.0.0",
   "entry": "entry.js",
   "author": "viaco",

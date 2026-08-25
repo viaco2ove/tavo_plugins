@@ -1197,7 +1197,7 @@ function game_orchestration(userText,intentResult){
       // 2. 阶段一：编排器 → {speaker, role_type, motive, event_summary, evDigest, nextEvInfo, storyStatus, memCtx}
 
       const { system: orchSystem, user: orchUser, prompt: orchPrompt, evDigest, nextEvInfo, storyStatus, memCtx, chapterIdx, chapterTitle } = await buildOrchestrationPrompt(userText);
-      console.log("[game_orchestration] orchPrompt:", orchPrompt);
+      // console.log("[game_orchestration] orchPrompt:", orchPrompt);
       // ===== 全链路编排 TRACE =====
       console.log('[multi-character_stage]══════════════════════════════════════════════════');
       console.log('[multi-character_stage][' + ts() + '] 🎭 [mcs] ┌─── 编排全链路 TRACE ──────────────────────');

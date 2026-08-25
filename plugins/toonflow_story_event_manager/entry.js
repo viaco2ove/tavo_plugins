@@ -437,6 +437,8 @@ async function _llmJudgeEventProgress(progress, chapters, recentDialogue) {
     recent_dialogue: String(recentDialogue || '').slice(-1500),
   };
   const userPrompt = JSON.stringify(snapshot, null, 2);
+
+  console.log("[game_orchestration] orchPrompt:", userPrompt);
   let raw = null;
   try {
     if (window.tf_llm && window.tf_llm.callDirect) {
@@ -548,7 +550,8 @@ async function tfEventProgress_advance(messageContext) {
     // 事件进度状态：[s] 完成 / [i] 进行中 / [] 未开始 / [f] 失败
     // 如 （phases[currIndex](ph,pi)）-> 阶段pi:ph.name->阶段1:苏醒
     // ph.events -> [s]穿越醒来 [i]发现身份 []用户发言
-    // [s]穿越醒来 [i]发现身份 []用户发言 -> [s]穿越醒来 [s]发现身份 []用户发言
+    // [s]穿越醒来 [i]发现身份 []用户发言 -> [s]穿越醒来 [s]发现身份 [i]用户发言->[s]穿越醒来 [s]发现身份 [s]用户发言
+    // currIndex+1 , 进入下一个阶段
     if (llmRes.progress_summary) progress.progressSummary = llmRes.progress_summary;
     if (llmRes.progress_facts && llmRes.progress_facts.length) {
       progress.progressFacts = [...(progress.progressFacts || []), ...llmRes.progress_facts].slice(-20);

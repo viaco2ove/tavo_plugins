@@ -4,7 +4,7 @@
   "name": {
     "$t": "plugin.name"
   },
-  "version": "0.1.5",
+  "version": "0.1.6",
   "entry": "entry.js",
   "description": {
     "$t": "plugin.description"
