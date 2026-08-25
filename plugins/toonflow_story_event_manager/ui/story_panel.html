@@ -1124,12 +1124,7 @@
                 return 'tf_progress';
             }
 
-            function progressNsGlobal() {
-                // global scope: tf_progress_{chat_id}（带 chat_id）
-                return _panelChatId ? ('tf_progress_' + _panelChatId) : 'tf_progress';
-            }
-
-            // Tavo 的 chat 变量经 T.get 返回的是包装对象 {target,name,found,value}，真实数据在 .value 里。
+                        // Tavo 的 chat 变量经 T.get 返回的是包装对象 {target,name,found,value}，真实数据在 .value 里。
             // 不解包的话 v.chapters / v.level 等都是 undefined，会被误判为"空"并拿默认值覆盖，清空配置。
             function readChatVar(name) {
                 try {
@@ -1990,10 +1985,15 @@
                 return phases;
             }
 
-            // 当前进度快照（从 tf_progress_{chat_id} 读）
+            // 当前进度快照（tf_progress 只在 chat scope，动态数据）
             function getProgressState() {
                 try {
-                    var raw = readVarDualScope(progressNs(), progressNsGlobal());
+                    var raw = T.get(progressNs());
+                    var guard = 0;
+                    while (raw && typeof raw === 'object' && raw.found !== undefined && ('value' in raw) && guard < 5) {
+                        raw = raw.value;
+                        guard++;
+                    }
                     if (raw && typeof raw === 'object') return raw;
                 } catch (e) {
                 }
@@ -2150,9 +2150,16 @@
 
             // 故事进度（章节结局判定器 / 自由模式状态）
             function progressHtml() {
+                // tf_progress 只在 chat scope（动态数据，reset 后清空）
                 var p = null;
                 try {
-                    p = readVarDualScope(progressNs(), progressNsGlobal()) || null;
+                    var raw = T.get(progressNs());
+                    var guard = 0;
+                    while (raw && typeof raw === 'object' && raw.found !== undefined && ('value' in raw) && guard < 5) {
+                        raw = raw.value;
+                        guard++;
+                    }
+                    if (raw && typeof raw === 'object') p = raw;
                 } catch (e) {
                 }
                 console.log('[event_manager][_llmJudgeEventProgress][progressHtml][tf_progress]progress:', JSON.stringify(p) );

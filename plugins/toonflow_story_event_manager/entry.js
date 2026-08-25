@@ -593,9 +593,7 @@ function ns(name) { return NS_BASE + '.' + name; }              // chat scope �
 function nsGlobal(name) {                                        // global scope 用 (tf_story_db_{chatId}.*)
   return _currentChatId ? ('tf_story_db_' + _currentChatId + '.' + name) : (NS_BASE + '.' + name);
 }
-function progressNs() { return PROGRESS_NS_BASE; }               // chat scope 用
-// tf_progress 已废除 global scope（动态数据，只写 chat）
-function progressNsGlobal() { return null; } // 废弃，以防\u4ece chat 备份的老代码
+function progressNs() { return PROGRESS_NS_BASE; }               // tf_progress 动态数据，只在 chat scope
 
 // 向后兼容：NS 和 PROGRESS_NS 仍然指向基础名（不带 chat_id）
 // 主要用于 boot 状态等不需要区分聊天的变量
@@ -916,16 +914,8 @@ function defaultProgress() {
 }
 
 function getProgress() {
-  // 先查 chat scope（tf_progress），再查 global scope（tf_progress_{chat_id}）
+  // tf_progress 动态数据：只读 chat scope
   let v = readChatVar(progressNs());
-  if (!(v && typeof v === 'object')) {
-    try {
-      let g = tavo.get(progressNsGlobal(), 'global');
-      let guard = 0;
-      while (g && typeof g === 'object' && g.found !== undefined && 'value' in g && guard < 5) { g = g.value; guard++; }
-      if (g && typeof g === 'object') v = g;
-    } catch (e) {}
-  }
   return (v && typeof v === 'object') ? v : defaultProgress();
 }
 
@@ -1038,10 +1028,12 @@ async function judgeAndAdvance(messageContext) {
       progress.completedPhases = [];
       progress.completedEvents = [];
       progress.failedAttempts = 0;
-      // 重新解析新章节 phases
+      // 从 chapter.runtimeOutline 读 phases（sync 阶段预解析），fallback parseProgress
       const nextCh = chapters[nextIdx];
       if (nextCh) {
-        progress.phases = parseProgress(nextCh.content || '');
+        progress.phases = (nextCh && nextCh.runtimeOutline && Array.isArray(nextCh.runtimeOutline.phases) && nextCh.runtimeOutline.phases.length)
+          ? nextCh.runtimeOutline.phases
+          : parseProgress(nextCh.content || '');
         progress.chaptersKey = chapters.length + ':' + nextIdx;
       }
       progress.updatedAt = Date.now();
@@ -1304,14 +1296,23 @@ function rebuildDynamicData() {
   const chapters = edit.chapters || [];
   if (!prog || typeof prog !== 'object' || !Array.isArray(prog.completedChapters)) {
     prog = defaultProgress();
-    if (chapters.length) prog.phases = parseProgress(chapters[0].content || '');
+    // 优先读 chapter.runtimeOutline.phases（sync 阶段预解析），fallback 才用 parseProgress
+    if (chapters.length) {
+      const ch0 = chapters[0];
+      prog.phases = (ch0 && ch0.runtimeOutline && Array.isArray(ch0.runtimeOutline.phases) && ch0.runtimeOutline.phases.length)
+        ? ch0.runtimeOutline.phases
+        : parseProgress(ch0.content || '');
+    }
     setProgress(prog);
     rebuilt = true;
   } else if (!prog.phases || !prog.phases.length) {
-    // 进度在但 phases 空（换章后）-> 重新解析当前章节
+    // 进度在但 phases 空（换章后）-> 从 chapter.runtimeOutline 重读
     const idx = Math.min(prog.currentChapterIndex || 0, Math.max(chapters.length - 1, 0));
     if (chapters[idx]) {
-      prog.phases = parseProgress(chapters[idx].content || '');
+      const ch = chapters[idx];
+      prog.phases = (ch && ch.runtimeOutline && Array.isArray(ch.runtimeOutline.phases) && ch.runtimeOutline.phases.length)
+        ? ch.runtimeOutline.phases
+        : parseProgress(ch.content || '');
       prog.currentPhase = 0;
       prog.currentEvent = 0;
       setProgress(prog);
