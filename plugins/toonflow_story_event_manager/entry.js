@@ -87,7 +87,7 @@ function tfStoryJudge_checkAndAdvance(messageContext) {
     // 关键修复（bug A 兜底）：重建 outline 时不要无脑重置指针到 [0][0]。
     // 只有「指针在 outline 里找不到」时才 fallback 到首个 phase/首个 stage。
     let prog = Object.assign({}, progress);
-    if (!prog.runtimeOutline || prog.chaptersKey !== chapters.length + ':' + idx || isOldRuntimeOutlineFormat(prog.runtimeOutline)) {
+    if (!prog.runtimeOutline || prog.chaptersKey !== chapters.length + ':' + idx ) {
       prog.runtimeOutline = resolveChapterRuntimeOutline(chapter, chapter.content || '');
       // 指针：优先保留 prog 已有指针（如果在新 outline 里找得到）
       const phases = prog.runtimeOutline.phases || [];
@@ -612,7 +612,7 @@ async function tfEventProgress_advance(messageContext) {
     const idx = progress.currentChapterIndex || 0;
     const chapter = chapters[idx];
     if (!chapter) return { advanced: false, reason: 'no_chapter' };
-    if (!progress.runtimeOutline || progress.chaptersKey !== chapters.length + ':' + idx || isOldRuntimeOutlineFormat(progress.runtimeOutline)) {
+    if (!progress.runtimeOutline || progress.chaptersKey !== chapters.length + ':' + idx ) {
       // 优先读 chapter.runtimeOutline（sync_story 阶段预解析），fallback 才用 parseProgress
       progress.runtimeOutline = resolveChapterRuntimeOutline(chapter, chapter.content || '');
       // 指针：保留已有（如果在新 outline 里找得到），否则 fallback 到首个未完成 phase
@@ -1230,24 +1230,12 @@ function markStageCompleted(progress, phaseId, stageId) {
   }
 }
 
-// 检测 runtimeOutline 是否是旧格式（phases[].events）还是新格式（phases[].stages）
-// 旧格式没有 id 字段且子级叫 events，新格式有 id 且子级叫 stages
-function isOldRuntimeOutlineFormat(outline) {
-  if (!outline || !Array.isArray(outline.phases) || !outline.phases.length) return false;
-  const first = outline.phases[0];
-  if (!first) return false;
-  // 旧格式：有 events 没有 stages，或没有 id 字段
-  return !!(first.events && !first.stages) || !first.id;
-}
-
-// 安全读取 chapter.runtimeOutline：旧格式（events）强制用 parseProgress 重生成
+// 从 chapter.runtimeOutline 或 content 解析 runtimeOutline
+// 不兼容旧格式：直接用 chapter.runtimeOutline（如果有 phases），否则从 content 重新解析
 function resolveChapterRuntimeOutline(chapter, content) {
   if (!chapter) return parseProgress(content || '');
   const ro = chapter.runtimeOutline;
-  if (ro && Array.isArray(ro.phases) && ro.phases.length && !isOldRuntimeOutlineFormat(ro)) {
-    return ro; // 新格式，直接用
-  }
-  // 旧格式或没有 outline → 从 content 重新解析
+  if (ro && Array.isArray(ro.phases) && ro.phases.length) return ro;
   return parseProgress(content || '');
 }
 
@@ -1616,7 +1604,7 @@ async function judgeAndAdvance(messageContext) {
 
     console.log('[event_manager][tf_story_game][judge] 解析章节 content → runtimeOutline...');
   // 解析事件进度（首次进入新章节时）
-  if (!progress.phases || progress.phaptersKey !== chapters.length + ':' + idx || isOldRuntimeOutlineFormat(progress.runtimeOutline)) {
+  if (!progress.phases || progress.phaptersKey !== chapters.length + ':' + idx ) {
     const outlinePhases = resolveChapterRuntimeOutline(chapter, chapter.content || '').phases;
     progress.phases = outlinePhases;
     progress.currentPhase = 0;
@@ -1959,9 +1947,8 @@ function initProgress(chapters) {
   return prog;
 }
 // 重建动态数据（对齐 Toonflow「重启聊天 = 动态数据重新生成」）：
-// tf_progress 若丢失 -> 按静态章节重新生成；tmm 记忆丢失 -> 重新初始化
+// tf_progress 使用静态章节重新生成；tmm 记忆丢失 -> 重新初始化
 function rebuildDynamicData() {
-  let rebuilt = false;
   // tf_progress
 
   console.log('[event_manager][_llmJudgeEventProgress] [rebuildDynamicData][tf_progress] prog:',JSON.stringify(prog))
@@ -3463,12 +3450,12 @@ _safeOnSide('tf-story-reset', async () => {
 console.log('[event_manager] ConsoleTag installed');
 // look at [md/currdesign/logic/logtag/logtag.md]
 // var whitelist =['event_manager', 'memory_manager'];
-//var blacklist =['memory_manager']
+var blacklist =[]
 var whitelist =['llm_optimization','multi-character_stage'];
 ConsoleTag.patchConsole({
   // mode:'whitelist'/'blacklist'
-  mode: 'whitelist',
-  tags: whitelist,
+  mode: 'blacklist',
+  tags: blacklist,
   minLevel: 'info',
 });
 //例子：
