@@ -662,19 +662,30 @@ function syncStoryDynamicCards() {
     const story = readChatVar(tmmNs('story'));
     if (!story || !story.characters) return;
     const mem = readChatVar(NS) || defaultState();
-    const player = (mem.cards && mem.cards.player) ? mem.cards.player : {};
-    const npcs = (mem.cards && mem.cards.npcs) ? mem.cards.npcs : {};
+    const playerPatch = (mem.cards && mem.cards.player) ? mem.cards.player : {};
+    const npcPatches = (mem.cards && mem.cards.npcs) ? mem.cards.npcs : {};
     let changed = false;
     story.characters.forEach((ch) => {
       let patch = null;
-      if (ch.roleType === 'player' && Object.keys(player).length) patch = player;
-      else if (npcs[ch.name] && Object.keys(npcs[ch.name]).length) patch = npcs[ch.name];
+      if (ch.roleType === 'player' && Object.keys(playerPatch).length) patch = playerPatch;
+      else if (npcPatches[ch.name] && Object.keys(npcPatches[ch.name]).length) patch = npcPatches[ch.name];
       if (patch) {
-        ch.card = { ...ch.card, ...patch };
+        // 深度合并：只覆盖 patch 里的字段，保留 card 原有其他字段
+        ch.card = Object.assign({}, ch.card || {}, patch);
+        // 对数组字段做合并去重，而不是覆盖
+        ['skills', 'items', 'equipment', 'other'].forEach(arrKey => {
+          if (Array.isArray(patch[arrKey]) && patch[arrKey].length) {
+            const existing = Array.isArray(ch.card[arrKey]) ? ch.card[arrKey] : [];
+            const merged = [...existing, ...patch[arrKey]];
+            // 去重
+            ch.card[arrKey] = [...new Set(merged)];
+          }
+        });
+        // level / hp / mp / money 等数值字段：patch 里有就更新，没有就保留
         changed = true;
       }
     });
-    console.log('[memory_manager][tmm_story_static]' );
+    console.log('[memory_manager][tmm_story_static]');
     if (changed) tavo.set(tmmNs('story'), story, 'chat');
   } catch (e) {}
 }
@@ -742,7 +753,24 @@ async function getGlobalBackground() {
   } catch (e) { return '（无）'; }
 }
 
-// 当前事件状态：所在章节标题/内容/完成条件
+// 从章节内容中提取当前事件的详细内容（@旁白/角色台词行等）
+function _extractEventContent(chapterContent, eventName) {
+  if (!chapterContent || !eventName) return '';
+  const lines = chapterContent.split(/\r?\n/);
+  let startIdx = -1;
+  for (let i = 0; i < lines.length; i++) {
+    if (/^###\s+/.test(lines[i].trim()) && lines[i].includes(eventName)) { startIdx = i; break; }
+  }
+  if (startIdx < 0) return '';
+  let endIdx = lines.length;
+  for (let i = startIdx + 1; i < lines.length; i++) {
+    if (/^#{2,3}\s+/.test(lines[i].trim())) { endIdx = i; break; }
+  }
+  return lines.slice(startIdx + 1, endIdx).join('\n').trim().slice(0, 3000);
+}
+
+// 事件增量：只返回当前事件的详细内容（对齐 toonflow eventDeltaText）
+// 不再塞整个章节，让 LLM 精准看到当前事件发生了什么
 async function getEventState() {
   try {
     let edit = readChatVar(storyNs('edit'));
@@ -769,10 +797,19 @@ async function getEventState() {
     const idx = (typeof prog.currentChapterIndex === 'number') ? prog.currentChapterIndex : 0;
     const ch = chapters[idx];
     if (!ch) return '（自由模式，无进行中章节）';
-    let s = '【当前章节】' + (ch.title || '') + '\n';
-    if (ch.content) s += (ch.content).slice(0, 12000000) + '\n';
-    if (ch.successCondition) s += '【本章完成条件】' + ch.successCondition + '\n';
-    return s;
+    // 解析当前事件
+    const phases = prog.phases || [];
+    const phaseIdx = Math.max(0, prog.currentPhase || 0);
+    const eventIdx = Math.max(0, prog.currentEvent || 0);
+    const phase = phases[phaseIdx] || {};
+    const events = phase.events || [];
+    const curEv = events[eventIdx] || {};
+    // 提取当前事件详细内容（@旁白/角色台词行）
+    const eventContent = _extractEventContent(ch.content || '', curEv.name || '');
+    let s = '';
+    if (eventContent) s += eventContent;
+    if (ch.successCondition) s += '\n【本章完成条件】' + ch.successCondition;
+    return s || '（无事件增量）';
   } catch (e) { return '（无）'; }
 }
 
@@ -1054,12 +1091,32 @@ async function runMemoryAgent(directive) {
       const state = readChatVar(NS) || defaultState();
       if (finalPatch.summary) state.summary = String(finalPatch.summary).slice(0, 8000000000);
       if (Array.isArray(finalPatch.facts)) {
-        const newFacts = finalPatch.facts.filter(f => !state.facts.includes(f));
-        state.facts = [...state.facts, ...newFacts].slice(-cfg.factCap);
+        // 合并去重：用子串匹配判断相似事实，避免 LLM 返回微差文本导致重复积累
+        const mergedFacts = [...state.facts];
+        for (const f of finalPatch.facts) {
+          if (!f || !f.trim()) continue;
+          const fLower = f.toLowerCase().trim();
+          const isDup = mergedFacts.some(existing => {
+            const eLower = (existing || '').toLowerCase().trim();
+            return eLower === fLower || eLower.includes(fLower) || fLower.includes(eLower);
+          });
+          if (!isDup) mergedFacts.push(f.trim());
+        }
+        state.facts = mergedFacts.slice(-cfg.factCap);
       }
       if (Array.isArray(finalPatch.tags)) {
-        const newTags = finalPatch.tags.filter(t => !state.tags.includes(t));
-        state.tags = [...state.tags, ...newTags].slice(-cfg.tagCap);
+        // 同样用子串匹配去重
+        const mergedTags = [...state.tags];
+        for (const t of finalPatch.tags) {
+          if (!t || !t.trim()) continue;
+          const tLower = t.toLowerCase().trim();
+          const isDup = mergedTags.some(existing => {
+            const eLower = (existing || '').toLowerCase().trim();
+            return eLower === tLower || eLower.includes(tLower) || tLower.includes(eLower);
+          });
+          if (!isDup) mergedTags.push(t.trim());
+        }
+        state.tags = mergedTags.slice(-cfg.tagCap);
       }
       if (finalPatch.player_card_patch && typeof finalPatch.player_card_patch === 'object'
           && Object.keys(finalPatch.player_card_patch).length) {
@@ -1072,8 +1129,9 @@ async function runMemoryAgent(directive) {
           }
         }
       }
-      if (typeof parsed.dynamic_world_global_background === 'string') {
-        state.dynamic_world_global_background = parsed.dynamic_world_global_background;
+      // 空字符串不覆盖旧值（对齐 toonflow：AI 返回空时保留旧值）
+      if (typeof parsed.dynamic_world_global_background === 'string' && parsed.dynamic_world_global_background.trim()) {
+        state.dynamic_world_global_background = parsed.dynamic_world_global_background.trim();
       }
       state.turnsSinceRefresh = 0;
       state.updatedAt = Date.now();
