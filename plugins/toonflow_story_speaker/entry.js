@@ -80,6 +80,7 @@
 const NS = 'tf_speaker';
 const ORCH_FLAG = 'tf_orch.active';
 let _orchBusy = false; // 编排锁：防止 auto_orchestrate 并发抢占
+let steamMsgRef = null; // 当前流式消息对象（setInterval 完成时用于 tavo.message.update）
 
 // 时间戳函数（用于日志）
 function ts() {
@@ -123,6 +124,8 @@ function storyNs(name) { return 'tf_story.' + name; }
 function storyNsGlobal(name) {
   return _speakerChatId ? ('tf_story_' + _speakerChatId + '.' + name) : ('tf_story.' + name);
 }
+function storySettingNs(name) { return 'tf_story_setting.' + name; }
+function storySettingNsGlobal(name) { return 'tf_story_setting.' + name; }
 function progressVarName() { return 'tf_progress'; }
 function progressVarNameGlobal() {
   return _speakerChatId ? ('tf_progress_' + _speakerChatId) : 'tf_progress';
@@ -156,21 +159,28 @@ function getConfig() {
   };
 }
 
-// 群聊编排设置（来自 event_manager 维护的 tf_story.edit.orchestration）
+// 群聊编排设置：从 tf_story_setting.edit（global scope）读取，多故事共享
 // 'system' = 跟随系统（不接管、不注入动态状态、不显示编排中）；缺省 / 'plugin' = 插件接管
 function getOrchestration() {
   try {
-    const edit = readDualScope(storyNs('edit'), storyNsGlobal('edit')) || {};
-    const v = edit.orchestration;
+    try {
+    let raw = tavo.get(storySettingNsGlobal('edit'), 'global');
+    let guard = 0;
+    while (raw && typeof raw === 'object' && raw.found !== undefined && 'value' in raw && guard < 5) { raw = raw.value; guard++; }
+    const v = (raw && raw.orchestration);
     return v === 'system' ? 'system' : 'plugin';
   } catch (e) { return 'plugin'; }
 }
 
 // 台词数量：发给 agent 的「最近对话」条数（对齐 Toonflow recent_dialogue 入参），默认 20
+// 从 tf_story_setting.edit（global scope）读取，多故事共享
 function getLineCount() {
   try {
-    const edit = readDualScope(storyNs('edit'), storyNsGlobal('edit')) || {};
-    const v = parseInt(edit.lineCount, 10);
+    // 优先读 tf_story_setting.edit（多故事共享配置，global scope）
+    let raw = tavo.get(storySettingNsGlobal('edit'), 'global');
+    let guard = 0;
+    while (raw && typeof raw === 'object' && raw.found !== undefined && 'value' in raw && guard < 5) { raw = raw.value; guard++; }
+    const v = parseInt((raw && raw.lineCount) || 20, 10);
     return (v >= 1) ? v : 20;
   } catch (e) { return 20; }
 }
@@ -524,6 +534,8 @@ var steamCharEntry = null;
       var steamTargetWaitingDiv = null;
       try {
         steamMsg = await tavo.message.append(steamAppendOpts);
+        // 把 steamMsg 保存到外层 setInterval 闭包（流式完成后需要更新消息）
+        steamMsgRef = steamMsg;
         // 等待500毫秒
         await new Promise(resolve => setTimeout(resolve, 500));
         console.log("[tf_speaker][steam] 已 append 占位 msgId=" + (steamMsg && steamMsg.id) + " divId=" + msg_div_id);
@@ -573,11 +585,20 @@ var steamCharEntry = null;
       // 7. 流式输出：直接操作 DOM，每 50ms 填充一个字符
       var steamCharIdx = 0;
       var chunkSize = 2; // 每次填充字符数（打字机效果）
-      var steamInterval = setInterval(async function (steamTargetDiv, msg_div_id, steamTargetWaitingDiv, data,steamCharEntry) {
+      var steamInterval = setInterval(async function (steamTargetDiv, msg_div_id, steamTargetWaitingDiv, data,steamCharEntry, steamMsgRef, steamThinking) {
         if (steamCharIdx >= speechText.length) {
           clearInterval(steamInterval);
           // 流式完成：移除等待效果，替换为光标
           console.log("[tf_speaker][steam] 流式输出完成 len=" + speechText.length);
+          // 把最终台词写回 tavo.message（供其他插件读取 recent_dialogue）
+          if (steamMsgRef && steamMsgRef.id) {
+            try {
+              await tavo.message.update({ id: steamMsgRef.id, content: speechText, reasoning: steamThinking || '' });
+              console.log("[tf_speaker][steam] tavo.message.update 完成 msgId=" + steamMsgRef.id);
+            } catch (e) {
+              console.warn("[tf_speaker][steam] tavo.message.update 失败", e);
+            }
+          }
 
           if (steamTargetWaitingDiv) {
             steamTargetWaitingDiv.innerHTML = '。';
@@ -616,7 +637,7 @@ var steamCharEntry = null;
         }
         await new Promise(resolve => setTimeout(resolve, 1));
         // console.log("[tf_speaker][steam] 流式输出 steamCharIdx=" + steamCharIdx + " len=" + speechText.length + " msg_div_id=" + msg_div_id);
-      }, 50,steamTargetDiv,msg_div_id,steamTargetWaitingDiv,data,steamCharEntry);
+      }, 50,steamTargetDiv,msg_div_id,steamTargetWaitingDiv,data,steamCharEntry,steamMsgRef,steamThinking);
 
       // 注意：流式进行中不要在这里写 TTS/编排逻辑，等 setInterval 内部完成
     } catch(e) {

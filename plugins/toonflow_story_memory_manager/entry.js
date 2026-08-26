@@ -896,8 +896,27 @@ async function runMemoryAgent(directive) {
     } catch(_) {}
 
     let prompt = '';
-    prompt += '[世界]名称: ' + (edit.title || '未命名') + '\n\n';
-    prompt += '[章节]标题: ' + (ch && ch.title ? ch.title : '无') + '\n\n';
+    let _worldTitle = '未命名';
+    try {
+      const _editData = readChatVar(storyNs('edit'));
+      if (_editData && _editData.title) _worldTitle = _editData.title;
+      else {
+        let _g = tavo.get(storyNsGlobal('edit'), 'global');
+        let _gw = 0;
+        while (_g && typeof _g === 'object' && _g.found !== undefined && 'value' in _g && _gw < 5) { _g = _g.value; _gw++; }
+        if (_g && _g.title) _worldTitle = _g.title;
+      }
+    } catch(_) {}
+    prompt += '[世界]名称: ' + _worldTitle + '\n\n';
+    let _chapterTitle = '无';
+    try {
+      const _prog2 = readChatVar(progressVarName()) || {};
+      const _idx2 = _prog2.currentChapterIndex || 0;
+      const _edit2 = readChatVar(storyNs('edit')) || {};
+      const _chapters = _edit2.chapters || [];
+      if (_chapters[_idx2] && _chapters[_idx2].title) _chapterTitle = _chapters[_idx2].title;
+    } catch(_) {}
+    prompt += '[章节]标题: ' + _chapterTitle + '\n\n';
     prompt += '[当前事件]\n' + _mEventContent + '\n\n';
     prompt += '[事件增量]\n' + (eventState || '无') + '\n\n';
     prompt += '[现有记忆摘要]\n' + (cur.summary || '无') + '\n\n';

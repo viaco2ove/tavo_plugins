@@ -311,7 +311,7 @@ async function _llmJudgeChapter(chapter, cond, ctx) {
     } catch(_) {}
   }
   const snapshot = {
-    chapter: { id: chapter.id || (ctx.chapterIndex || 0), title: chapter.title || '' ,content: chapter?.content || '',},
+    chapter: { id: chapter.id || idx, title: chapter.title || '' ,content: chapter?.content || '',},
     successCondition: cond,
     chapterContent: (chapter.content || '').slice(0, 222000),
     message_content: ctx.latestMessage || '',
@@ -449,7 +449,7 @@ async function _llmJudgeEventProgress(progress, chapters, recentDialogue) {
   recentDialogueList = recentDialogueList.slice(-10);
 
   const snapshot = {
-     chapter: { id: chapter.id || (ctx.chapterIndex || 0), title: chapter.title || '' ,content: chapter?.content || '',},
+     chapter: { id: chapter.id || (idx || 0), title: chapter.title || '' ,content: chapter?.content || '',},
     current_event: {
       index: eventIdx,
       kind: curEvent.kind || '',
@@ -569,7 +569,9 @@ async function tfEventProgress_advance(messageContext) {
     }
     const llmRes = await _llmJudgeEventProgress(progress, chapters, recentDialogue);
     console.log('[event_manager][_llmJudgeEventProgress][tfEventProgress_advance][tf_progress]llmRes', JSON.stringify(llmRes) );
-    try { if (typeof tavo.utils.toast === 'function') tavo.utils.toast('🎉 进度 llmRes.ended=' + (llmRes && llmRes.ended) + ' reason=' + (llmRes && llmRes.reason)); } catch(e){}
+    try { if (typeof tavo.utils.toast === 'function') tavo.utils.toast('🎉 进度 llmRes.ended=' + (llmRes && llmRes.ended) + ' reason=' + (llmRes && llmRes.reason)); } catch(e){
+      console.error('[event_manager][_llmJudgeEventProgress]',e);
+    }
 
     // 多条件推进判断（对齐 toonflow applyAiEventProgressResolution）
     // 1) ended=true → 直接推进
@@ -642,6 +644,7 @@ async function tfEventProgress_advance(messageContext) {
     const newPhaseIdx = progress.currentPhase || 0;
     const newEventIdx = progress.currentEvent || 0;
     const newPhase = phases[newPhaseIdx];
+    // tavo.utils.toast('🎉 进度阿推进 llmRes.ended'+llmRes.ended+", reason:"+llmRes.reason);
     if (newPhase && newPhase.events && newPhase.events[newEventIdx] && !newPhase.events[newEventIdx].state) {
       newPhase.events[newEventIdx].state = '[i]';
       const _facts = Array.isArray(progress.progressFacts) ? progress.progressFacts.join('、') : (progress.progressFacts || '');
@@ -699,6 +702,8 @@ function nsGlobal(name) {                                        // global scope
   return _currentChatId ? ('tf_story_db_' + _currentChatId + '.' + name) : (NS_BASE + '.' + name);
 }
 function progressNs() { return PROGRESS_NS_BASE; }               // tf_progress 动态数据，只在 chat scope
+function settingNs(name) { return 'tf_story_setting.' + name; }  // 共享配置，多故事共用
+function settingNsGlobal(name) { return 'tf_story_setting.' + name; }
 
 // 向后兼容：NS 和 PROGRESS_NS 仍然指向基础名（不带 chat_id）
 // 主要用于 boot 状态等不需要区分聊天的变量
@@ -781,19 +786,32 @@ async function stageState() {
 }
 
 
-// 群聊编排：读 tf_story.edit.orchestration（'system' 跟随系统 / 'plugin' 角色编排插件）
-// 缺省默认 = 'plugin'（角色编排插件接管）；只有明确查到编排插件被禁用才退回 'system'。
+// 群聊编排：从 tf_story_setting.edit.orchestration（global scope）读取，多故事共享
+// 'system' = 跟随系统 / 'plugin' = 角色编排插件接管
 async function applyOrchestrationMode() {
   const enabled = cfgGet('enabled', true) !== false;
   if (!enabled) return;
-  const edit = getEdit();
-  let orch = edit.orchestration;
+  // 读 tf_story_setting.edit（多故事共享配置）
+  let orch = null;
+  try {
+    let raw = tavo.get(settingNsGlobal('edit'), 'global');
+    let guard = 0;
+    while (raw && typeof raw === 'object' && raw.found !== undefined && 'value' in raw && guard < 5) { raw = raw.value; guard++; }
+    if (raw && typeof raw === 'object' && raw.orchestration) orch = raw.orchestration;
+  } catch (e1) {}
   const state = await stageState();
   const installed = state !== 'disabled';
   if (!orch) {
     orch = (state === 'disabled') ? 'system' : 'plugin';
-    edit.orchestration = orch;
-    setEdit(edit);
+    // 写回 tf_story_setting.edit（多故事共享）
+    try {
+      let raw = tavo.get(settingNsGlobal('edit'), 'global');
+      let guard = 0;
+      while (raw && typeof raw === 'object' && raw.found !== undefined && 'value' in raw && guard < 5) { raw = raw.value; guard++; }
+      const setting = (raw && typeof raw === 'object') ? raw : {};
+      setting.orchestration = orch;
+      tavo.set(settingNs('edit'), setting, 'global');
+    } catch (e2) {}
   }
   if (orch === 'system') {
     try {
@@ -1278,7 +1296,7 @@ async function getMemoryItems() {
 function defaultEditData() {
   console.log('[event_manager][tf_story_game] │ ？？？ 获取默认编辑数据，请检查检查故事数据异常！！！');
   return {
-    intro: '', globalBackground: '', lineCount: 20, intentMode: 'keyword',
+    intro: '', globalBackground: '',
     chapters: [{ title: '第 1 章', openingRole: '旁白', openingLine: '。。。', background: '', content: '', successCondition: '', conditionVisible: true, entryCondition: '', musicAutoPlay: false }],
   };
 }
@@ -1794,11 +1812,7 @@ _safeOn('chat:opened', async () => {
     if (repaired) setEdit(cur);
   }
 
-  // 台词数量（最近对话入参条数）补全：缺失/非法时回退默认 20（静态配置，受保护不覆盖）
-  if (typeof cur.lineCount !== 'number' || isNaN(cur.lineCount) || cur.lineCount < 1) {
-    cur.lineCount = 20;
-    setEdit(cur);
-  }
+  // lineCount 只读 tf_story_setting.edit，不写回 _edit
 
   // 进度时间戳更新（不重置章节进度等动态数值，仅刷新时间）
   const progress = getProgress();
@@ -2107,7 +2121,7 @@ async function buildEventProgressSnapshot(chapter, progress, latestMessageConten
   const userSpeakCount = recentDialogue.filter(m => m.role === '用户').length;
 
   return {
-     chapter: { id: chapter.id || (ctx.chapterIndex || 0), title: chapter.title || '' ,content: chapter?.content || '',},
+     chapter: { id: chapter.id || (idx || 0), title: chapter.title || '' ,content: chapter?.content || '',},
     current_event: {
       index: eventIdx + 1,
       kind: isUserNode ? 'user' : 'scene',

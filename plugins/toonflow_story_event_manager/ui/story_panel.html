@@ -1110,6 +1110,19 @@
             return 'tf_story.' + name;
         }
 
+        function panelSettingNs(name) {
+            // chat scope: tf_story_setting.{name}（多故事共享配置，写入 global scope）
+            return 'tf_story_setting.' + name;
+        }
+        function panelSettingNsGlobal(name) {
+            // global scope: 同名，写入 global scope 后多聊天共享
+            return 'tf_story_setting.' + name;
+        }
+
+        function panesCacheNs(name) {
+            // chat scope: tf_story.{name}（不带 chat_id）
+            return 'tf_story_cache.' + name;
+        }
         function panelNsGlobal(name) {
             // global scope: tf_story_db_{chat_id}.{name}（带 chat_id）
             return _panelChatId ? ('tf_story_db_' + _panelChatId + '.' + name) : ('tf_story.' + name);
@@ -2159,7 +2172,7 @@
             var names = {scenario: '场景编排', natural: '自然模式', everyone: '所有人', manual: '手动模式'};
             var h = '<div class="tf-card">';
             h += '<div class="tf-card__title">✓ ' + esc(names[mode] || mode) + '（当前）</div>';
-            var orchLabel = (_edit && _edit.orchestration === 'system') ? '跟随系统（Tavo 原生）' : '角色编排插件 → 角色发言插件';
+            var orchLabel = (_setting && _setting.orchestration === 'system') ? '跟随系统（Tavo 原生）' : '角色编排插件 → 角色发言插件';
             h += '<div class="tf-card__text">responseMode = ' + esc(mode) + '，群聊编排 = ' + esc(orchLabel) + '。</div>';
             h += '</div>';
             return h;
@@ -2265,13 +2278,13 @@
 
         /* ================= 编辑器 ================= */
         var _edit = null;
+        var _setting = null;
         var _editChapter = 0;
 
         function defaultEdit() {
             return {
                 intro: '',
                 globalBackground: '',
-                lineCount: 20,
                 chapters: [{
                     title: '第 1 章',
                     openingRole: '旁白',
@@ -2296,8 +2309,26 @@
             if (saved && typeof saved === 'object' && (saved.chapters || saved.intro || saved.globalBackground)) {
                 _edit = saved;
                 if (!_edit.chapters) _edit.chapters = [];
-                if (_edit.lineCount == null || _edit.lineCount === '') _edit.lineCount = 20;
-                if (!_edit.orchestration) _edit.orchestration = 'plugin';
+                // 迁移旧版 _edit 配置项到 _setting（多故事共享配置）
+                var migrated = false;
+                if (_setting) {
+                    if ((_edit.lineCount != null && _edit.lineCount !== '') && (_setting.lineCount == null || _setting.lineCount === '')) {
+                        _setting.lineCount = _edit.lineCount;
+                        delete _edit.lineCount;
+                        migrated = true;
+                    }
+                    if (_edit.orchestration && (_setting.orchestration == null || _setting.orchestration === '')) {
+                        _setting.orchestration = _edit.orchestration;
+                        delete _edit.orchestration;
+                        migrated = true;
+                    }
+                    if (_edit.intentMode && (_setting.intentMode == null || _setting.intentMode === '')) {
+                        _setting.intentMode = _edit.intentMode;
+                        delete _edit.intentMode;
+                        migrated = true;
+                    }
+                    if (migrated) saveSettingVar();
+                }
                 return;
             }
 
@@ -2363,6 +2394,8 @@
             if (_editChapter >= _edit.chapters.length) _editChapter = 0;
         }
 
+
+
         function saveEditVar() {
             console.log('[event_manager][tf_story_game][writeBoot] [saveEditVar]: ' + JSON.stringify(_edit));
             // 静态数据（tf_story.edit）只写 chat scope
@@ -2372,6 +2405,35 @@
             } catch (e) {
             }
         }
+        function saveEditCacheVar() {
+            console.log('[event_manager][tf_story_game][writeBoot] [saveEditCacheVar]: ' + JSON.stringify(_edit));
+            // 静态数据（tf_story.edit）只写 chat scope
+            // global 备份（tf_story_db_{chat_id}.edit）由 sync_story 负责
+            try {
+                T.set(panesCacheNs('edit'), _edit, 'chat');
+            } catch (e) {
+            }
+        }
+
+        async function loadSettingVar() {
+            var saved = null;
+            try {
+                saved = readVarDualScope(panelSettingNs('edit'), panelSettingNsGlobal('edit'));
+            } catch (e) {}
+            if (saved && typeof saved === 'object') {
+                _setting = saved;
+            }
+            if (!_setting) _setting = {};
+            if (_setting.lineCount == null || _setting.lineCount === '') _setting.lineCount = 20;
+        }
+
+        function saveSettingVar() {
+            console.log('[event_manager][tf_story_game][writeBoot] [saveSettingVar]: ' + JSON.stringify(_setting));
+            try {
+                T.set(panelSettingNs('edit'), _setting, 'global');
+            } catch (e) {}
+        }
+
 
         function editorHtml() {
             if (!_edit) return '<div class="tf-card"><div class="tf-card__text">加载中…</div></div>';
@@ -2400,7 +2462,7 @@
             h += '</div>';
 
             // 群聊编排（跟随系统 / 角色编排插件）
-            var orch = _edit.orchestration || 'plugin';
+            var orch = (_setting && _setting.orchestration) || 'plugin';
             // LLM 插件配置：按钮 -> 弹窗（modal 由底部 llm-config IIFE 处理）
             h += '<div class="tf-btn-row" style="margin:6px 0;"><button class="tf-btn" data-llm-open="1" style="background:#4a4a8a;">🤖 LLM&语音 插件配置</button></div>';
             h += '<div class="tf-card"><div class="tf-card__title">群聊编排</div>'
@@ -2413,7 +2475,7 @@
                 + '<div class="tf-btn-row"><button class="tf-btn tf-btn--primary" data-orch-apply="1">应用编排</button></div></div>';
 
             // 意图识别模式（关键词 / 模型 API）
-            var intentMode = (_edit.intentMode || 'keyword');
+            var intentMode = (_setting && _setting.intentMode) || 'keyword';
             h += '<div class="tf-card"><div class="tf-card__title">意图识别模式</div>'
                 + '<div class="tf-card__text">控制 @记忆管理 等指令的解析方式。</div>'
                 + '<div class="tf-edit-field"><select data-intent-mode style="padding:8px;border-radius:8px;border:1px solid rgba(188,204,226,.2);background:rgba(12,21,35,.55);color:#e8f2ff;width:100%;box-sizing:border-box;">'
@@ -2426,7 +2488,7 @@
                 + '</div>';
 
             // 台词与演出设置（台词数量：传给 agent 的最近对话条数）
-            var lineCount = (_edit.lineCount != null && _edit.lineCount !== '') ? _edit.lineCount : 20;
+            var lineCount = (_setting && _setting.lineCount != null && _setting.lineCount !== '') ? _setting.lineCount : 20;
             h += '<div class="tf-card"><div class="tf-card__title">台词与演出</div>'
                 + '<div class="tf-card__text">台词数量（默认 20）：传给编排器 / 发言器的「最近对话（recent_dialogue）」台词条数，对齐 Toonflow 的 recent_dialogue 入参。</div>'
                 + '<div class="tf-edit-field"><input type="number" min="1" max="100" data-linecount value="' + esc(String(lineCount)) + '" placeholder="20"></div>'
@@ -2570,8 +2632,8 @@
             });
             var cacheBtn = root.querySelector('[data-editcache]');
             if (cacheBtn) cacheBtn.addEventListener('click', function () {
-                //saveEditVar();
-                if (T && T.utils) T.utils.toast('已暂存到本地变量');
+                saveEditCacheVar();
+                if (T && T.utils) T.utils.toast('已暂存到本地缓存变量');
             });
             // 背景图点击聚焦输入
             var bg = root.querySelector('[data-chbg]');
@@ -2582,13 +2644,12 @@
             // 群聊编排：切换即保存并应用（走 entry 的 applyOrchestrationMode）
             var orchSel = root.querySelector('[data-orch]');
             if (orchSel) orchSel.addEventListener('change', function () {
-                _edit.orchestration = orchSel.value;
-                //saveEditVar();
+                if (_setting) _setting.orchestration = orchSel.value;
                 if (T && T.plugin) T.plugin.emit('sidebar:action', 'tf-story-apply-mode');
             });
             var orchApply = root.querySelector('[data-orch-apply]');
             if (orchApply) orchApply.addEventListener('click', function () {
-                //saveEditVar();
+                saveSettingVar();
                 if (T && T.plugin) T.plugin.emit('sidebar:action', 'tf-story-apply-mode');
             });
             // 台词数量（数字，存为整数）
@@ -2596,14 +2657,14 @@
             if (lc) lc.addEventListener('input', function () {
                 var v = parseInt(lc.value, 10);
                 if (isNaN(v) || v < 1) v = 20;
-                _edit.lineCount = v;
-                //saveEditVar();
+                if (_setting) _setting.lineCount = v;
+                saveSettingVar();
             });
             // 意图识别模式
             var im = root.querySelector('[data-intent-mode]');
             if (im) im.addEventListener('change', function () {
-                _edit.intentMode = im.value;
-                //saveEditVar();
+                if (_setting) _setting.intentMode = im.value;
+                saveSettingVar();
             });
             // 检测编排器插件并提示
             if (root.querySelector('#tf-orch-note')) detectStagePlugin();
@@ -2744,6 +2805,7 @@
             } catch (e) {
                 _avatars = [];
             }
+            await loadSettingVar();
             await loadEdit();
             renderBody();
         }

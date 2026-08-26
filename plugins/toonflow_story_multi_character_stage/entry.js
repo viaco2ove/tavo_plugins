@@ -52,6 +52,8 @@ function storyNs(name) { return 'tf_story.' + name; }
 function storyNsGlobal(name) {
   return _mcsChatId ? ('tf_story_' + _mcsChatId + '.' + name) : ('tf_story.' + name);
 }
+function storySettingNs(name) { return 'tf_story_setting.' + name; }
+function storySettingNsGlobal(name) { return 'tf_story_setting.' + name; }
 function progressVarName() { return 'tf_progress'; }
 function progressVarNameGlobal() {
   return _mcsChatId ? ('tf_progress_' + _mcsChatId) : 'tf_progress';
@@ -270,21 +272,27 @@ function hashCode(str) {
   return hash;
 }
 
-// 群聊编排设置（来自 event_manager 维护的 tf_story.edit.orchestration）
+// 群聊编排设置：从 tf_story_setting.edit（global scope）读取，多故事共享
 // 'system' = 跟随系统（不接管）；缺省 / 'plugin' = 角色编排插件接管
 function getOrchestration() {
   try {
-    const edit = readDualScope(storyNs('edit'), storyNsGlobal('edit')) || {};
-    const v = edit.orchestration;
+    try {
+    let raw = tavo.get(storySettingNsGlobal('edit'), 'global');
+    let guard = 0;
+    while (raw && typeof raw === 'object' && raw.found !== undefined && 'value' in raw && guard < 5) { raw = raw.value; guard++; }
+    const v = (raw && raw.orchestration);
     return v === 'system' ? 'system' : 'plugin';
   } catch (e) { return 'plugin'; }
 }
 
 // 台词数量：传给 agent 的「最近对话」条数（对齐 Toonflow recent_dialogue 入参），默认 20
+// 从 tf_story_setting.edit（global scope）读取，多故事共享
 function getLineCount() {
   try {
-    const edit = readDualScope(storyNs('edit'), storyNsGlobal('edit')) || {};
-    const v = parseInt(edit.lineCount, 10);
+    let raw = tavo.get(storySettingNsGlobal('edit'), 'global');
+    let guard = 0;
+    while (raw && typeof raw === 'object' && raw.found !== undefined && 'value' in raw && guard < 5) { raw = raw.value; guard++; }
+    const v = parseInt((raw && raw.lineCount) || 20, 10);
     return (v >= 1) ? v : 20;
   } catch (e) { return 20; }
 }
@@ -472,11 +480,14 @@ function classifyIntent(text) {
 }
 
 // 读取意图模式（与 memory_manager 共享同一配置）
+// 意图识别模式：从 tf_story_setting.edit（global scope）读取，多故事共享
 function getIntentMode() {
   try {
-    const edit = readDualScope(storyNs('edit'), storyNsGlobal('edit')) || {};
-    const m = edit.intentMode;
-    if (m === 'keyword' || m === 'llm') return m;
+    let raw = tavo.get(storySettingNsGlobal('edit'), 'global');
+    let guard = 0;
+    while (raw && typeof raw === 'object' && raw.found !== undefined && 'value' in raw && guard < 5) { raw = raw.value; guard++; }
+    const m = (raw && raw.intentMode);
+    if (m === 'keyword' || m === 'llm' || m === 'model_api') return m;
     return 'llm';
   } catch (e) { return 'llm'; }
 }
@@ -1495,12 +1506,18 @@ tavo.plugin.onSidebarAction('mcs-toggle', async () => {
   const cfg = getConfig();
   const cur = getOrchestration();
   const next = cur === 'system' ? 'plugin' : 'system';
-  // 同步到群聊编排设置（与故事配置面板保持一致）
+  // 同步到群聊编排设置（多故事共享，写入 tf_story_setting.edit）
   try {
-    const edit = (readDualScope(storyNs('edit'), storyNsGlobal('edit')) || {});
-    edit.orchestration = next;
-    console.log('[event_manager][tf_story_game][writeBoot] [tf_story.edit]: ' + JSON.stringify(edit));
-    tavo.set('tf_story.edit', edit, 'chat');
+    let setting = null;
+    try {
+      let raw = tavo.get(storySettingNsGlobal('edit'), 'global');
+      let guard = 0;
+      while (raw && typeof raw === 'object' && raw.found !== undefined && 'value' in raw && guard < 5) { raw = raw.value; guard++; }
+      if (raw && typeof raw === 'object') setting = raw;
+    } catch (e1) {}
+    if (!setting) setting = {};
+    setting.orchestration = next;
+    tavo.set(storySettingNsGlobal('edit'), setting, 'global');
   } catch (e) {}
   try {
     if (next === 'plugin') {
