@@ -163,7 +163,6 @@ function getConfig() {
 // 'system' = 跟随系统（不接管、不注入动态状态、不显示编排中）；缺省 / 'plugin' = 插件接管
 function getOrchestration() {
   try {
-    try {
     let raw = tavo.get(storySettingNsGlobal('edit'), 'global');
     let guard = 0;
     while (raw && typeof raw === 'object' && raw.found !== undefined && 'value' in raw && guard < 5) { raw = raw.value; guard++; }
