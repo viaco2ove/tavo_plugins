@@ -1,0 +1,202 @@
+{
+  "_doc": "tf_progress（章节/阶段/事件进度，对齐 toonflow-game-app runtimeOutline）。数据真相（source of truth）是 runtimeOutline + currentPhaseId/currentStageId；phases[]+currentPhase/currentEvent 是 setProgress() 调用 syncLegacyProgressFields() 派生的老结构缓存，仅供老 plugins 读，不要在外部直接写入。",
+  "currentChapterIndex": 0,
+  "sessionType": "story",
+  "sessionFreeMode": false,
+  "storyCompleted": false,
+  "pendingChapterId": null,
+  "failedAttempts": 0,
+
+  "currentPhaseId": "phase_3_试探索山寨",
+  "currentStageId": "phase_3_试探索山寨_stage_2_聚义厅椅子",
+
+  "completedPhases": ["phase:phase_1_苏醒", "phase:phase_2_觉醒财气眼"],
+  "completedEvents": [
+    "phase:1:event:0",
+    "phase:1:event:1",
+    "phase:2:event:0"
+  ],
+  "chaptersKey": "1:0",
+
+  "currentPhase": 2,
+  "currentEvent": 1,
+  "phases": [
+    {
+      "name": "苏醒",
+      "id": "phase_1_苏醒",
+      "index": 0,
+      "state": "",
+      "events": [
+        {
+          "name": "穿越醒来",
+          "id": "phase_1_苏醒_stage_0_穿越醒来",
+          "kind": "scene",
+          "flow": "chapter_content",
+          "status": "active",
+          "summary": "@旁白：冰冷的石板硌着后背，用户猛地睁开眼。",
+          "facts": [],
+          "label": "穿越醒来",
+          "body": "@旁白：冰冷的石板硌着后背，用户猛地睁开眼。",
+          "state": ""
+        },
+        {
+          "name": "发现身份",
+          "id": "phase_1_苏醒_stage_1_发现身份",
+          "kind": "scene",
+          "flow": "chapter_content",
+          "status": "active",
+          "summary": "@旁白：脑海中涌现信息——用户穿越了，还成了黑风寨大当家。",
+          "facts": [],
+          "label": "发现身份",
+          "body": "@旁白：脑海中涌现信息——用户穿越了，还成了黑风寨大当家。",
+          "state": ""
+        },
+        {
+          "name": "用户发言",
+          "id": "phase_1_苏醒_stage_2_用户发言",
+          "kind": "user_input",
+          "flow": "waiting_input",
+          "status": "waiting_input",
+          "summary": "用户发言",
+          "facts": [],
+          "label": "用户发言",
+          "body": "",
+          "state": ""
+        }
+      ]
+    }
+  ],
+
+  "runtimeOutline": {
+    "_doc": "对齐 toonflow-game-app runtimeOutline：每个 phase 含 id/label/kind/targetSummary/stages[]/nextPhaseIds/advanceSignals；每个 stage 含 id/label/kind/body。stages[].body 是从章节内容里 ### 标题下提取的 @旁白/角色台词原文。",
+    "openingMessages": [
+      {
+        "role": "旁白",
+        "roleType": "narrator",
+        "content": "冰冷的石板硌着后背，你猛地睁开眼。脑海中涌入的信息让你意识到——你穿越了，还成了黑风寨大当家。"
+      }
+    ],
+    "phases": [
+      {
+        "id": "phase_1_苏醒",
+        "label": "苏醒",
+        "kind": "scene",
+        "targetSummary": "穿越醒来 → 发现身份 → 用户发言",
+        "stages": [
+          {
+            "id": "phase_1_苏醒_stage_0_穿越醒来",
+            "label": "穿越醒来",
+            "kind": "scene",
+            "targetSummary": "@旁白：冰冷的石板硌着后背，用户猛地睁开眼。",
+            "userNodeId": null,
+            "body": "@旁白：冰冷的石板硌着后背，用户猛地睁开眼。"
+          },
+          {
+            "id": "phase_1_苏醒_stage_1_发现身份",
+            "label": "发现身份",
+            "kind": "scene",
+            "targetSummary": "@旁白：脑海中涌现信息——用户穿越了，还成了黑风寨大当家。",
+            "userNodeId": null,
+            "body": "@旁白：脑海中涌现信息——用户穿越了，还成了黑风寨大当家。"
+          },
+          {
+            "id": "phase_1_苏醒_stage_2_用户发言",
+            "label": "用户发言",
+            "kind": "user",
+            "targetSummary": "用户发言",
+            "userNodeId": "phase_1_苏醒_stage_2_用户发言",
+            "body": ""
+          }
+        ],
+        "userNodeId": "phase_1_苏醒_stage_2_用户发言",
+        "allowedSpeakers": [],
+        "nextPhaseIds": ["phase_2_觉醒财气眼"],
+        "defaultNextPhaseId": "phase_2_觉醒财气眼",
+        "requiredEventIds": [],
+        "completionEventIds": [],
+        "advanceSignals": [
+          "事件标题：苏醒",
+          "@旁白：冰冷的石板硌着后背，用户猛地睁开眼。",
+          "@旁白：脑海中涌现信息——用户穿越了，还成了黑风寨大当家。"
+        ],
+        "relatedFixedEventIds": []
+      },
+      {
+        "id": "phase_2_觉醒财气眼",
+        "label": "觉醒财气眼",
+        "kind": "scene",
+        "targetSummary": "发现异常 → 财气眼说明 → 财气眼觉醒 → 用户发言",
+        "stages": [
+          {
+            "id": "phase_2_觉醒财气眼_stage_0_发现异常",
+            "label": "发现异常",
+            "kind": "scene",
+            "targetSummary": "@旁白：用户揉了揉眼睛，发现世界变得不一样了。",
+            "userNodeId": null,
+            "body": "@旁白：用户揉了揉眼睛，发现世界变得不一样了。"
+          },
+          {
+            "id": "phase_2_觉醒财气眼_stage_1_财气眼说明",
+            "label": "财气眼说明",
+            "kind": "scene",
+            "targetSummary": "@旁白：周围的物品都散发着不同颜色的光芒。灰色、白色、绿色、蓝色……",
+            "userNodeId": null,
+            "body": "@旁白：周围的物品都散发着不同颜色的光芒。灰色、白色、绿色、蓝色……"
+          },
+          {
+            "id": "phase_2_觉醒财气眼_stage_2_财气眼觉醒",
+            "label": "财气眼觉醒",
+            "kind": "scene",
+            "targetSummary": "@旁白：脑海中浮现信息：财气眼已觉醒。能看透万物蕴含的财气。",
+            "userNodeId": null,
+            "body": "@旁白：脑海中浮现信息：财气眼已觉醒。能看透万物蕴含的财气。"
+          },
+          {
+            "id": "phase_2_觉醒财气眼_stage_3_用户发言",
+            "label": "用户发言",
+            "kind": "user",
+            "targetSummary": "用户发言",
+            "userNodeId": "phase_2_觉醒财气眼_stage_3_用户发言",
+            "body": ""
+          }
+        ],
+        "userNodeId": "phase_2_觉醒财气眼_stage_3_用户发言",
+        "allowedSpeakers": [],
+        "nextPhaseIds": ["phase_3_试探索山寨"],
+        "defaultNextPhaseId": "phase_3_试探索山寨",
+        "requiredEventIds": ["phase:phase_1_苏醒"],
+        "completionEventIds": [],
+        "advanceSignals": [
+          "事件标题：觉醒财气眼",
+          "@旁白：用户揉了揉眼睛，发现世界变得不一样了。",
+          "@旁白：周围的物品都散发着不同颜色的光芒。灰色、白色、绿色、蓝色……",
+          "@旁白：脑海中浮现信息：财气眼已觉醒。能看透万物蕴含的财气。"
+        ],
+        "relatedFixedEventIds": []
+      }
+    ],
+    "userNodes": [],
+    "fixedEvents": [
+      {
+        "id": "fixed_event_用户被女仙人带到修真界",
+        "label": "用户被女仙人带到修真界",
+        "requiredBeforeFinish": true,
+        "conditionExpr": null
+      }
+    ],
+    "endingRules": {
+      "success": ["fixed_event_用户被女仙人带到修真界"],
+      "failure": [],
+      "nextChapterId": null
+    }
+  },
+
+  "pendingGuide": {
+    "summary": "",
+    "facts": [],
+    "reason": "",
+    "chapterTitle": ""
+  },
+
+  "updatedAt": 1787728431803
+}

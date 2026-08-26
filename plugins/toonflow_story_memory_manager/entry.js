@@ -367,6 +367,16 @@ function storyNsGlobal(name) {
 function progressVarNameGlobal() {
   return _tmmChatId ? (PROGRESS_NS_BASE + '_' + _tmmChatId) : PROGRESS_NS_BASE;
 }
+// 优先用 event_manager 暴露的 window.tfRuntime.getProgress（自动派生老结构 phases[]/currentPhase/currentEvent）
+function readProgress() {
+  try {
+    if (typeof window !== 'undefined' && window.tfRuntime && typeof window.tfRuntime.getProgress === 'function') {
+      const p = window.tfRuntime.getProgress();
+      if (p) return p;
+    }
+  } catch (e) {}
+  return readDualScope(progressVarName(), progressVarNameGlobal());
+}
 
 // Tavo 的 chat 变量经 tavo.get 返回的是包装对象 {target,name,found,value}，
 // 真实数据在 .value 里。所有读变量都必须解包，否则 v.chapters / v.level 等会是 undefined，

@@ -130,6 +130,16 @@ function progressVarName() { return 'tf_progress'; }
 function progressVarNameGlobal() {
   return _speakerChatId ? ('tf_progress_' + _speakerChatId) : 'tf_progress';
 }
+// 优先用 event_manager 暴露的 window.tfRuntime.getProgress（自动派生老结构 phases[]/currentPhase/currentEvent）
+function readProgress() {
+  try {
+    if (typeof window !== 'undefined' && window.tfRuntime && typeof window.tfRuntime.getProgress === 'function') {
+      const p = window.tfRuntime.getProgress();
+      if (p) return p;
+    }
+  } catch (e) {}
+  return readDualScope(progressVarName(), progressVarNameGlobal());
+}
 // 双 scope 读取：先 global，再 chat
 function readDualScope(chatName, globalName) {
   let v = readChatVar(chatName);
@@ -268,7 +278,7 @@ async function getCurrentEventText() {
     const edit = readDualScope(storyNs('edit'), storyNsGlobal('edit')) || {};
     const chapters = edit.chapters || [];
     let prog = null;
-    try { prog = readDualScope(progressVarName(), progressVarNameGlobal()); } catch (e) {}
+    try { prog = readProgress(); } catch (e) {}
     const idx = (prog && typeof prog.currentChapterIndex === 'number') ? prog.currentChapterIndex : 0;
     const ch = chapters[idx];
     if (!ch) return '';
@@ -757,7 +767,7 @@ tavo.plugin.onSidebarAction('speaker-test', async () => {
     const state = await buildCastState();
 
     // 自由模式：放宽台词长度（用户可自由讨论/提问/闲聊）
-    const freeMode = (() => { try { return !!(readDualScope(progressVarName(), progressVarNameGlobal()) || {}).sessionFreeMode; } catch (e) { return false; } })();
+    const freeMode = (() => { try { return !!(readProgress() || {}).sessionFreeMode; } catch (e) { return false; } })();
     const lengthHint = freeMode ? '40~150字，2~4句（自由模式可稍长）' : '40~80字，最多2句';
 
     const prompt = (state ? state + '\n' : '') +
