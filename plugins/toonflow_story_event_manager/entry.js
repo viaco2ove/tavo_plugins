@@ -469,6 +469,7 @@ const _PROMPT_STORY_EVENT_PROGRESS = `你是事件进度检测器。你只判断
 `;
 
 async function _llmJudgeEventProgress(progress, chapters, recentDialogue) {
+  console.log("[event_manager][_llmJudgeEventProgress] start");
   const idx = progress.currentChapterIndex || 0;
   const chapter = chapters[idx];
   if (!chapter) return null;
@@ -478,6 +479,7 @@ async function _llmJudgeEventProgress(progress, chapters, recentDialogue) {
   const eventIdx = Math.max(0, progress.currentEvent || 0);
   const curPhase = phases[phaseIdx] || null;
   const curEvent = (curPhase && curPhase.events) ? (curPhase.events[eventIdx] || null) : null;
+  console.log("[event_manager][_llmJudgeEventProgress] curEvent:",JSON.stringify(curEvent));
   if (!curEvent) return null;
 
   // Parse recentDialogue into object array (align to toonflow-game-app)
@@ -535,13 +537,13 @@ async function _llmJudgeEventProgress(progress, chapters, recentDialogue) {
       summary: (phases[phaseIdx + 1].events && phases[phaseIdx + 1].events[0]) ? (phases[phaseIdx + 1].events[0].summary || '') : '',
     } : null,
     next_event: (curPhase && curPhase.events) ? (curPhase.events[eventIdx + 1] || null) : null,
-latest_message: (() => {
-      // 从 recentDialogueList 中取最后一条用户消息作为 latest_message
-      const lastUserMsg = recentDialogueList.slice().reverse().find(m => m.role === '用户' || m.role_type === 'player');
-      return {
-        role: (lastUserMsg && lastUserMsg.role) || 'user',
-        content: (lastUserMsg && lastUserMsg.content) || '',
-      };
+    latest_message: (() => {
+          // 从 recentDialogueList 中取最后一条用户消息作为 latest_message
+          const lastUserMsg = recentDialogueList.slice().reverse().find(m => m.role === '用户' || m.role_type === 'player');
+          return {
+            role: (lastUserMsg && lastUserMsg.role) || 'user',
+            content: (lastUserMsg && lastUserMsg.content) || '',
+          };
     })(),
     recent_dialogue: recentDialogueList,
   };
@@ -657,6 +659,7 @@ async function tfEventProgress_advance(messageContext) {
     if (!recentDialogue) {
       recentDialogue = (messageContext && (messageContext.allMessages || messageContext.content)) || '';
     }
+     console.log('[event_manager][_llmJudgeEventProgress][tfEventProgress_advance][tf_progress]llmRes input', JSON.stringify({progress:chapters,chapters:chapters,recentDialogue:recentDialogue}) );
     const llmRes = await _llmJudgeEventProgress(progress, chapters, recentDialogue);
     console.log('[event_manager][_llmJudgeEventProgress][tfEventProgress_advance][tf_progress]llmRes', JSON.stringify(llmRes) );
     try { if (typeof tavo.utils.toast === 'function') tavo.utils.toast('🎉 进度 llmRes.ended=' + (llmRes && llmRes.ended) + ' reason=' + (llmRes && llmRes.reason)); } catch(e){
@@ -3402,8 +3405,9 @@ _safeOnSide('tf-story-reset', async () => {
 });
 
 // look at [md/currdesign/logic/logtag/logtag.md]
-var whitelist =['event_manager', 'memory_manager'];
+// var whitelist =['event_manager', 'memory_manager'];
 //var blacklist =['memory_manager']
+var whitelist =['_llmJudgeEventProgress'];
 ConsoleTag.patchConsole({
   // mode:'whitelist'/'blacklist'
   mode: 'whitelist',
