@@ -572,7 +572,7 @@ async function buildMemoryContext() {
     const cards = [];
     for (const ch of characters) {
       const c = ch.card || {};
-      const roleType = ch.roleType || 'npc';
+      const roleType = ch.roleType || (/^(旁白|narrator)$/i.test(ch.name) ? 'narrator' : 'npc');
       const label = { player: '用户', npc: '一般角色', narrator: '旁白', system: '系统角色', general: '万能角色' }[roleType] || roleType;
       const parts = [ch.name + '(' + label + ')'];
       if (c.level != null && c.level !== '') parts.push('Lv.' + c.level);
@@ -652,19 +652,21 @@ async function buildOrchestrationPrompt(userInput) {
   try {
     const chat = await tavo.chat.current();
     roles = (chat?.characters || []).map(c => {
+      // 旁白是内置角色，固定 narrator，不从 tf_sprites 读
+      if (/^(旁白|narrator)$/i.test(c.name)) return { name: '旁白', role_type: 'narrator' };
       let roleType = 'npc';
       try {
-        // 读 tf_sprites：先 global(tf_sprites_{chat_id}) 再 chat(tf_sprites)
         const _spriteGlobalKey = _mcsChatId ? ('tf_sprites_' + _mcsChatId) : 'tf_sprites';
         const sprites = readDualScope('tf_sprites', _spriteGlobalKey) || {};
         const entry = (sprites.byName || {})[c.name] || (sprites.byName || {})[String(c.id)] || {};
         roleType = entry.roleType || 'npc';
       } catch (e) {}
-      console.log('[multi-character_stage][buildOrchestrationPrompt ]promptParts get 1');
       return { name: c.name, role_type: roleType };
     });
-    // 旁白作为内置角色加入（不在 wildcard_roles 中）
-    roles.push({ name: '旁白', role_type: 'narrator' });
+    // 去重：如果 chat.characters 里已有旁白（已设为 narrator），不再重复 push
+    if (!roles.some(r => /^(旁白|narrator)$/i.test(r.name))) {
+      roles.push({ name: '旁白', role_type: 'narrator' });
+    }
   } catch (e) { roles = [{ name: '旁白', role_type: 'narrator' }]; }
 
   // recent_dialogue: 角色：台词

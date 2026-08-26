@@ -87,7 +87,10 @@ function tfStoryJudge_checkAndAdvance(messageContext) {
     // 关键修复（bug A 兜底）：重建 outline 时不要无脑重置指针到 [0][0]。
     // 只有「指针在 outline 里找不到」时才 fallback 到首个 phase/首个 stage。
     let prog = Object.assign({}, progress);
-    if (!prog.runtimeOutline || prog.chaptersKey !== chapters.length + ':' + idx ) {
+    // 检测旧格式
+    const _progRoHasStages = prog.runtimeOutline && prog.runtimeOutline.phases
+      && prog.runtimeOutline.phases.some(p => p && p.stages && p.stages.length);
+    if (!prog.runtimeOutline || prog.chaptersKey !== chapters.length + ':' + idx || !_progRoHasStages) {
       prog.runtimeOutline = resolveChapterRuntimeOutline(chapter, chapter.content || '');
       // 指针：优先保留 prog 已有指针（如果在新 outline 里找得到）
       const phases = prog.runtimeOutline.phases || [];
@@ -612,7 +615,10 @@ async function tfEventProgress_advance(messageContext) {
     const idx = progress.currentChapterIndex || 0;
     const chapter = chapters[idx];
     if (!chapter) return { advanced: false, reason: 'no_chapter' };
-    if (!progress.runtimeOutline || progress.chaptersKey !== chapters.length + ':' + idx ) {
+    // 检测旧格式：progress.runtimeOutline 有 phases 但无 stages → 强制重解析
+    const _roHasStages = progress.runtimeOutline && progress.runtimeOutline.phases
+      && progress.runtimeOutline.phases.some(p => p && p.stages && p.stages.length);
+    if (!progress.runtimeOutline || progress.chaptersKey !== chapters.length + ':' + idx || !_roHasStages) {
       // 优先读 chapter.runtimeOutline（sync_story 阶段预解析），fallback 才用 parseProgress
       progress.runtimeOutline = resolveChapterRuntimeOutline(chapter, chapter.content || '');
       // 指针：保留已有（如果在新 outline 里找得到），否则 fallback 到首个未完成 phase
@@ -1175,7 +1181,22 @@ function derivePhasesFromOutline(outline) {
 // 同步指针：保存前调用，确保 phases/currentPhase/currentEvent 与 runtimeOutline 一致
 function syncLegacyProgressFields(progress) {
   if (!progress) return progress;
-  const outline = progress.runtimeOutline;
+  let outline = progress.runtimeOutline;
+  // 检测旧格式（phases 无 stages）→ 从章节 content 重解析
+  if (outline && outline.phases && outline.phases.length) {
+    const _hasStages = outline.phases.some(p => p && p.stages && p.stages.length);
+    if (!_hasStages) {
+      try {
+        const _edit = readVarAnyScope(ns('edit')) || defaultEditData();
+        const _chapters = _edit.chapters || [];
+        const _ch = _chapters[progress.currentChapterIndex || 0];
+        if (_ch) {
+          outline = resolveChapterRuntimeOutline(_ch, _ch.content || '');
+          progress.runtimeOutline = outline;
+        }
+      } catch (_) {}
+    }
+  }
   if (outline) {
     // 派生 phases 缓存（老 plugins 读这个）
     progress.phases = derivePhasesFromOutline(outline);
@@ -1231,11 +1252,15 @@ function markStageCompleted(progress, phaseId, stageId) {
 }
 
 // 从 chapter.runtimeOutline 或 content 解析 runtimeOutline
-// 不兼容旧格式：直接用 chapter.runtimeOutline（如果有 phases），否则从 content 重新解析
+// 检测旧格式（phases[].events 而非 phases[].stages）→ 强制从 content 重解析
 function resolveChapterRuntimeOutline(chapter, content) {
   if (!chapter) return parseProgress(content || '');
   const ro = chapter.runtimeOutline;
-  if (ro && Array.isArray(ro.phases) && ro.phases.length) return ro;
+  if (ro && Array.isArray(ro.phases) && ro.phases.length) {
+    // 检查是否有 stages（新格式），没有则是旧格式
+    const firstPhase = ro.phases.find(p => p && !/^非事件/.test(p.label || ''));
+    if (firstPhase && firstPhase.stages && firstPhase.stages.length) return ro;
+  }
   return parseProgress(content || '');
 }
 
@@ -2949,7 +2974,8 @@ async function buildChapterJudgeSnapshot(chapter, progress, latestMessageContent
   const nextEventInfo = nextEv ? {
     index: eventIdx + 2,
     kind: /用户发言/.test(nextEv.name || '') ? 'user' : 'scene',
-    label: nextEv.name || '',
+    label: nextEv.label || nextEv.name || '',
+    targetSummary: nextEv.targetSummary || nextEv.name || '',
     summary: nextEv.summary || nextEv.name || '',
     transition_hint: nextEv.transitionHint || '',
   } : null;
@@ -2963,7 +2989,7 @@ async function buildChapterJudgeSnapshot(chapter, progress, latestMessageContent
   if (Array.isArray(recentDialogue)) {
     recentDialogueList = recentDialogue.map(item => ({
       role: item.role || 'user',
-      role_type: item.role_type || (item.role === 'user' ? 'player' : 'npc'),
+      role_type: item.role_type || (item.role === 'user' ? 'player' : (/^(旁白|narrator)$/i.test(item.role) ? 'narrator' : 'npc')),
       content: String(item.content || '').replace(/<[^>]+>/g, '').slice(0, 160),
     })).filter(item => item.content);
   } else if (typeof recentDialogue === 'string') {
@@ -2971,7 +2997,7 @@ async function buildChapterJudgeSnapshot(chapter, progress, latestMessageContent
       const colonIdx = line.indexOf(':');
       return {
         role: colonIdx > 0 ? line.slice(0, colonIdx).trim() : 'user',
-        role_type: colonIdx > 0 ? 'npc' : 'player',
+        role_type: colonIdx > 0 ? (/^(旁白|narrator)/i.test(line.slice(0, colonIdx).trim()) ? 'narrator' : 'npc') : 'player',
         content: colonIdx > 0 ? line.slice(colonIdx + 1).trim() : line,
       };
     });
@@ -3000,6 +3026,21 @@ async function buildChapterJudgeSnapshot(chapter, progress, latestMessageContent
       targetSummary: curEv.targetSummary || '',
       body: curEv.body || '',
       facts: Array.isArray(curEv.facts) ? curEv.facts : ([phase.label || phase.name || '', curEv.targetSummary || curEv.name || '']).filter(Boolean),
+      // 当前阶段（对齐 toonflow current_event.curr_stage）
+      curr_stage: {
+        index: eventIdx,
+        id: curEv.id || '',
+        label: curEv.label || curEv.name || '',
+        kind: isUserNode ? 'user' : 'scene',
+        targetSummary: curEv.targetSummary || curEv.name || '',
+      },
+      // 当前进度（对齐 toonflow current_progress）
+      current_progress: {
+        phase_id: phase.id || phase.name || '',
+        phase_label: phase.label || phase.name || '',
+        stage_index: eventIdx,
+        total_stages: events.length,
+      },
     },
     next_event: nextEventInfo,
     runtime_state: {
@@ -3463,7 +3504,7 @@ console.log('[event_manager] ConsoleTag installed');
 // look at [md/currdesign/logic/logtag/logtag.md]
 // var whitelist =['event_manager', 'memory_manager'];
 var blacklist =[]
-var whitelist =['event_speaker_line'];
+var whitelist =['event_speaker_line','_llmJudgeEventProgress','event_manager'];
 var consoleTagMode = 'whitelist';
 ConsoleTag.patchConsole({
   // mode:'whitelist'/'blacklist'

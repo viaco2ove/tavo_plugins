@@ -4,13 +4,13 @@
 #tf-style-tab {
   position: fixed; top: 8px; right: 8px; z-index: 9990; margin: 0; padding: 9px 14px;
   background: var(--bg-tertiary, rgba(40,40,40,0.82));
-  border: 1px solid var(--border-color, #333); border-radius: 10px; cursor: pointer; user-select: none;
+  border: 1px solid var(--border-color, #333); border-radius: 10px; cursor: grab; user-select: none;
   display: flex; align-items: center; gap: 8px; font-size: 13px;
   color: var(--text-primary, #e8e8e8); backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px);
-  box-sizing: border-box; transition: border-color 0.15s ease, transform 0.1s ease;
+  box-sizing: border-box; transition: border-color 0.15s ease; touch-action: none;
 }
 #tf-style-tab:hover { border-color: var(--accent-color, #7cb3ff); }
-#tf-style-tab:active { transform: scale(0.985); }
+#tf-style-tab.tf-dragging { cursor: grabbing; opacity: 0.85; transition: none; }
 .tf-style-tab-name { flex: 1; font-weight: 500; }
 .tf-style-chevron { color: var(--accent-warm, #ff9966); font-size: 18px; font-weight: 700; line-height: 1; }
 
@@ -281,7 +281,57 @@
   var tab = document.getElementById('tf-style-tab');
   var overlay = document.getElementById('tf-style-overlay');
   var closeBtn = document.getElementById('tf-style-close');
-  if (tab) tab.addEventListener('click', function () { overlay && overlay.classList.add('open'); });
+  // --- 拖拽功能 ---
+  (function () {
+    if (!tab) return;
+    var STORAGE_KEY = 'tf_style_tab_pos';
+    try {
+      var saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+      if (saved && typeof saved.x === 'number' && typeof saved.y === 'number') {
+        tab.style.right = 'auto'; tab.style.top = 'auto';
+        tab.style.left = saved.x + 'px'; tab.style.top = saved.y + 'px';
+      }
+    } catch (_) {}
+    var dragging = false, startX, startY, startLeft, startTop, moved;
+    function onStart(ex, ey) {
+      dragging = true; moved = false;
+      startX = ex; startY = ey;
+      var r = tab.getBoundingClientRect();
+      startLeft = r.left; startTop = r.top;
+      tab.style.right = 'auto'; tab.style.top = 'auto';
+      tab.style.left = startLeft + 'px'; tab.style.top = startTop + 'px';
+    }
+    function onMove(ex, ey) {
+      if (!dragging) return;
+      var dx = ex - startX, dy = ey - startY;
+      if (!moved && Math.abs(dx) + Math.abs(dy) < 5) return;
+      moved = true;
+      tab.classList.add('tf-dragging');
+      tab.style.left = (startLeft + dx) + 'px';
+      tab.style.top = (startTop + dy) + 'px';
+    }
+    function onEnd() {
+      if (!dragging) return;
+      dragging = false;
+      tab.classList.remove('tf-dragging');
+      if (moved) {
+        try {
+          var r = tab.getBoundingClientRect();
+          localStorage.setItem(STORAGE_KEY, JSON.stringify({ x: r.left, y: r.top }));
+        } catch (_) {}
+      }
+    }
+    tab.addEventListener('mousedown', function (e) { e.preventDefault(); onStart(e.clientX, e.clientY); });
+    document.addEventListener('mousemove', function (e) { onMove(e.clientX, e.clientY); });
+    document.addEventListener('mouseup', function () { onEnd(); });
+    tab.addEventListener('touchstart', function (e) { var t = e.touches[0]; onStart(t.clientX, t.clientY); }, { passive: true });
+    document.addEventListener('touchmove', function (e) { var t = e.touches[0]; onMove(t.clientX, t.clientY); }, { passive: true });
+    document.addEventListener('touchend', function () { onEnd(); });
+  })();
+  if (tab) tab.addEventListener('click', function () {
+    if (tab.classList.contains('tf-dragging')) return;
+    overlay && overlay.classList.add('open');
+  });
   if (overlay) overlay.addEventListener('click', function (e) { if (e.target === overlay) overlay.classList.remove('open'); });
   if (closeBtn) closeBtn.addEventListener('click', function () { overlay && overlay.classList.remove('open'); });
   var bs = document.getElementById('tf-mode-single'); if (bs) bs.addEventListener('click', function () { applyMode('single'); });

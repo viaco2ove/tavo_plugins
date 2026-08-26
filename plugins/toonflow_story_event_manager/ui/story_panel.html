@@ -29,7 +29,7 @@
         color: #c78131;
     }
 
-    /* ===== 触发器（底部居右，对齐 web 风格） ===== */
+    /* ===== 触发器（可拖拽，对齐 web 风格） ===== */
     #tf-story-tab {
         position: fixed;
         bottom: -2px;
@@ -42,7 +42,7 @@
         border: 1px solid rgba(166, 188, 218, 0.24);
         border-bottom: none;
         border-radius: 14px 14px 0 0;
-        cursor: pointer;
+        cursor: grab;
         user-select: none;
         display: flex;
         align-items: center;
@@ -54,7 +54,9 @@
         box-sizing: border-box;
         max-width: 70vw;
         transition: border-color .15s;
+        touch-action: none;
     }
+    #tf-story-tab.tf-dragging { cursor: grabbing; opacity: 0.85; transition: none; }
 
     #tf-story-tab:hover {
         border-color: rgba(124, 179, 255, .6);
@@ -2809,7 +2811,60 @@
         var tab = document.getElementById('tf-story-tab');
         var overlay = document.getElementById('tf-story-overlay');
         var closeBtn = document.getElementById('tf-sheet-close');
-        if (tab) tab.addEventListener('click', openSheet);
+        // --- 拖拽功能 ---
+        (function () {
+            if (!tab) return;
+            var STORAGE_KEY = 'tf_story_tab_pos';
+            // 恢复位置
+            try {
+                var saved = JSON.parse(localStorage.getItem(STORAGE_KEY));
+                if (saved && typeof saved.x === 'number' && typeof saved.y === 'number') {
+                    tab.style.right = 'auto'; tab.style.bottom = 'auto';
+                    tab.style.left = saved.x + 'px'; tab.style.top = saved.y + 'px';
+                    tab.style.transform = 'none';
+                }
+            } catch (_) {}
+            var dragging = false, startX, startY, startLeft, startTop, moved;
+            function onStart(ex, ey) {
+                dragging = true; moved = false;
+                startX = ex; startY = ey;
+                var r = tab.getBoundingClientRect();
+                startLeft = r.left; startTop = r.top;
+                tab.style.right = 'auto'; tab.style.bottom = 'auto';
+                tab.style.left = startLeft + 'px'; tab.style.top = startTop + 'px';
+                tab.style.transform = 'none';
+            }
+            function onMove(ex, ey) {
+                if (!dragging) return;
+                var dx = ex - startX, dy = ey - startY;
+                if (!moved && Math.abs(dx) + Math.abs(dy) < 5) return;
+                moved = true;
+                tab.classList.add('tf-dragging');
+                tab.style.left = (startLeft + dx) + 'px';
+                tab.style.top = (startTop + dy) + 'px';
+            }
+            function onEnd() {
+                if (!dragging) return;
+                dragging = false;
+                tab.classList.remove('tf-dragging');
+                if (moved) {
+                    try {
+                        var r = tab.getBoundingClientRect();
+                        localStorage.setItem(STORAGE_KEY, JSON.stringify({ x: r.left, y: r.top }));
+                    } catch (_) {}
+                }
+            }
+            tab.addEventListener('mousedown', function (e) { e.preventDefault(); onStart(e.clientX, e.clientY); });
+            document.addEventListener('mousemove', function (e) { onMove(e.clientX, e.clientY); });
+            document.addEventListener('mouseup', function () { onEnd(); });
+            tab.addEventListener('touchstart', function (e) { var t = e.touches[0]; onStart(t.clientX, t.clientY); }, { passive: true });
+            document.addEventListener('touchmove', function (e) { var t = e.touches[0]; onMove(t.clientX, t.clientY); }, { passive: true });
+            document.addEventListener('touchend', function () { onEnd(); });
+        })();
+        if (tab) tab.addEventListener('click', function (e) {
+            if (tab.classList.contains('tf-dragging')) return;
+            openSheet(e);
+        });
         if (overlay) overlay.addEventListener('click', function (e) {
             if (e.target === overlay) closeSheet();
         });

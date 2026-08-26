@@ -227,7 +227,7 @@ async function buildCastState() {
         let full = null;
         try { if (tavo.character && tavo.character.get) full = await tavo.character.get(c.id); } catch (e) {}
         const d = (full && full.data) ? full.data : (full || c || {});
-        return { name: c.name || d.name || '未命名', roleType: d.roleType || c.roleType || 'npc', card: {} };
+        return { name: c.name || d.name || '未命名', roleType: d.roleType || c.roleType || (/^(旁白|narrator)$/i.test(c.name || d.name) ? 'narrator' : 'npc'), card: {} };
       }));
     } catch (e) {}
   }
