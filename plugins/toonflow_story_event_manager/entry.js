@@ -438,6 +438,7 @@ async function _llmJudgeEventProgress(progress, chapters, recentDialogue) {
   const chapter = chapters[idx];
   if (!chapter) return null;
   const phases = progress.phases || [];
+  normalizePhasesEvents(phases);
   const phaseIdx = Math.max(0, progress.currentPhase || 0);
   const eventIdx = Math.max(0, progress.currentEvent || 0);
   const curPhase = phases[phaseIdx] || null;
@@ -461,7 +462,10 @@ async function _llmJudgeEventProgress(progress, chapters, recentDialogue) {
   }
   recentDialogueList = recentDialogueList.slice(-10);
 
-  const snapshot = {
+  // 提取事件详细内容（@旁白/角色台词行等）
+    const eventWindow = extractEventContent(chapter?.content || '', curPhase?.name || '', curEvent?.name || '');
+
+    const snapshot = {
      chapter: { id: chapter.id || (idx || 0), title: chapter.title || '' ,content: chapter?.content || '',},
     current_event: {
       index: eventIdx,
@@ -471,6 +475,7 @@ async function _llmJudgeEventProgress(progress, chapters, recentDialogue) {
       summary: curEvent.summary || '',
       facts: curEvent.facts || [],
       label: curEvent.label || curEvent.name || '',
+      window: eventWindow,
     },
     current_progress: {
       phase_index: phaseIdx,
@@ -492,10 +497,14 @@ async function _llmJudgeEventProgress(progress, chapters, recentDialogue) {
       summary: (phases[phaseIdx + 1].events && phases[phaseIdx + 1].events[0]) ? (phases[phaseIdx + 1].events[0].summary || '') : '',
     } : null,
     next_event: (curPhase && curPhase.events) ? (curPhase.events[eventIdx + 1] || null) : null,
-    latest_message: {
-      role: 'user',
-      content: String(recentDialogue || '').slice(-50000000),
-    },
+latest_message: (() => {
+      // 从 recentDialogueList 中取最后一条用户消息作为 latest_message
+      const lastUserMsg = recentDialogueList.slice().reverse().find(m => m.role === '用户' || m.role_type === 'player');
+      return {
+        role: (lastUserMsg && lastUserMsg.role) || 'user',
+        content: (lastUserMsg && lastUserMsg.content) || '',
+      };
+    })(),
     recent_dialogue: recentDialogueList,
   };
   const userPrompt = JSON.stringify(snapshot, null, 2);
@@ -978,6 +987,43 @@ function evaluateChapterOutcome(chapter, ctx) {
 // 从 chapter.content 中提取 ## Phase / ### Event 层次结构
 // 状态：[s] 完成 / [i] 进行中 / [] 未开始 / [f] 失败
 
+// 从章节内容中提取当前事件的详细内容（@旁白/角色台词行等），对齐 toonflow eventWindow
+function extractEventContent(chapterContent, phaseName, eventName) {
+  if (!chapterContent || !eventName) return '';
+  const lines = chapterContent.split(/\r?\n/);
+  let startIdx = -1;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (/^###\s+/.test(line) && line.includes(eventName)) { startIdx = i; break; }
+  }
+  if (startIdx < 0) return '';
+  let endIdx = lines.length;
+  for (let i = startIdx + 1; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (/^#{2,3}\s+/.test(line)) { endIdx = i; break; }
+  }
+  return lines.slice(startIdx + 1, endIdx).join('\n').trim().slice(0, 3000);
+}
+
+// 确保 phases 里的每个事件都有 LLM 需要的字段（kind/flow/status/summary/facts/label）
+function normalizePhasesEvents(phases) {
+  if (!Array.isArray(phases)) return phases;
+  for (const phase of phases) {
+    if (!phase || !Array.isArray(phase.events)) continue;
+    for (const evt of phase.events) {
+      if (!evt) continue;
+      const isUserNode = /用户发言/.test(evt.name || '');
+      if (!evt.kind) evt.kind = isUserNode ? 'user_input' : 'scene';
+      if (!evt.flow) evt.flow = isUserNode ? 'waiting_input' : 'chapter_content';
+      if (!evt.status) evt.status = isUserNode ? 'waiting_input' : 'active';
+      if (!evt.summary) evt.summary = evt.name || '';
+      if (!evt.facts) evt.facts = [];
+      if (!evt.label) evt.label = evt.name || '';
+    }
+  }
+  return phases;
+}
+
 function parseProgress(content) {
   const lines = (content || '').split(/\r?\n/);
   const phases = [];
@@ -995,7 +1041,18 @@ function parseProgress(content) {
       const m = line.match(/^###\s+(.+)/);
       if (m) {
         const stateMatch = m[1].match(/^[\s]*(\[[sif]\])?\s*(.+)/i);
-        current.events.push({ name: stateMatch ? stateMatch[2].trim() : m[1].trim(), state: stateMatch ? (stateMatch[1] || '') : '' });
+        const evtName = stateMatch ? stateMatch[2].trim() : m[1].trim();
+        const isUserNode = /用户发言/.test(evtName);
+        current.events.push({
+          name: evtName,
+          state: stateMatch ? (stateMatch[1] || '') : '',
+          kind: isUserNode ? 'user_input' : 'scene',
+          flow: isUserNode ? 'waiting_input' : 'chapter_content',
+          status: isUserNode ? 'waiting_input' : 'active',
+          summary: evtName,
+          facts: [],
+          label: evtName,
+        });
       }
     }
   }
@@ -2104,6 +2161,7 @@ const PROMPT_STORY_EVENT_PROGRESS = `你是事件进度检测器。你只判断"
 // 构建事件进度检测输入快照（对齐官方 buildEventProgressInputSnapshot）
 async function buildEventProgressSnapshot(chapter, progress, latestMessageContent, latestMessageRole) {
   const phases = progress.phases || [];
+  normalizePhasesEvents(phases);
   const phaseIdx = Math.max(0, progress.currentPhase || 0);
   const eventIdx = Math.max(0, progress.currentEvent || 0);
   const phase = phases[phaseIdx] || {};
@@ -2166,6 +2224,9 @@ async function buildEventProgressSnapshot(chapter, progress, latestMessageConten
   // 计算 user_speak_count（用户发言轮数）
   const userSpeakCount = recentDialogue.filter(m => m.role === '用户').length;
 
+  // 提取事件详细内容
+  const eventWindow3 = extractEventContent(chapter?.content || '', phase.name || '', curEv.name || '');
+
   return {
      chapter: { id: chapter.id || (idx || 0), title: chapter.title || '' ,content: chapter?.content || '',},
     current_event: {
@@ -2175,6 +2236,7 @@ async function buildEventProgressSnapshot(chapter, progress, latestMessageConten
       status: isUserPhase ? 'waiting_input' : 'active',
       summary: (phase.name || '') + (curEv.name ? ' > ' + curEv.name : ''),
       facts: [phase.name || '', curEv.name || ''].filter(Boolean),
+      window: eventWindow3,
     },
     current_progress: {
       phase_id: phase.name || '',

@@ -894,11 +894,33 @@ async function runMemoryAgent(directive) {
     const _mEvts = _mPhase.events || [];
     const _mEvt = _mEvts[_mEvtIdx] || {};
     const _isUserNode = /用户发言/.test(_mEvt.name || '');
+    // 提取事件详细内容（@旁白/角色台词行等）
+    let _eventWindow = '';
+    try {
+      const _chIdx = _mProg.currentChapterIndex || 0;
+      const _editD = readChatVar(storyNs('edit')) || readDualScope(storyNs('edit'), storyNsGlobal('edit')) || {};
+      const _ch = (_editD.chapters || [])[_chIdx];
+      if (_ch && _ch.content) {
+        const _lines = _ch.content.split(/\r?\n/);
+        let _si = -1;
+        for (let _i = 0; _i < _lines.length; _i++) {
+          if (/^###\s+/.test(_lines[_i].trim()) && _lines[_i].includes(_mEvt.name || '')) { _si = _i; break; }
+        }
+        if (_si >= 0) {
+          let _ei = _lines.length;
+          for (let _i = _si + 1; _i < _lines.length; _i++) {
+            if (/^#{2,3}\s+/.test(_lines[_i].trim())) { _ei = _i; break; }
+          }
+          _eventWindow = _lines.slice(_si + 1, _ei).join('\n').trim().slice(0, 3000);
+        }
+      }
+    } catch(_e) {}
     const _mEventContent = [
       'index:' + _mEventIndex,
       'kind:' + (_mEvt.kind || (_isUserNode ? 'user' : 'scene')),
       'summary:' + (_mEvt.summary || _mEvt.name || '当前事件未命名'),
       _mEvt.facts ? 'facts:' + (Array.isArray(_mEvt.facts) ? _mEvt.facts.join(';') : _mEvt.facts) : '',
+      _eventWindow ? 'window:' + _eventWindow : '',
     ].filter(Boolean).join('\n') || '无';
 
     // Separate player/narrator/npc cards from tmm_story

@@ -243,8 +243,26 @@ async function buildCastState() {
   return block;
 }
 
+// 从章节内容中提取当前事件的详细内容（@旁白/角色台词行等），对齐 toonflow eventWindow
+function extractEventContent(chapterContent, phaseName, eventName) {
+  if (!chapterContent || !eventName) return '';
+  const lines = chapterContent.split(/\r?\n/);
+  let startIdx = -1;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (/^###\s+/.test(line) && line.includes(eventName)) { startIdx = i; break; }
+  }
+  if (startIdx < 0) return '';
+  let endIdx = lines.length;
+  for (let i = startIdx + 1; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (/^#{2,3}\s+/.test(line)) { endIdx = i; break; }
+  }
+  return lines.slice(startIdx + 1, endIdx).join('\n').trim().slice(0, 3000);
+}
+
 // 当前事件（对齐 story_speaker 的 [当前事件] currStageSummary）：
-// 取当前进度所在章节的标题 + 本章内容大纲，作为本轮发言唯一依据。
+// 结构化输出：kind/flow/status/summary/facts/window，对齐 toonflow eventWindow
 async function getCurrentEventText() {
   try {
     const edit = readDualScope(storyNs('edit'), storyNsGlobal('edit')) || {};
@@ -254,8 +272,26 @@ async function getCurrentEventText() {
     const idx = (prog && typeof prog.currentChapterIndex === 'number') ? prog.currentChapterIndex : 0;
     const ch = chapters[idx];
     if (!ch) return '';
+    // 解析 phases 从 progress
+    const phases = prog && Array.isArray(prog.phases) ? prog.phases : [];
+    const phaseIdx = Math.max(0, prog?.currentPhase || 0);
+    const eventIdx = Math.max(0, prog?.currentEvent || 0);
+    const phase = phases[phaseIdx] || {};
+    const events = Array.isArray(phase.events) ? phase.events : [];
+    const curEv = events[eventIdx] || {};
+    const nextEv = events[eventIdx + 1] || null;
+    const isUserNode = /用户发言/.test(curEv.name || '');
+    // 提取事件详细内容
+    const eventWindow = extractEventContent(ch.content || '', phase.name || '', curEv.name || '');
     let s = '【当前章节】' + (ch.title || '未命名') + '\n';
-    s += (ch.content || '').slice(0, 150000000);
+    s += 'index:' + (eventIdx + 1) + '\n';
+    s += 'kind:' + (isUserNode ? 'user_input' : 'scene') + '\n';
+    s += 'flow:' + (isUserNode ? 'waiting_input' : 'chapter_content') + '\n';
+    s += 'status:' + (isUserNode ? 'waiting_input' : 'active') + '\n';
+    s += 'summary:' + ((phase.name || '') + (curEv.name ? ' > ' + curEv.name : '') || '未命名') + '\n';
+    s += 'facts:' + [phase.name, curEv.name].filter(Boolean).join('；') + '\n';
+    if (eventWindow) s += 'window:' + eventWindow + '\n';
+    if (nextEv) s += '下一事件:' + nextEv.name + '\n';
     return s;
   } catch (e) { return ''; }
 }

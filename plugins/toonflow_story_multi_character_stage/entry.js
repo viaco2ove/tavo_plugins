@@ -500,6 +500,28 @@ function classifyIntent(text) {
   return { intent: 'normal_dialog' };
 }
 
+// 从章节内容中提取当前事件的详细内容（@旁白/角色台词行等）
+// 对齐 toonflow-game-app 的 eventWindow：当前事件从 ### 开头到下一个 ### 或 ## 结束之间的所有行
+function extractEventContent(chapterContent, phaseName, eventName) {
+  if (!chapterContent || !eventName) return '';
+  const lines = chapterContent.split(/\r?\n/);
+  // 找到事件起始行：### eventName
+  let startIdx = -1;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (/^###\s+/.test(line) && line.includes(eventName)) { startIdx = i; break; }
+  }
+  if (startIdx < 0) return '';
+  // 找到结束行：下一个 ### 或 ##
+  let endIdx = lines.length;
+  for (let i = startIdx + 1; i < lines.length; i++) {
+    const line = lines[i].trim();
+    if (/^#{2,3}\s+/.test(line)) { endIdx = i; break; }
+  }
+  // 返回事件内容（去掉 ### 标题行本身），截断到合理长度
+  return lines.slice(startIdx + 1, endIdx).join('\n').trim().slice(0, 3000);
+}
+
 // 读取意图模式（与 memory_manager 共享同一配置）
 // 意图识别模式：从 tf_story_setting.edit（global scope）读取，多故事共享
 function getIntentMode() {
@@ -661,12 +683,8 @@ async function buildOrchestrationPrompt(userInput) {
   const nextEv = events[eventIdx + 1] || null;
   const isUserNode = /用户发言|用户/.test(curEv.name || '');
   const isUserPhase = events.some(e => /用户发言/.test(e.name || ''));
-  // eventDigest.window: 章节内容中该事件前后的文字上下文（简化为前2行+后1行）
-  const contentLines = (chapter?.content || '').split('\n').filter(l => l.trim());
-  const eventLineIdx = contentLines.findIndex(l => (curEv.name && l.includes(curEv.name)) || l.includes(phase.name || ''));
-  const safeIdx = eventLineIdx >= 0 ? eventLineIdx : contentLines.length;
-  const winBefore = contentLines.slice(Math.max(0, safeIdx - 2), safeIdx).join(' ').trim().slice(0, 200);
-  const winAfter = contentLines.slice(safeIdx + 1, safeIdx + 2).join(' ').trim().slice(0, 100);
+  // eventDigest.window: 当前事件的完整内容（@旁白/角色台词行等），对齐 toonflow eventWindow
+  const eventWindow = extractEventContent(chapter?.content || '', phase.name || '', curEv.name || '');
   const evDigest = {
     index: eventIdx + 1,
     kind: isUserNode ? 'user' : 'scene',
@@ -676,7 +694,7 @@ async function buildOrchestrationPrompt(userInput) {
       phase.name || chapterTitle,
       curEv.name || '',
     ].filter(Boolean),
-    window: [winBefore, winAfter].filter(Boolean).join(' | '),
+    window: eventWindow,
   };
   console.log("[game_orchestration] evDigest  event_summary:", JSON.stringify(evDigest));
   const nextEvInfo = nextEv ? { index: eventIdx + 2, name: nextEv.name, kind: /用户发言|用户/.test(nextEv.name || '') ? 'user' : 'scene' } : null;
