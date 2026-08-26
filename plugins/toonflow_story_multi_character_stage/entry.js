@@ -276,7 +276,6 @@ function hashCode(str) {
 // 'system' = 跟随系统（不接管）；缺省 / 'plugin' = 角色编排插件接管
 function getOrchestration() {
   try {
-    try {
     let raw = tavo.get(storySettingNsGlobal('edit'), 'global');
     let guard = 0;
     while (raw && typeof raw === 'object' && raw.found !== undefined && 'value' in raw && guard < 5) { raw = raw.value; guard++; }

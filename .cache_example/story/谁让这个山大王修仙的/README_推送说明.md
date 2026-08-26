@@ -1,7 +1,7 @@
 # 谁让这个山大王修仙的 · tavo 推送包
 
 > 本目录是《谁让这个山大王修仙的！》故事的 tavo 可推送产物，依据
-> `../../../md/currdesign/plugins/toonflow_story_multi-character_stage/design.md`（世界书=故事蓝图 + 角色=原生 Character）。
+> `../../../../md/currdesign/plugins/toonflow_story_multi-character_stage/design.md`（世界书=故事蓝图 + 角色=原生 Character）。
 
 ## 目录内容
 
