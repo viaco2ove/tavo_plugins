@@ -3523,7 +3523,7 @@ console.log('[event_manager] ConsoleTag installed');
 // var whitelist =['event_manager', 'memory_manager'];
 var blacklist =[]
 var whitelist =['event_speaker_line','_llmJudgeEventProgress','event_manager'];
-var consoleTagMode = 'whitelist';
+var consoleTagMode = 'blacklist';
 ConsoleTag.patchConsole({
   // mode:'whitelist'/'blacklist'
   mode: consoleTagMode,
