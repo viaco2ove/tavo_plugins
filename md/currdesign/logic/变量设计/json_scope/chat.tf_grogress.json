@@ -1,5 +1,5 @@
 {
-  "_doc": "tf_progress（章节/阶段/事件进度，对齐 toonflow-game-app runtimeOutline）。数据真相（source of truth）是 runtimeOutline + currentPhaseId/currentStageId；phases[]+currentPhase/currentEvent 是 setProgress() 调用 syncLegacyProgressFields() 派生的老结构缓存，仅供老 plugins 读，不要在外部直接写入。",
+  "_doc": "tf_progress（章节/阶段/事件进度，对齐 toonflow-game-app runtimeOutline）。数据真相（source of truth）是 runtimeOutline + currentPhaseId/currentStageId；phases[]+currentPhase/currentEvent 是 setProgress() 调用 syncLegacyProgressFields() 派生的老结构缓存，仅供老 plugins 读，不要在外部直接写入。完成保护：completedPhases[] 用 'phase:<id>' 标记；completedStages[] 用 '<phaseId>:<stageId>' 标记；stage.state 字段保留 [s]/[f]/[i] 状态标记（terminated phase = 所有 stage 都是 s/f）。",
   "currentChapterIndex": 0,
   "sessionType": "story",
   "sessionFreeMode": false,
@@ -11,6 +11,10 @@
   "currentStageId": "phase_3_试探索山寨_stage_2_聚义厅椅子",
 
   "completedPhases": ["phase:phase_1_苏醒", "phase:phase_2_觉醒财气眼"],
+  "completedStages": [
+    "phase_1_苏醒:phase_1_苏醒_stage_0_穿越醒来",
+    "phase_1_苏醒:phase_1_苏醒_stage_1_发现身份"
+  ],
   "completedEvents": [
     "phase:1:event:0",
     "phase:1:event:1",

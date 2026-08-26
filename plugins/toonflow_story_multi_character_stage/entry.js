@@ -684,20 +684,22 @@ async function buildOrchestrationPrompt(userInput) {
   const isUserNode = /用户发言|用户/.test(curEv.name || '');
   const isUserPhase = events.some(e => /用户发言/.test(e.name || ''));
   // eventDigest.window: 当前事件的完整内容（@旁白/角色台词行等），对齐 toonflow eventWindow
-  const eventWindow = extractEventContent(chapter?.content || '', phase.name || '', curEv.name || '');
+  // 优先用 curEv.targetSummary（新结构字段，含"@旁白：xxx"完整内容），fallback 到 name
+  const evSummary = (curEv.targetSummary && curEv.targetSummary !== curEv.name) ? curEv.targetSummary : (curEv.name || '');
+  const eventWindow = extractEventContent(chapter?.content || '', phase.name || phase.label || '', curEv.name || '');
   const evDigest = {
     index: eventIdx + 1,
     kind: isUserNode ? 'user' : 'scene',
     state: curEv.state || 'active',
-    summary: (phase.name || chapterTitle) + (curEv.name ? ' > ' + curEv.name : ''),
+    summary: (phase.label || phase.name || chapterTitle) + (evSummary ? ' > ' + evSummary : ''),
     facts: [
-      phase.name || chapterTitle,
-      curEv.name || '',
+      phase.label || phase.name || chapterTitle,
+      evSummary,
     ].filter(Boolean),
     window: eventWindow,
   };
   console.log("[game_orchestration] evDigest  event_summary:", JSON.stringify(evDigest));
-  const nextEvInfo = nextEv ? { index: eventIdx + 2, name: nextEv.name, kind: /用户发言|用户/.test(nextEv.name || '') ? 'user' : 'scene' } : null;
+  const nextEvInfo = nextEv ? { index: eventIdx + 2, name: nextEv.name, label: nextEv.label, targetSummary: nextEv.targetSummary, kind: /用户发言|用户/.test(nextEv.name || '') ? 'user' : 'scene' } : null;
 
   // turn_state
   const lastMsg = recentDialogue[recentDialogue.length - 1];
@@ -776,10 +778,15 @@ async function buildOrchestrationPrompt(userInput) {
       summary: evDigest.summary || eventSummary,
       facts: evDigest.facts.length ? evDigest.facts : eventFacts,
       window: evDigest.window || '',
+      label: curEv.label || curEv.name || '',
+      targetSummary: curEv.targetSummary || curEv.name || '',
+      body: curEv.body || '',
     },
     // 当前进度（对齐 toonflow current_progress）
     current_progress: {
-      phase_id: phase.name || '',
+      phase_id: phase.id || phase.name || '',
+      phase_label: phase.label || phase.name || '',
+      phase_targetSummary: phase.targetSummary || '',
       phase_index: phaseIdx,
       stage_index: eventIdx,
       total_stages: events.length,
@@ -792,17 +799,22 @@ async function buildOrchestrationPrompt(userInput) {
     // 当前阶段（对齐 toonflow current_stage）
     current_stage: {
       index: eventIdx,
-      label: curEv.name || '事件',
+      id: curEv.id || '',
+      label: curEv.label || curEv.name || '事件',
       kind: isUserNode ? 'user' : 'scene',
-      summary: curEv.name || '',
+      targetSummary: curEv.targetSummary || curEv.name || '',
+      summary: curEv.targetSummary || curEv.name || '',
+      body: curEv.body || '',
       user_speak_required: isUserNode ? true : null,
     },
     // 下一阶段（对齐 toonflow next_stage）
     next_stage: nextEv ? {
       index: eventIdx + 1,
-      label: nextEv.name || '',
+      id: nextEv.id || '',
+      label: nextEv.label || nextEv.name || '',
       kind: /用户发言|用户/.test(nextEv.name || '') ? 'user' : 'scene',
-      summary: nextEv.name || '',
+      targetSummary: nextEv.targetSummary || nextEv.name || '',
+      summary: nextEv.targetSummary || nextEv.name || '',
     } : null,
     // 下一事件提示（对齐 toonflow next_event）
     next_event: nextEvInfo,

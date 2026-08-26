@@ -931,8 +931,8 @@ async function runMemoryAgent(directive) {
     console.log('[memory_manager][tmm] └─────────────────────────────────────────────');
 
     // Build prompt aligned to toonflow-game-app buildFullMemoryPromptSections
-    // Read current event info from progress
-    const _mProg = readChatVar(progressVarName()) || {};
+    // Read current event info from progress (通过 window.tfRuntime.getProgress 自动派生 phases/currentPhase/currentEvent)
+    const _mProg = readProgress() || {};
     const _mEventIndex = (_mProg.currentEvent || 0) + 1;
     const _mPhases = _mProg.phases || [];
     const _mPhaseIdx = Math.max(0, _mProg.currentPhase || 0);

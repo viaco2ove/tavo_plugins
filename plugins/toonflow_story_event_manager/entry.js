@@ -84,16 +84,47 @@ function tfStoryJudge_checkAndAdvance(messageContext) {
     if (!chapter) return { chapterStatus: 'completed' };
 
     // 读 chapter.runtimeOutline（sync 预解析），fallback parseProgress
+    // 关键修复（bug A 兜底）：重建 outline 时不要无脑重置指针到 [0][0]。
+    // 只有「指针在 outline 里找不到」时才 fallback 到首个 phase/首个 stage。
     let prog = Object.assign({}, progress);
     if (!prog.runtimeOutline || prog.chaptersKey !== chapters.length + ':' + idx) {
       prog.runtimeOutline = (chapter && chapter.runtimeOutline && Array.isArray(chapter.runtimeOutline.phases) && chapter.runtimeOutline.phases.length)
         ? chapter.runtimeOutline
         : parseProgress(chapter.content || '');
-      // 指针：第一个 phase / 第一个 stage
-      const firstPh = prog.runtimeOutline.phases && prog.runtimeOutline.phases[0];
-      if (firstPh) {
-        prog.currentPhaseId = firstPh.id;
-        prog.currentStageId = (firstPh.stages && firstPh.stages[0]) ? firstPh.stages[0].id : null;
+      // 指针：优先保留 prog 已有指针（如果在新 outline 里找得到）
+      const phases = prog.runtimeOutline.phases || [];
+      let keepPhase = null, keepStage = null;
+      if (prog.currentPhaseId) {
+        keepPhase = phases.find(p => p.id === prog.currentPhaseId) || null;
+      }
+      if (keepPhase && prog.currentStageId) {
+        keepStage = (keepPhase.stages || []).find(s => s.id === prog.currentStageId) || null;
+      }
+      if (!keepPhase) {
+        keepPhase = phases[0] || null;
+        if (keepPhase) {
+          prog.currentPhaseId = keepPhase.id;
+          // 检查是否已完成：completed 的 phase 不能回退，跳到下一个未完成
+          while (keepPhase && isPhaseCompleted(prog, keepPhase.id)) {
+            const nextIdx = phases.indexOf(keepPhase) + 1;
+            keepPhase = phases[nextIdx] || null;
+          }
+          if (keepPhase) {
+            prog.currentPhaseId = keepPhase.id;
+            keepStage = (keepPhase.stages || []).find(s => !isStageCompleted(prog, keepPhase.id, s.id)) || (keepPhase.stages || [])[0] || null;
+          }
+        }
+      }
+      if (keepPhase && !keepStage) {
+        keepStage = (keepPhase.stages || []).find(s => !isStageCompleted(prog, keepPhase.id, s.id)) || (keepPhase.stages || [])[0] || null;
+      }
+      if (keepPhase) {
+        prog.currentPhaseId = keepPhase.id;
+        prog.currentStageId = keepStage ? keepStage.id : null;
+      } else {
+        // outline 为空：清空指针
+        prog.currentPhaseId = null;
+        prog.currentStageId = null;
       }
       prog.chaptersKey = chapters.length + ':' + idx;
     }
@@ -467,18 +498,21 @@ async function _llmJudgeEventProgress(progress, chapters, recentDialogue) {
   recentDialogueList = recentDialogueList.slice(-10);
 
   // 提取事件详细内容（@旁白/角色台词行等）
-    const eventWindow = extractEventContent(chapter?.content || '', curPhase?.name || '', curEvent?.name || '');
+  const eventWindow = extractEventContent(chapter?.content || '', curPhase?.label || curPhase?.name || '', curEvent?.name || '');
 
     const snapshot = {
      chapter: { id: chapter.id || (idx || 0), title: chapter.title || '' ,content: chapter?.content || '',},
     current_event: {
+      id: curEvent.id || '',
       index: eventIdx,
       kind: curEvent.kind || '',
       flow: curEvent.flow || '',
       status: curEvent.status || '',
-      summary: curEvent.summary || '',
-      facts: curEvent.facts || [],
       label: curEvent.label || curEvent.name || '',
+      summary: curEvent.targetSummary || curEvent.summary || curEvent.name || '',
+      targetSummary: curEvent.targetSummary || '',
+      body: curEvent.body || '',
+      facts: curEvent.facts || [],
       window: eventWindow,
     },
     current_progress: {
@@ -566,10 +600,27 @@ async function tfEventProgress_advance(messageContext) {
       progress.runtimeOutline = (chapter && chapter.runtimeOutline && Array.isArray(chapter.runtimeOutline.phases) && chapter.runtimeOutline.phases.length)
         ? chapter.runtimeOutline
         : parseProgress(chapter.content || '');
-      const firstPh = progress.runtimeOutline.phases && progress.runtimeOutline.phases[0];
-      if (firstPh) {
-        progress.currentPhaseId = firstPh.id;
-        progress.currentStageId = (firstPh.stages && firstPh.stages[0]) ? firstPh.stages[0].id : null;
+      // 指针：保留已有（如果在新 outline 里找得到），否则 fallback 到首个未完成 phase
+      const phases = progress.runtimeOutline.phases || [];
+      let keepPhase = progress.currentPhaseId ? phases.find(p => p.id === progress.currentPhaseId) : null;
+      let keepStage = (keepPhase && progress.currentStageId) ? (keepPhase.stages || []).find(s => s.id === progress.currentStageId) : null;
+      if (!keepPhase) {
+        // 找第一个未完成的 phase
+        keepPhase = phases.find(p => !isPhaseCompleted(progress, p.id)) || phases[0] || null;
+        if (keepPhase) {
+          progress.currentPhaseId = keepPhase.id;
+          keepStage = (keepPhase.stages || []).find(s => !isStageCompleted(progress, keepPhase.id, s.id)) || (keepPhase.stages || [])[0] || null;
+        }
+      }
+      if (keepPhase && !keepStage) {
+        keepStage = (keepPhase.stages || []).find(s => !isStageCompleted(progress, keepPhase.id, s.id)) || (keepPhase.stages || [])[0] || null;
+      }
+      if (keepPhase) {
+        progress.currentPhaseId = keepPhase.id;
+        progress.currentStageId = keepStage ? keepStage.id : null;
+      } else {
+        progress.currentPhaseId = null;
+        progress.currentStageId = null;
       }
       progress.completedEvents = [];
       progress.completedPhases = [];
@@ -1013,24 +1064,44 @@ function extractEventContent(chapterContent, phaseName, eventName) {
 // 把 runtimeOutline 派生为老结构的 phases[]（每次保存 progress 时同步写入，供老 plugins 读）
 function derivePhasesFromOutline(outline) {
   if (!outline || !Array.isArray(outline.phases)) return [];
-  return outline.phases.map(p => ({
-    name: p.label,
-    id: p.id,
-    index: outline.phases.indexOf(p),
-    state: '',
-    events: (p.stages || []).map(s => ({
-      name: s.label,
-      id: s.id,
-      kind: s.kind === 'user' ? 'user_input' : 'scene',
-      flow: s.kind === 'user' ? 'waiting_input' : 'chapter_content',
-      status: s.kind === 'user' ? 'waiting_input' : 'active',
-      summary: s.targetSummary || s.label,
-      facts: [],
-      label: s.label,
-      body: s.body || '',
-      state: '',
-    })),
-  }));
+  return outline.phases.map(p => {
+    const stageList = (p.stages || []).map(s => {
+      // 解析 [s]/[f]/[i]/[] 状态标记（写在 stage.label 前的状态字符）
+      // 对齐 toonflow-game-app stage.state 字段
+      const stateMatch = (s.label || '').match(/^[\s]*\[([sif])\]/i);
+      const stateTag = stateMatch ? stateMatch[1].toLowerCase() : '';
+      const cleanLabel = stateMatch ? s.label.replace(/^[\s]*\[[sif]\][\s]*/i, '') : s.label;
+      // 状态映射：s=completed, f=failed, i=active, ''=idle
+      const statusFromState = stateTag === 's' ? 'completed'
+        : stateTag === 'f' ? 'failed'
+        : stateTag === 'i' ? 'active'
+        : 'idle';
+      return {
+        name: cleanLabel,
+        id: s.id,
+        kind: s.kind === 'user' ? 'user_input' : 'scene',
+        flow: s.kind === 'user' ? 'waiting_input' : 'chapter_content',
+        // status 默认从 s.status 读，没有就从 [sif] 标记读，都没有就 active
+        status: s.status || statusFromState || (s.kind === 'user' ? 'waiting_input' : 'active'),
+        summary: s.targetSummary || cleanLabel,
+        facts: [],
+        label: cleanLabel,
+        body: s.body || '',
+        state: stateTag,
+      };
+    });
+    // phase.state 解析（## 标题前的 [s]/[f]/[i]）
+    const phStateMatch = (p.label || '').match(/^[\s]*\[([sif])\]/i);
+    const phState = phStateMatch ? phStateMatch[1].toLowerCase() : '';
+    const phCleanLabel = phStateMatch ? p.label.replace(/^[\s]*\[[sif]\][\s]*/i, '') : p.label;
+    return {
+      name: phCleanLabel,
+      id: p.id,
+      index: outline.phases.indexOf(p),
+      state: p.state || phState,
+      events: stageList,
+    };
+  });
 }
 
 // 同步指针：保存前调用，确保 phases/currentPhase/currentEvent 与 runtimeOutline 一致
@@ -1041,13 +1112,83 @@ function syncLegacyProgressFields(progress) {
     // 派生 phases 缓存（老 plugins 读这个）
     progress.phases = derivePhasesFromOutline(outline);
     // 同步 currentPhase/currentEvent 索引（从 id 指针派生）
-    const pi = progress.phases.findIndex(p => p.id === progress.currentPhaseId);
-    progress.currentPhase = pi >= 0 ? pi : 0;
-    const cur = progress.phases[progress.currentPhase] || {};
-    const ei = (cur.events || []).findIndex(e => e.id === progress.currentStageId);
-    progress.currentEvent = ei >= 0 ? ei : 0;
+    if (progress.currentPhaseId) {
+      const pi = progress.phases.findIndex(p => p.id === progress.currentPhaseId);
+      if (pi >= 0) {
+        progress.currentPhase = pi;
+        const cur = progress.phases[pi] || {};
+        if (progress.currentStageId) {
+          const ei = (cur.events || []).findIndex(e => e.id === progress.currentStageId);
+          if (ei >= 0) progress.currentEvent = ei;
+          // 注意：找不到时不重置 currentEvent，保留上一个值（避免 bug A：phaseId 丢失导致重置）
+        }
+        // currentEvent 找不到对应 stage 时也不重置（保留原值）
+      } else {
+        // phaseId 找不到对应 phase：不重置 currentPhase（保留原值），只刷新 phases
+        // 这种情况通常是 runtimeOutline 重建了（章节内容变了），但 currentPhaseId 是老 id
+        // 让 advanceEventProgress / 后续调用自然修正
+      }
+    }
+    // currentPhaseId 缺失：保持 currentPhase/currentEvent 原值（兜底）
   }
   return progress;
+}
+
+// phase 完成标记管理（对齐 toonflow gameEngine.getPhaseMarker）
+function makePhaseMarker(phaseId) {
+  return 'phase:' + String(phaseId || '').trim();
+}
+function isPhaseCompleted(progress, phaseId) {
+  return Array.isArray(progress.completedPhases) && progress.completedPhases.indexOf(makePhaseMarker(phaseId)) >= 0;
+}
+function markPhaseCompleted(progress, phaseId) {
+  if (!Array.isArray(progress.completedPhases)) progress.completedPhases = [];
+  const marker = makePhaseMarker(phaseId);
+  if (progress.completedPhases.indexOf(marker) < 0) {
+    progress.completedPhases.push(marker);
+  }
+}
+
+// stage 状态保护：completed 不退回到 active（兜底）
+function isStageCompleted(progress, phaseId, stageId) {
+  return Array.isArray(progress.completedStages)
+    && progress.completedStages.indexOf(phaseId + ':' + stageId) >= 0;
+}
+function markStageCompleted(progress, phaseId, stageId) {
+  if (!Array.isArray(progress.completedStages)) progress.completedStages = [];
+  const marker = phaseId + ':' + stageId;
+  if (progress.completedStages.indexOf(marker) < 0) {
+    progress.completedStages.push(marker);
+  }
+}
+
+// 从 stage.state 字段读取状态标记（[s]/[f]/[i]）
+function getStageStateTag(stage) {
+  if (!stage) return '';
+  return (stage.state || '').toString().trim().toLowerCase().slice(0, 1);
+}
+// phase 内所有 stage 都是 [s]（成功）或 [f]（失败）= phase 已终结（terminated）
+// 这是强制切换 phase 的兜底：即使 currentStageId 还在本 phase，也必须跳到下一个
+function isPhaseTerminated(phase) {
+  if (!phase || !Array.isArray(phase.stages) || phase.stages.length === 0) return false;
+  // 元数据 phase（meta/非事件）不算
+  if (phase.kind === 'meta' || /^非事件/.test(phase.label || '')) return false;
+  return phase.stages.every(s => {
+    const t = getStageStateTag(s);
+    return t === 's' || t === 'f';
+  });
+}
+// 在 phases 列表中找下一个未终结的 phase（跳过 meta 和已 terminate 的）
+function findNextUnterminatedPhase(phases, fromIdx) {
+  if (!Array.isArray(phases)) return null;
+  for (let i = fromIdx + 1; i < phases.length; i++) {
+    const ph = phases[i];
+    if (!ph) continue;
+    if (ph.kind === 'meta' || /^非事件/.test(ph.label || '')) continue;
+    if (isPhaseTerminated(ph)) continue; // 跳过已终止的
+    return ph;
+  }
+  return null;
 }
 
 // 双指针：读 currentPhaseId/currentStageId 在 runtimeOutline 里的位置
@@ -1124,6 +1265,7 @@ function parseProgress(content) {
       if (m) {
         const stateMatch = m[1].match(/^[\s]*(\[[sif]\])?\s*(.+)/i);
         const evtName = stateMatch ? stateMatch[2].trim() : m[1].trim();
+        const stateTag = stateMatch ? (stateMatch[1] || '').toLowerCase().slice(0, 1) : '';
         const isUserNode = /用户发言/.test(evtName);
         const stageBody = _extractStageBody(content, m.index + m[0].length);
         const stageId = currentNewPhase.id + '_stage_' + currentNewPhase.stages.length + '_' + evtName;
@@ -1131,6 +1273,8 @@ function parseProgress(content) {
           id: stageId,
           label: evtName,
           kind: isUserNode ? 'user' : 'scene',
+          state: stateTag, // 保留 [s]/[f]/[i] 状态标记，advanceEventProgress 用它判定 phase 是否 terminated
+          status: stateTag === 's' ? 'completed' : stateTag === 'f' ? 'failed' : (isUserNode ? 'waiting_input' : 'active'),
           targetSummary: stageBody || evtName,
           userNodeId: isUserNode ? stageId : null,
           body: stageBody || '',
@@ -1163,6 +1307,11 @@ function parseProgress(content) {
   }
   for (const ph of newPhases) {
     ph.advanceSignals = ['事件标题：' + ph.label, ...ph.advanceSignals];
+    // 派生 phase.targetSummary：把 stage.label 用 ' → ' 拼起来（如 "穿越醒来 → 发现身份 → 用户发言"）
+    // 这样 agent 看到的是「阶段的完整流程」而不只是一个抽象 label
+    if (!ph.targetSummary) {
+      ph.targetSummary = (ph.stages || []).map(s => s.label).filter(Boolean).join(' → ');
+    }
   }
   return {
     openingMessages: [],
@@ -1186,48 +1335,96 @@ function _extractStageBody(content, startOffset) {
   return bodyLines.join('\n').trim();
 }
 
-// 事件级推进（对齐 Toonflow event_progress_judge 的确定性规则）：
-// - 用户每次发言 -> 当前 stage 完成（currentEvent+1）
-// - 若消费后的下一个 stage 是「用户发言」，一并跳过（等待用户阶段已被这次发言满足）
-// - phase 事件全部完成 -> 进入下一 phase（跳过「非事件」段）
-// - 全 phase 完成 -> 停留在最后（章节结局判定器接管）
+// 事件级推进（对齐 toonflow ChapterProgressEngine.applyAiEventProgressResolution）
+// 用 currentPhaseId/currentStageId 推进；用 completedPhases/completedStages 防止回退
+// 兜底：如果当前 phase 已经被手动标 [s]/[f]（terminated），强制切到下一未终止 phase
 function advanceEventProgress(progress) {
-  const phases = progress.phases || [];
+  if (!progress) return;
+  const phases = (progress.runtimeOutline && progress.runtimeOutline.phases) || [];
   if (!phases.length) return;
-  let pi = Math.max(0, progress.currentPhase || 0);
-  // 跳过非事件 phase
-  while (pi < phases.length && /^非事件/.test(phases[pi].name || '')) pi++;
-  if (pi >= phases.length) return;
-  progress.currentPhase = pi;
-  const phase = phases[pi];
-  const events = phase.events || [];
-  if (!events.length) return;
-  let ei = Math.max(0, progress.currentEvent || 0);
-  // 当前 stage 完成
-  ei += 1;
-  // 连续「用户发言」消费：发言后若下一 stage 也是用户发言节点，视为此前已满足，跳过
-  while (ei < events.length && /用户发言/.test(events[ei].name || '')) ei += 1;
-  if (ei >= events.length) {
-    // 本 phase 完成 -> 下一 phase（跳过非事件段）
-    let np = pi + 1;
-    while (np < phases.length && /^非事件/.test(phases[np].name || '')) np++;
-    progress.currentPhase = np;
-    progress.currentEvent = 0;
-    // 新 phase 的第一个 stage 若是「用户发言」也消费掉（用户刚说完话）
-    const nEvents = (phases[np] && phases[np].events) || [];
-    let ne = 0;
-    while (ne < nEvents.length && /用户发言/.test(nEvents[ne].name || '')) ne++;
-    progress.currentEvent = ne;
-  } else {
-    progress.currentEvent = ei;
+  // 找到当前 phase
+  let pi = phases.findIndex(p => p.id === progress.currentPhaseId);
+  if (pi < 0) pi = 0;
+  let phase = phases[pi] || null;
+  if (!phase) return;
+  // 跳过「非事件」phase（meta 类）
+  while (pi < phases.length && (phase.kind === 'meta' || /^非事件/.test(phase.label || ''))) {
+    pi++;
+    phase = phases[pi] || null;
   }
-  // 同步新结构指针（currentPhaseId / currentStageId）
-  const newPhases = (progress.runtimeOutline && progress.runtimeOutline.phases) || [];
-  if (newPhases[pi]) {
-    progress.currentPhaseId = newPhases[pi].id;
-    if (newPhases[pi].stages && newPhases[pi].stages[progress.currentEvent]) {
-      progress.currentStageId = newPhases[pi].stages[progress.currentEvent].id;
+  if (!phase) return;
+  // 兜底（关键）：如果当前 phase 已被标 [s]/[f]（所有 stage 都 terminated），
+  // 即使 currentStageId 还在本 phase，也强制推进到下一个未终止 phase。
+  // 这是为了「阶段末尾强制切换」规则：阶段一终结就必须切走。
+  if (isPhaseTerminated(phase) && pi < phases.length - 1) {
+    markPhaseCompleted(progress, phase.id);
+    const next = findNextUnterminatedPhase(phases, pi);
+    if (next) {
+      // 找到 next 在 phases 里的索引
+      const np = phases.indexOf(next);
+      let stagesN = next.stages || [];
+      let ne = 0;
+      while (ne < stagesN.length && (stagesN[ne].kind === 'user' || /用户发言/.test(stagesN[ne].label || ''))) {
+        markStageCompleted(progress, next.id, stagesN[ne].id);
+        ne += 1;
+      }
+      progress.currentPhaseId = next.id;
+      progress.currentStageId = (stagesN[ne] && stagesN[ne].id) || null;
+      progress.currentPhase = np;
+      progress.currentEvent = ne;
+      progress.updatedAt = Date.now();
+      console.log('[event_manager][advance] phase terminated -> force jump: ' + phase.id + ' -> ' + next.id);
+      return;
     }
+    // 找不到下一个：章节完成
+    markPhaseCompleted(progress, phase.id);
+    progress.updatedAt = Date.now();
+    return;
+  }
+  // 找到当前 stage
+  let stages = phase.stages || [];
+  let si = stages.findIndex(s => s.id === progress.currentStageId);
+  if (si < 0) si = 0;
+  // 标记当前 stage 已完成（完成的不再退回到 active）
+  if (progress.currentStageId) {
+    markStageCompleted(progress, phase.id, progress.currentStageId);
+  }
+  // 推进：下一个 stage
+  si += 1;
+  // 连续「用户发言」消费：用户刚说完话，下一个 stage 如果也是 user_node 视为已满足
+  while (si < stages.length && (stages[si].kind === 'user' || /用户发言/.test(stages[si].label || ''))) {
+    markStageCompleted(progress, phase.id, stages[si].id);
+    si += 1;
+  }
+  if (si >= stages.length) {
+    // 当前 phase 所有 stage 完成 -> 标记 phase 完成，进入下一 phase
+    markPhaseCompleted(progress, phase.id);
+    // 兜底（再次检查）：如果当前阶段被标 [s]/[f]（terminated），强制跳到下一未终止
+    const next = isPhaseTerminated(phase) ? findNextUnterminatedPhase(phases, pi) : null;
+    if (next) {
+      const np = phases.indexOf(next);
+      let stagesN = next.stages || [];
+      let ne = 0;
+      while (ne < stagesN.length && (stagesN[ne].kind === 'user' || /用户发言/.test(stagesN[ne].label || ''))) {
+        markStageCompleted(progress, next.id, stagesN[ne].id);
+        ne += 1;
+      }
+      progress.currentPhaseId = next.id;
+      progress.currentStageId = (stagesN[ne] && stagesN[ne].id) || null;
+      progress.currentPhase = np;
+      progress.currentEvent = ne;
+    } else {
+      // 已是最后一个 phase，章节完成
+      progress.currentPhaseId = phase.id;
+      progress.currentStageId = null;
+      progress.currentPhase = pi;
+      progress.currentEvent = si;
+    }
+  } else {
+    progress.currentPhaseId = phase.id;
+    progress.currentStageId = stages[si].id;
+    progress.currentPhase = pi;
+    progress.currentEvent = si;
   }
   progress.updatedAt = Date.now();
 }
@@ -1670,26 +1867,43 @@ function rebuildDynamicData() {
       prog.runtimeOutline = (ch0 && ch0.runtimeOutline && Array.isArray(ch0.runtimeOutline.phases) && ch0.runtimeOutline.phases.length)
         ? ch0.runtimeOutline
         : parseProgress(ch0.content || '');
-      const firstPh0 = prog.runtimeOutline.phases && prog.runtimeOutline.phases[0];
-      if (firstPh0) {
-        prog.currentPhaseId = firstPh0.id;
-        prog.currentStageId = (firstPh0.stages && firstPh0.stages[0]) ? firstPh0.stages[0].id : null;
+      // 指针：保留已有（如果在新 outline 里找得到），否则 fallback 到首个未完成 phase
+      const phases0 = prog.runtimeOutline.phases || [];
+      let keep0 = prog.currentPhaseId ? phases0.find(p => p.id === prog.currentPhaseId) : null;
+      if (!keep0) {
+        keep0 = phases0.find(p => !isPhaseCompleted(prog, p.id)) || phases0[0] || null;
+      }
+      if (keep0) {
+        let keepSt0 = (keep0.stages || []).find(s => !isStageCompleted(prog, keep0.id, s.id)) || (keep0.stages || [])[0] || null;
+        prog.currentPhaseId = keep0.id;
+        prog.currentStageId = keepSt0 ? keepSt0.id : null;
+      } else {
+        prog.currentPhaseId = null;
+        prog.currentStageId = null;
       }
     }
     setProgress(prog);
     rebuilt = true;
-  } else if (!prog.phases || !prog.phases.length) {
-    // 进度在但 phases 空（换章后）-> 从 chapter.runtimeOutline 重读
+  } else if (!prog.runtimeOutline || !prog.runtimeOutline.phases || !prog.runtimeOutline.phases.length) {
+    // progress 在但 runtimeOutline 空（换章后）-> 从 chapter.runtimeOutline 重读
     const idx = Math.min(prog.currentChapterIndex || 0, Math.max(chapters.length - 1, 0));
     if (chapters[idx]) {
       const ch = chapters[idx];
       prog.runtimeOutline = (ch && ch.runtimeOutline && Array.isArray(ch.runtimeOutline.phases) && ch.runtimeOutline.phases.length)
         ? ch.runtimeOutline
         : parseProgress(ch.content || '');
-      const firstPhCh = prog.runtimeOutline.phases && prog.runtimeOutline.phases[0];
-      if (firstPhCh) {
-        prog.currentPhaseId = firstPhCh.id;
-        prog.currentStageId = (firstPhCh.stages && firstPhCh.stages[0]) ? firstPhCh.stages[0].id : null;
+      const phasesCh = prog.runtimeOutline.phases || [];
+      let keepCh = prog.currentPhaseId ? phasesCh.find(p => p.id === prog.currentPhaseId) : null;
+      if (!keepCh) {
+        keepCh = phasesCh.find(p => !isPhaseCompleted(prog, p.id)) || phasesCh[0] || null;
+      }
+      if (keepCh) {
+        let keepStCh = (keepCh.stages || []).find(s => !isStageCompleted(prog, keepCh.id, s.id)) || (keepCh.stages || [])[0] || null;
+        prog.currentPhaseId = keepCh.id;
+        prog.currentStageId = keepStCh ? keepStCh.id : null;
+      } else {
+        prog.currentPhaseId = null;
+        prog.currentStageId = null;
       }
       setProgress(prog);
       rebuilt = true;
@@ -2383,16 +2597,22 @@ async function buildEventProgressSnapshot(chapter, progress, latestMessageConten
   return {
      chapter: { id: chapter.id || (idx || 0), title: chapter.title || '' ,content: chapter?.content || '',},
     current_event: {
+      id: curEv.id || '',
       index: eventIdx + 1,
       kind: isUserNode ? 'user' : 'scene',
       flow: isUserPhase ? 'user_phase' : 'chapter_content',
       status: isUserPhase ? 'waiting_input' : 'active',
-      summary: (phase.name || '') + (curEv.name ? ' > ' + curEv.name : ''),
-      facts: [phase.name || '', curEv.name || ''].filter(Boolean),
+      label: curEv.label || curEv.name || '',
+      summary: (curEv.targetSummary || curEv.name || ''),
+      targetSummary: curEv.targetSummary || '',
+      body: curEv.body || '',
+      facts: [phase.label || phase.name || '', curEv.targetSummary || curEv.name || ''].filter(Boolean),
       window: eventWindow3,
     },
     current_progress: {
-      phase_id: phase.name || '',
+      phase_id: phase.id || phase.name || '',
+      phase_label: phase.label || phase.name || '',
+      phase_targetSummary: phase.targetSummary || '',
       phase_index: phaseIdx,
       stage_index: eventIdx,
       total_stages: events.length,
@@ -2711,12 +2931,16 @@ async function buildChapterJudgeSnapshot(chapter, progress, latestMessageContent
     world_intro: (edit.intro || '').slice(0, 300),
     world_global_background: worldGlobalBackground,
     current_event: {
+      id: curEv.id || '',
       index: eventIdx + 1,
       kind: isUserNode ? 'user' : 'scene',
       flow: curEv.flow || 'chapter_content',
       status: curEventStatus,
-      summary: curEv.summary || curEv.name || '现场',
-      facts: Array.isArray(curEv.facts) ? curEv.facts : ([phase.name || '', curEv.name || '']).filter(Boolean),
+      label: curEv.label || curEv.name || '',
+      summary: curEv.targetSummary || curEv.summary || curEv.name || '现场',
+      targetSummary: curEv.targetSummary || '',
+      body: curEv.body || '',
+      facts: Array.isArray(curEv.facts) ? curEv.facts : ([phase.label || phase.name || '', curEv.targetSummary || curEv.name || '']).filter(Boolean),
     },
     next_event: nextEventInfo,
     runtime_state: {
@@ -2937,4 +3161,259 @@ _safeOnSide('tf-story-reset', async () => {
   } catch (e) {
     console.warn('[event_manager][tf_story_game] window.tfStoryJudge 注册失败', e);
   }
+})();
+
+(function () {
+/**
+ * console-tag v2.1 - TavoJS Plugin Edition (Fixed)
+ * Black/Whitelist log filter based on [tag] labels
+ * Compatible with TavoJS WebView (no module.exports)
+ */
+(function (root, factory) {
+  'use strict';
+  if (typeof module !== 'undefined' && module.exports) {
+    module.exports = factory();
+  } else if (typeof define === 'function' && define.amd) {
+    define(factory);
+  } else {
+    root.ConsoleTag = factory();
+  }
+})(typeof globalThis !== 'undefined' ? globalThis : this, function () {
+  'use strict';
+
+  // === Tag Extractor ===
+  function extractTags(msg) {
+    if (typeof msg !== 'string') return [];
+    var tags = [];
+    var idx = 0;
+    while (idx < msg.length) {
+      var open = msg.indexOf('[', idx);
+      if (open === -1) break;
+      // FIX: [ must be at current idx position.
+      // If open > idx, there's non-whitespace content before [ -> stop parsing.
+      if (open !== idx) break;
+      var close = msg.indexOf(']', open);
+      if (close === -1) break;
+      var tag = msg.slice(open + 1, close).trim();
+      if (tag) tags.push(tag);
+      idx = close + 1;
+      while (idx < msg.length && /\s/.test(msg[idx])) idx++;
+    }
+    return tags;
+  }
+
+  // === Wildcard Matcher ===
+  function matchRule(tag, rule) {
+    if (rule === '*') return true;
+    if (rule === tag) return true;
+    if (rule.includes('*')) {
+      var regex = new RegExp('^' + rule.replace(/\*/g, '.*') + '$');
+      return regex.test(tag);
+    }
+    return false;
+  }
+
+  function matchAny(tags, rules) {
+    if (!rules || rules.length === 0) return false;
+    for (var i = 0; i < tags.length; i++) {
+      for (var j = 0; j < rules.length; j++) {
+        if (matchRule(tags[i], rules[j])) return true;
+      }
+    }
+    return false;
+  }
+
+  // === Levels ===
+  var LEVELS = { all: 0, debug: 1, info: 2, log: 2, warn: 3, error: 4, silent: 5 };
+
+  // === ConsoleTag Class ===
+  function ConsoleTag(options) {
+    options = options || {};
+    this.mode = options.mode || 'blacklist';
+    this.tags = Array.isArray(options.tags) ? options.tags : [];
+    this.minLevel = LEVELS[options.minLevel] != null ? LEVELS[options.minLevel] : LEVELS.debug;
+    this.color = options.color !== false;
+    this.timestamp = !!options.timestamp;
+    this.rawConsole = options.rawConsole || (typeof console !== 'undefined' ? console : {});
+    this._levelColors = this._initColors();
+  }
+
+  ConsoleTag.prototype._initColors = function () {
+    if (!this.color) return {};
+    var isTTY = this.rawConsole.stderr && this.rawConsole.stderr.isTTY;
+    if (!isTTY) return {};
+    return {
+      log: '\x1b[37m', info: '\x1b[36m', warn: '\x1b[33m',
+      error: '\x1b[31m', debug: '\x1b[90m', timestamp: '\x1b[90m', reset: '\x1b[0m',
+    };
+  };
+
+  ConsoleTag.prototype.shouldLog = function (msg, level) {
+    var msgLevel = LEVELS[level] != null ? LEVELS[level] : LEVELS.info;
+    if (msgLevel < this.minLevel) return false;
+    if (this.tags.length > 0) {
+      var tags = extractTags(msg);
+      var matched = matchAny(tags, this.tags);
+      if (this.mode === 'whitelist') {
+        if (!matched) return false;
+      } else {
+        if (matched) return false;
+      }
+    }
+    return true;
+  };
+
+  ConsoleTag.prototype._formatPrefix = function (level) {
+    var colors = this._levelColors;
+    var prefix = '';
+    if (this.timestamp) {
+      var time = new Date().toISOString().substring(11, 23);
+      prefix += colors.timestamp ? colors.timestamp + time + colors.reset : time;
+      prefix += ' ';
+    }
+    prefix += '[' + level.toUpperCase() + '] ';
+    if (colors[level]) {
+      prefix = colors[level] + prefix + colors.reset;
+    }
+    return prefix;
+  };
+
+  ConsoleTag.prototype._formatValue = function (val) {
+    if (val != null && typeof val === 'object') {
+      try { return JSON.stringify(val, null, 2); } catch (e) { return String(val); }
+    }
+    return String(val);
+  };
+
+  ConsoleTag.prototype.log = function () {
+    var args = Array.prototype.slice.call(arguments);
+    if (!this.shouldLog(String(args[0] || ''), 'log')) return;
+    var prefix = this._formatPrefix('log');
+    this.rawConsole.log(prefix + args.map(this._formatValue.bind(this)).join(' '));
+  };
+
+  ConsoleTag.prototype.info = function () {
+    var args = Array.prototype.slice.call(arguments);
+    if (!this.shouldLog(String(args[0] || ''), 'info')) return;
+    var prefix = this._formatPrefix('info');
+    this.rawConsole.info(prefix + args.map(this._formatValue.bind(this)).join(' '));
+  };
+
+  ConsoleTag.prototype.warn = function () {
+    var args = Array.prototype.slice.call(arguments);
+    if (!this.shouldLog(String(args[0] || ''), 'warn')) return;
+    var prefix = this._formatPrefix('warn');
+    this.rawConsole.warn(prefix + args.map(this._formatValue.bind(this)).join(' '));
+  };
+
+  ConsoleTag.prototype.error = function () {
+    var args = Array.prototype.slice.call(arguments);
+    if (!this.shouldLog(String(args[0] || ''), 'error')) return;
+    var prefix = this._formatPrefix('error');
+    this.rawConsole.error(prefix + args.map(this._formatValue.bind(this)).join(' '));
+  };
+
+  ConsoleTag.prototype.debug = function () {
+    var args = Array.prototype.slice.call(arguments);
+    if (!this.shouldLog(String(args[0] || ''), 'debug')) return;
+    var prefix = this._formatPrefix('debug');
+    this.rawConsole.debug(prefix + args.map(this._formatValue.bind(this)).join(' '));
+  };
+
+  ConsoleTag.prototype.force = function () {
+    var args = Array.prototype.slice.call(arguments);
+    var prefix = this._formatPrefix('log');
+    this.rawConsole.log(prefix + args.map(this._formatValue.bind(this)).join(' '));
+  };
+
+  ConsoleTag.prototype.forceError = function () {
+    var args = Array.prototype.slice.call(arguments);
+    var prefix = this._formatPrefix('error');
+    this.rawConsole.error(prefix + args.map(this._formatValue.bind(this)).join(' '));
+  };
+
+  ConsoleTag.prototype.configure = function (partial) {
+    if (partial.mode !== undefined) this.mode = partial.mode;
+    if (partial.tags !== undefined) this.tags = Array.isArray(partial.tags) ? partial.tags : [];
+    if (partial.minLevel !== undefined) this.minLevel = LEVELS[partial.minLevel] != null ? LEVELS[partial.minLevel] : LEVELS.debug;
+    if (partial.color !== undefined) { this.color = partial.color; this._levelColors = this._initColors(); }
+    if (partial.timestamp !== undefined) this.timestamp = partial.timestamp;
+  };
+
+  ConsoleTag.prototype.printStatus = function () {
+    var levelName = Object.keys(LEVELS).find(function (k) { return LEVELS[k] === this.minLevel; }.bind(this));
+    // FIX: use this.rawConsole.log instead of console.log to avoid recursive filtering
+    this.rawConsole.log('=== ConsoleTag Status ===');
+    this.rawConsole.log('Mode:     ', this.mode);
+    this.rawConsole.log('Tags:     ', this.tags.length ? this.tags.join(', ') : '(all)');
+    this.rawConsole.log('MinLevel: ', levelName);
+    this.rawConsole.log('Color:    ', this.color);
+    this.rawConsole.log('Time:     ', this.timestamp);
+    this.rawConsole.log('=======================');
+  };
+
+  // === Global Patch ===
+  var _originalConsole = null;
+  var _instance = null;
+
+  function patchConsole(options) {
+    options = options || {};
+    if (!_originalConsole) {
+      _originalConsole = Object.assign({}, console);
+    }
+    _instance = new ConsoleTag(Object.assign({}, options, { rawConsole: _originalConsole }));
+    console = {
+      log: function () { _instance.log.apply(_instance, arguments); },
+      info: function () { _instance.info.apply(_instance, arguments); },
+      warn: function () { _instance.warn.apply(_instance, arguments); },
+      error: function () { _instance.error.apply(_instance, arguments); },
+      debug: function () { _instance.debug.apply(_instance, arguments); },
+      trace: function () {
+        if (!_instance.shouldLog(String(arguments[0] || ''), 'log')) return;
+        _originalConsole.trace.apply(_originalConsole, arguments);
+      },
+      count: function () { _originalConsole.count.apply(_originalConsole, arguments); },
+      time: function () { _originalConsole.time.apply(_originalConsole, arguments); },
+      timeEnd: function () { _originalConsole.timeEnd.apply(_originalConsole, arguments); },
+    };
+    return _instance;
+  }
+
+  function restoreConsole() {
+    if (_originalConsole) {
+      console = _originalConsole;
+      _originalConsole = null;
+      _instance = null;
+    }
+  }
+
+  function getInstance() { return _instance; }
+
+  return {
+    ConsoleTag: ConsoleTag,
+    create: function (options) { return new ConsoleTag(options); },
+    patchConsole: patchConsole,
+    restoreConsole: restoreConsole,
+    getInstance: getInstance,
+    extractTags: extractTags,
+    matchRule: matchRule,
+    LEVELS: LEVELS,
+  };
+});
+
+// look at [md/currdesign/logic/logtag/logtag.md]
+var whitelist =['event_manager', 'memory_manager'];
+var blacklist =['memory_manager']
+ConsoleTag.patchConsole({
+  // mode:'whitelist'/'blacklist'
+  mode: 'whitelist',
+  tags: whitelist,
+  minLevel: 'info',
+});
+//例子：
+//console.log('[event_manager] ok');  // 输出
+//console.log('[speaker] hello');      // 静默（白名单未命中）
+
+// 强制输出（绕过过滤，用于关键日志）
+//logger.force('[FATAL] 系统崩溃，无法恢复');
 })();

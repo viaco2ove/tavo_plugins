@@ -282,7 +282,7 @@ async function getCurrentEventText() {
     const idx = (prog && typeof prog.currentChapterIndex === 'number') ? prog.currentChapterIndex : 0;
     const ch = chapters[idx];
     if (!ch) return '';
-    // 解析 phases 从 progress
+    // 解析 phases 从 progress（当前结构含完整 runtimeOutline 派生字段）
     const phases = prog && Array.isArray(prog.phases) ? prog.phases : [];
     const phaseIdx = Math.max(0, prog?.currentPhase || 0);
     const eventIdx = Math.max(0, prog?.currentEvent || 0);
@@ -290,18 +290,24 @@ async function getCurrentEventText() {
     const events = Array.isArray(phase.events) ? phase.events : [];
     const curEv = events[eventIdx] || {};
     const nextEv = events[eventIdx + 1] || null;
-    const isUserNode = /用户发言/.test(curEv.name || '');
-    // 提取事件详细内容
-    const eventWindow = extractEventContent(ch.content || '', phase.name || '', curEv.name || '');
+    // 优先用 kind（来自 runtimeOutline），fallback 用 isUserNode 判断
+    const isUserNode = curEv.kind === 'user_input' || /用户发言/.test(curEv.name || '');
+    // 优先用 targetSummary（含"@旁白：xxx"完整内容），fallback 到 name
+    const curSummary = (curEv.targetSummary && curEv.targetSummary !== curEv.name) ? curEv.targetSummary : (curEv.name || '');
+    // 优先用 body（新结构，含台词全文）
+    const eventWindow = curEv.body || extractEventContent(ch.content || '', phase.name || phase.label || '', curEv.name || '');
     let s = '【当前章节】' + (ch.title || '未命名') + '\n';
+    s += 'id:' + (curEv.id || '') + '\n';
     s += 'index:' + (eventIdx + 1) + '\n';
-    s += 'kind:' + (isUserNode ? 'user_input' : 'scene') + '\n';
-    s += 'flow:' + (isUserNode ? 'waiting_input' : 'chapter_content') + '\n';
-    s += 'status:' + (isUserNode ? 'waiting_input' : 'active') + '\n';
-    s += 'summary:' + ((phase.name || '') + (curEv.name ? ' > ' + curEv.name : '') || '未命名') + '\n';
-    s += 'facts:' + [phase.name, curEv.name].filter(Boolean).join('；') + '\n';
+    s += 'kind:' + (curEv.kind || (isUserNode ? 'user_input' : 'scene')) + '\n';
+    s += 'flow:' + (curEv.flow || (isUserNode ? 'waiting_input' : 'chapter_content')) + '\n';
+    s += 'status:' + (curEv.status || (isUserNode ? 'waiting_input' : 'active')) + '\n';
+    s += 'label:' + (curEv.label || curEv.name || '未命名') + '\n';
+    s += 'summary:' + ((phase.label || phase.name || '') + (curSummary ? ' > ' + curSummary : '') || '未命名') + '\n';
+    s += 'facts:' + [phase.label || phase.name, curSummary].filter(Boolean).join('；') + '\n';
     if (eventWindow) s += 'window:' + eventWindow + '\n';
-    if (nextEv) s += '下一事件:' + nextEv.name + '\n';
+    if (nextEv) s += '下一事件:' + (nextEv.label || nextEv.name || '') + '\n';
+    if (phase.targetSummary) s += '阶段流程:' + phase.targetSummary + '\n';
     return s;
   } catch (e) { return ''; }
 }
