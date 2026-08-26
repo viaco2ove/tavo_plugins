@@ -707,13 +707,32 @@ async function buildOrchestrationPrompt(userInput) {
   const evDigest = {
     index: eventIdx + 1,
     kind: isUserNode ? 'user' : 'scene',
+    flow: isUserPhase ? 'user_phase' : 'chapter_content',
     state: curEv.state || 'active',
+    label: curEv.label || curEv.name || '',
+    targetSummary: curEv.targetSummary || curEv.name || '',
+    body: curEv.body || '',
     summary: (phase.label || phase.name || chapterTitle) + (evSummary ? ' > ' + evSummary : ''),
     facts: [
       phase.label || phase.name || chapterTitle,
       evSummary,
     ].filter(Boolean),
     window: eventWindow,
+    // 当前阶段信息（对齐 toonflow current_event.curr_stage）
+    curr_stage: {
+      index: eventIdx,
+      id: curEv.id || '',
+      label: curEv.label || curEv.name || '',
+      kind: isUserNode ? 'user' : 'scene',
+      targetSummary: curEv.targetSummary || curEv.name || '',
+    },
+    // 当前进度（对齐 toonflow current_progress）
+    current_progress: {
+      phase_id: phase.id || phase.name || '',
+      phase_label: phase.label || phase.name || '',
+      stage_index: eventIdx,
+      total_stages: events.length,
+    },
   };
   console.log("[game_orchestration] evDigest  event_summary:", JSON.stringify(evDigest));
   const nextEvInfo = nextEv ? { index: eventIdx + 2, name: nextEv.name, label: nextEv.label, targetSummary: nextEv.targetSummary, kind: /用户发言|用户/.test(nextEv.name || '') ? 'user' : 'scene' } : null;
@@ -992,11 +1011,25 @@ function buildSpeakerCurrentEventLines(curEv, chapterTitle, chapterIdx) {
   const lines = [
     `index: ${curEv.index || 1}`,
     `kind: ${curEv.kind || 'scene'}`,
+    curEv.flow ? `flow: ${curEv.flow}` : '',
     curEv.state ? `status: ${curEv.state}` : '',
+    curEv.label ? `label: ${curEv.label}` : '',
     `summary: ${curEv.summary || chapterTitle}`,
+    curEv.targetSummary ? `targetSummary: ${curEv.targetSummary}` : '',
     curEv.facts && curEv.facts.length ? `facts: ${curEv.facts.join('；')}` : '',
     curEv.window ? `window: ${curEv.window}` : '',
+    curEv.body ? `body: ${curEv.body}` : '',
   ].filter(Boolean);
+  // 当前阶段信息（对齐 toonflow current_event.curr_stage）
+  if (curEv.curr_stage) {
+    const cs = curEv.curr_stage;
+    lines.push(`curr_stage: [${cs.index}] ${cs.label || ''} (${cs.kind || 'scene'}) ${cs.targetSummary || ''}`);
+  }
+  // 当前进度（对齐 toonflow current_progress）
+  if (curEv.current_progress) {
+    const cp = curEv.current_progress;
+    lines.push(`current_progress: phase=${cp.phase_label || cp.phase_id || ''} stage=${cp.stage_index || 0}/${cp.total_stages || 0}`);
+  }
   return lines.join('\n');
 }
 
@@ -1006,7 +1039,8 @@ function buildSpeakerNextEventLines(nextEv) {
   const lines = [
     `index: ${nextEv.index}`,
     `kind: ${nextEv.kind || 'scene'}`,
-    nextEv.name ? `summary: ${nextEv.name}` : '',
+    nextEv.label ? `label: ${nextEv.label}` : '',
+    nextEv.targetSummary ? `targetSummary: ${nextEv.targetSummary}` : (nextEv.name ? `summary: ${nextEv.name}` : ''),
   ].filter(Boolean);
   return lines.join('\n');
 }

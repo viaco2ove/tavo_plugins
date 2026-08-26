@@ -2614,7 +2614,7 @@ async function buildEventProgressSnapshot(chapter, progress, latestMessageConten
       recentDialogue = msgs.map(m => {
         let role = '旁白', role_type = 'narrator';
         if (m.role === 'user') { role = '用户'; role_type = 'player'; }
-        else if (m.role === 'assistant' && m.characterId !== undefined && _charMap[m.characterId]) { role = _charMap[m.characterId]; role_type = 'npc'; }
+        else if (m.role === 'assistant' && m.characterId !== undefined && _charMap[m.characterId]) { role = _charMap[m.characterId]; role_type = /^(旁白|narrator)$/i.test(role) ? 'narrator' : 'npc'; }
         return {
           role: role,
           role_type: role_type,
@@ -3034,7 +3034,7 @@ async function evaluateChapterOutcomeByAi(chapter, progress, latestMessageConten
         recentDialogue = msgs.map(m => {
           let role = '旁白', role_type = 'narrator';
           if (m.role === 'user') { role = '用户'; role_type = 'player'; }
-          else if (m.role === 'assistant' && m.characterId !== undefined && _charMap[m.characterId]) { role = _charMap[m.characterId]; role_type = 'npc'; }
+          else if (m.role === 'assistant' && m.characterId !== undefined && _charMap[m.characterId]) { role = _charMap[m.characterId]; role_type = /^(旁白|narrator)$/i.test(role) ? 'narrator' : 'npc'; }
           return {
             role: role,
             role_type: role_type,
@@ -3412,14 +3412,13 @@ _safeOnSide('tf-story-reset', async () => {
   };
 
   // === Global Patch ===
-  var _originalConsole = null;
+  // 声明时立即保存原始 console，避免 patchConsole 被多次调用时包装已 patch 过的 console（前缀叠加）
+  var _originalConsole = typeof console !== 'undefined' ? Object.assign({}, console) : {};
   var _instance = null;
 
   function patchConsole(options) {
     options = options || {};
-    if (!_originalConsole) {
-      _originalConsole = Object.assign({}, console);
-    }
+    // _originalConsole 在声明时已保存，不再重复赋值（避免包装已 patch 过的 console）
     _instance = new ConsoleTag(Object.assign({}, options, { rawConsole: _originalConsole }));
     console = {
       log: function () { _instance.log.apply(_instance, arguments); },

@@ -306,6 +306,10 @@ async function getCurrentEventText() {
     s += 'summary:' + ((phase.label || phase.name || '') + (curSummary ? ' > ' + curSummary : '') || '未命名') + '\n';
     s += 'facts:' + [phase.label || phase.name, curSummary].filter(Boolean).join('；') + '\n';
     if (eventWindow) s += 'window:' + eventWindow + '\n';
+    // 当前阶段（对齐 toonflow current_event.curr_stage）
+    s += 'curr_stage: [' + eventIdx + '] ' + (curEv.label || curEv.name || '') + ' (' + (curEv.kind || 'scene') + ') ' + (curEv.targetSummary || '') + '\n';
+    // 当前进度（对齐 toonflow current_progress）
+    s += 'current_progress: phase=' + (phase.label || phase.name || '') + ' stage=' + eventIdx + '/' + (events.length || 0) + '\n';
     if (nextEv) s += '下一事件:' + (nextEv.label || nextEv.name || '') + '\n';
     if (phase.targetSummary) s += '阶段流程:' + phase.targetSummary + '\n';
     return s;

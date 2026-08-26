@@ -1649,6 +1649,8 @@
                 var card = localizeCard(full || c);
                 var sc = staticByName[c.name] || staticByName[d.name];
                 if (isCardEmpty(card) && sc && sc.card) card = Object.assign({}, sc.card);
+                // 始终从 tmm_story 合并 role_key_information（localizeCard 从 description 解析，不含此字段）
+                if (sc && sc.card && sc.card.role_key_information) card.role_key_information = sc.card.role_key_information;
                 return {
                     id: c.id,
                     name: c.name || d.name || '未命名',

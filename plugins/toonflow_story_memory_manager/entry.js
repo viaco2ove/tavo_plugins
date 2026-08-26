@@ -894,10 +894,16 @@ async function runMemoryAgent(directive) {
       const chatInfo = await tavo.chat.current();
       const chatChars = (chatInfo && chatInfo.characters) || [];
       for (const c of chatChars) {
-        if (c && c.id !== undefined) charIdMap[c.id] = { name: c.name || '未命名', roleType: 'npc' };
+        if (c && c.id !== undefined) {
+          const nm = c.name || '未命名';
+          const isNarrator = /^(旁白|narrator)$/i.test(nm);
+          charIdMap[c.id] = { name: nm, roleType: isNarrator ? 'narrator' : 'npc' };
+        }
       }
     } catch (e) {}
 
+    // role_type：角色类型，如 `npc` /`narrator` /`player` /`system` /`general`
+    //  也就是 `一般角色`/`旁白`/`用户`/`系统角色`/`万能角色`
     const recentDialogue = (Array.isArray(messages) ? messages : []).map(m => {
       const content = (m.content || '').replace(/<[^>]+>/g, '').trim();
       if (!content) return null;
