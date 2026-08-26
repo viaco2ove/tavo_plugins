@@ -1183,7 +1183,8 @@ async function buildSpeakerPrompt(speaker, roleType, motive, eventSummary, evDig
   const userInputText = lastUserMsg ? lastUserMsg.content : '无';
 
   // 其他可见角色（排除当前说话人和用户）
-  const otherChars = roles.filter(r => r.name !== speaker && r.name !== '用户').map(r => r.name).join('、') || '无';
+  const castCards = (memCtx.castCards || []).filter(c => c.name !== speaker && c.name !== '用户');
+  const otherChars = castCards.map(c => c.name).join('、') || '无';
 
   // user prompt：对齐 toonflow 角色发言输入格式
   const lines = [
@@ -1681,7 +1682,8 @@ function game_orchestration(userText,intentResult){
       }
 
     } catch (e) {
-      console.error('[multi-character_stage][' + ts() + '] ❌ [mcs] 后台编排异常:', e);
+      const errMsg = e && (e.message || e.reason || e.error || String(e));
+      console.error('[multi-character_stage][' + ts() + '] ❌ [mcs] 后台编排异常:', errMsg, '| stack:', (e && e.stack || '').slice(0, 400));
     } finally {
       _mcsBusy = false;
       console.log('[multi-character_stage]',ORCH_FLAG);
