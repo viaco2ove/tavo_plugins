@@ -920,6 +920,9 @@ async function runMemoryAgent(directive) {
     const cur = readChatVar(NS) || defaultState();
     const cardList = buildCharacterCardList();
     const globalBg = await getGlobalBackground();
+    // 动态全局背景（对齐 toonflow 输入格式）
+    const state = readChatVar(NS) || {};
+    const dynamicBg = (state.dynamic_world_global_background || '').slice(0, 2000);
     const eventState = await getEventState();
     const worldClock = cur.worldClock || null;
     // 读取 input:beforeSend 塞进来的指令（指令被 cancel 后不在消息历史里）
@@ -1004,6 +1007,7 @@ async function runMemoryAgent(directive) {
     } catch(_) {}
 
     let prompt = '';
+    // 对齐 toonflow 输入顺序：[世界] → [章节] → [原始全局背景] → [动态全局背景] → [世界时钟] → [当前事件] → [事件增量] → [最近对话] → [现有记忆摘要] → [当前事实] → [当前标签] → [用户参数卡] → [角色动态参数卡列表] → [任务] → [输出格式]
     let _worldTitle = '未命名';
     try {
       const _editData = readChatVar(storyNs('edit'));
@@ -1015,7 +1019,7 @@ async function runMemoryAgent(directive) {
         if (_g && _g.title) _worldTitle = _g.title;
       }
     } catch(_) {}
-    prompt += '[世界]名称: ' + _worldTitle + '\n\n';
+    prompt += '[世界]\n名称: ' + _worldTitle + '\n\n';
     let _chapterTitle = '无';
     try {
       const _prog2 = readChatVar(progressVarName()) || {};
@@ -1024,22 +1028,24 @@ async function runMemoryAgent(directive) {
       const _chapters = _edit2.chapters || [];
       if (_chapters[_idx2] && _chapters[_idx2].title) _chapterTitle = _chapters[_idx2].title;
     } catch(_) {}
-    prompt += '[章节]标题: ' + _chapterTitle + '\n\n';
+    prompt += '[章节]\n标题: ' + _chapterTitle + '\n\n';
+    prompt += '[原始全局背景]\n' + globalBg + '\n\n';
+    if (dynamicBg) {
+      prompt += '[动态全局背景]\n' + dynamicBg + '\n\n';
+    }
+    if (worldClock) prompt += '[世界时钟]\n' + JSON.stringify(worldClock) + '\n\n';
     prompt += '[当前事件]\n' + _mEventContent + '\n\n';
     prompt += '[事件增量]\n' + (eventState || '无') + '\n\n';
+    prompt += '[最近对话(JSON数组)]\n' + JSON.stringify(recentDialogue) + '\n\n';
     prompt += '[现有记忆摘要]\n' + (cur.summary || '无') + '\n\n';
     prompt += '[当前事实]\n' + (cur.facts || []).join('; ') + '\n\n';
     prompt += '[当前标签]\n' + (cur.tags || []).join(', ') + '\n\n';
-    prompt += '[全局原始背景]\n' + globalBg + '\n\n';
-    prompt += '[用户参数卡]\n' + _playerCardText + '\n\n';
-    prompt += '[旁白参数卡]\n' + _narratorCardText + '\n\n';
+    prompt += '[用户当前参数卡(JSON)]\n' + _playerCardText + '\n\n';
     prompt += '[角色动态参数卡列表(JSON数组)]\n' + cardList + '\n\n';
-    prompt += '[新增对话(JSON数组)]\n' + JSON.stringify(recentDialogue) + '\n\n';
-    if (worldClock) prompt += '[世界时钟]\n' + JSON.stringify(worldClock) + '\n\n';
     if (pendingDirective) {
       prompt += '\n[用户直接指令]\n' + pendingDirective + '（按「@记忆管理 特殊指令优先级规则」处理）\n';
     }
-    prompt += '\n请基于以上上下文，输出唯一的 JSON 记忆更新结果。';
+    prompt += '\n[任务]\n根据现有记忆、当前事件、最近对话和角色参数卡，更新整个故事所需的长期记忆。\n如果对话里出现用户或 NPC 的长期状态变化，必须同时输出参数卡 patch。\n只保留对后续剧情真的有用的变化，重复项请合并，冲突项按最新剧情修正。\n[输出格式(JSON)]\n请参考系统提示词里的输出格式要求，只输出 JSON，不要其他内容。';
     console.log('[memory_manager][tmm] runMemoryAgent: calling tf_llm.callDirect (prompt len=' + prompt.length + ')');
     // 改用 tf_llm.callDirect（跟 mcs / llm-opt / classifyLLM 同一通道，已验证能通）
     // 不再用 tavo.generate — 那条 tavo 自带 LLM 通道会卡死

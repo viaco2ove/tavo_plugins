@@ -2643,7 +2643,13 @@ async function buildEventProgressSnapshot(chapter, progress, latestMessageConten
         return {
           role: role,
           role_type: role_type,
-          content: String(m.content || '').replace(/<[^>]+>/g, '').slice(0, 160000000),
+          content: String(m.content || '').replace(/<[^>]+>/g, '').slice(0, 200),
+          // 对齐 toonflow: 补充 event_type, event_index, stage_index, role_num_speech_*
+          event_type: m.event_type || 'on_message',
+          event_index: typeof m.event_index === 'number' ? m.event_index : (eventIdx + 1),
+          stage_index: typeof m.stage_index === 'number' ? m.stage_index : eventIdx,
+          role_num_speech_curr_event: typeof m.role_num_speech_curr_event === 'number' ? m.role_num_speech_curr_event : 0,
+          role_num_speech_curr_stage: typeof m.role_num_speech_curr_stage === 'number' ? m.role_num_speech_curr_stage : 0,
         };
       });
     }
@@ -2991,6 +2997,12 @@ async function buildChapterJudgeSnapshot(chapter, progress, latestMessageContent
       role: item.role || 'user',
       role_type: item.role_type || (item.role === 'user' ? 'player' : (/^(旁白|narrator)$/i.test(item.role) ? 'narrator' : 'npc')),
       content: String(item.content || '').replace(/<[^>]+>/g, '').slice(0, 160),
+      // 对齐 toonflow: 补充 event_type, event_index, stage_index, role_num_speech_*
+      event_type: item.event_type || 'on_message',
+      event_index: typeof item.event_index === 'number' ? item.event_index : (eventIdx + 1),
+      stage_index: typeof item.stage_index === 'number' ? item.stage_index : 0,
+      role_num_speech_curr_event: typeof item.role_num_speech_curr_event === 'number' ? item.role_num_speech_curr_event : 0,
+      role_num_speech_curr_stage: typeof item.role_num_speech_curr_stage === 'number' ? item.role_num_speech_curr_stage : 0,
     })).filter(item => item.content);
   } else if (typeof recentDialogue === 'string') {
     recentDialogueList = String(recentDialogue || '').split(/\n/).filter(Boolean).slice(-10).map(line => {
@@ -2999,6 +3011,11 @@ async function buildChapterJudgeSnapshot(chapter, progress, latestMessageContent
         role: colonIdx > 0 ? line.slice(0, colonIdx).trim() : 'user',
         role_type: colonIdx > 0 ? (/^(旁白|narrator)/i.test(line.slice(0, colonIdx).trim()) ? 'narrator' : 'npc') : 'player',
         content: colonIdx > 0 ? line.slice(colonIdx + 1).trim() : line,
+        event_type: 'on_message',
+        event_index: eventIdx + 1,
+        stage_index: 0,
+        role_num_speech_curr_event: 0,
+        role_num_speech_curr_stage: 0,
       };
     });
   }
@@ -3013,41 +3030,18 @@ async function buildChapterJudgeSnapshot(chapter, progress, latestMessageContent
       ending_rules: endingRules,
       content: (chapter?.content || '').slice(0, 500),
     },
-    world_intro: (edit.intro || '').slice(0, 300),
+    // world_global_background 顶级（对齐 toonflow，非 world_intro）
     world_global_background: worldGlobalBackground,
     current_event: {
-      id: curEv.id || '',
       index: eventIdx + 1,
       kind: isUserNode ? 'user' : 'scene',
       flow: curEv.flow || 'chapter_content',
       status: curEventStatus,
-      label: curEv.label || curEv.name || '',
       summary: curEv.targetSummary || curEv.summary || curEv.name || '现场',
-      targetSummary: curEv.targetSummary || '',
-      body: curEv.body || '',
       facts: Array.isArray(curEv.facts) ? curEv.facts : ([phase.label || phase.name || '', curEv.targetSummary || curEv.name || '']).filter(Boolean),
-      // 当前阶段（对齐 toonflow current_event.curr_stage）
-      curr_stage: {
-        index: eventIdx,
-        id: curEv.id || '',
-        label: curEv.label || curEv.name || '',
-        kind: isUserNode ? 'user' : 'scene',
-        targetSummary: curEv.targetSummary || curEv.name || '',
-      },
-      // 当前进度（对齐 toonflow current_progress）
-      current_progress: {
-        phase_id: phase.id || phase.name || '',
-        phase_label: phase.label || phase.name || '',
-        stage_index: eventIdx,
-        total_stages: events.length,
-      },
     },
     next_event: nextEventInfo,
-    runtime_state: {
-      completed_events: progress.completedEvents || [],
-      message_content: String(latestMessageContent || '').replace(/<[^>]+>/g, '').slice(0, 200),
-      event_type: 'on_message',
-    },
+    // 对齐 toonflow recent_dialogue 结构
     recent_dialogue: recentDialogueList,
   };
 }

@@ -678,8 +678,9 @@ async function buildOrchestrationPrompt(userInput) {
       const msgs = await tavo.message.find([Math.max(0, cnt - n), cnt]) || [];
       recentDialogue = msgs.map(m => {
         const name = resolveSpeaker(m);
+        const role_type = name === '用户' ? 'player' : (/^(旁白|narrator)$/i.test(name) ? 'narrator' : 'npc');
         console.log('[multi-character_stage][buildOrchestrationPrompt ]promptParts get 2');
-        return { speaker: name, content: String(m.content || '').slice(0, 150000000) };
+        return { speaker: name, role_type, content: String(m.content || '').slice(0, 150000000) };
       });
     }
   } catch (e) {}
@@ -778,101 +779,96 @@ async function buildOrchestrationPrompt(userInput) {
     { name: '某男子', role_type: 'general' },
   ];
 
+  // 当前 phase 信息（对齐 toonflow current_phase）
+  const phaseLabel = phase.label || phase.name || '';
+  const phaseTargetSummary = phase.targetSummary || '';
+  // phase goal = 拼接 phase 下所有 stage 的 targetSummary（按事件推进顺序）
+  const phaseGoal = (phase.stages || events || []).map(s => s.targetSummary || s.name || s.label || '').filter(Boolean).join('；');
+
+  // 角色 profile 拼接（对齐 toonflow "角色名|年龄|等级|..."）
+  const buildRoleProfile = (ch) => {
+    const c = (ch && ch.card) || {};
+    const parts = ['角色名:' + (ch.name || '?')];
+    if (c.gender) parts.push('性别:' + c.gender);
+    if (c.age != null && c.age !== '') parts.push('年龄:' + c.age);
+    if (c.level != null && c.level !== '') parts.push('等级:' + c.level);
+    if (c.level_desc) parts.push(c.level_desc);
+    if (c.role_key_information) parts.push(String(c.role_key_information).slice(0, 200));
+    return parts.join('|');
+  };
+  // 把 castCards 合并到 roles，让编排师拿到完整 profile
+  const castByName = {};
+  for (const c of (memCtx.castCards || [])) castByName[c.name] = c;
+  const rolesWithProfile = roles.map(r => {
+    const cast = castByName[r.name];
+    return {
+      role_type: r.role_type || (cast && cast.roleType) || 'npc',
+      name: r.name,
+      profile: buildRoleProfile({ name: r.name, card: cast && cast.card }),
+    };
+  });
+
   const snapshotJson = {
     world: {
       name: '故事世界',
       worldGlobalBackground: (edit.globalBackground || '').slice(0, 50000000),
+      dynamicWorldGlobalBackground: (memCtx.summary || '').slice(0, 5000),
     },
     chapter: {
       title: chapter?.title || '未命名章节',
       directive: (chapter?.background || '').slice(0, 3000),
+      user_turns: '',
       opening: (chapter?.openingLine || '').slice(0, 2000),
       completion_condition: chapter?.successCondition || null,
       condition: (storyStatus && storyStatus.chapterInfo && storyStatus.chapterInfo.condition) || null,
     },
-    // 记忆上下文：角色参数卡（来自 memory_manager 维护的 tmm_story）
-    memory: {
-      summary: memCtx.summary || '',
-      cast: memCtx.castCards.map(c => ({
-        name: c.name,
-        role_type: c.roleType,
-        level: c.card?.level ?? null,
-        level_desc: c.card?.level_desc || '',
-        hp: c.card?.hp ?? null,
-        max_hp: c.card?.hp ? 100 + (c.card?.level || 1) * 10 : null,
-        mp: c.card?.mp ?? null,
-        max_mp: c.card?.mp ? 100 + (c.card?.level || 1) * 10 : null,
-        role_key_information: c.card?.role_key_information || '',
-      })),
-    },
-    roles: roles.map(r => ({ name: r.name, role_type: r.role_type })),
+    roles: rolesWithProfile,
     wildcard_roles: wildcardRoles.map(w => ({ name: w.name, role_type: w.role_type })),
-    // 当前事件（对齐 toonflow current_event digest）
+    narrator_wildcard_fallback: false,
+    // story_state：长期记忆摘要（不是空串）
+    story_state: (memCtx.summary || '') + ' | 距离完成条件：' + (chapter?.successCondition || '无'),
+    // current_phase（对齐 toonflow）
+    current_phase: {
+      label: phaseLabel,
+      goal: phaseGoal || phaseTargetSummary || phaseLabel,
+      allowed_speakers: [], // 自由模式无限制
+    },
+    // current_event（对齐 toonflow）
     current_event: {
       index: evDigest.index,
-      kind: evDigest.kind,
-      flow: isUserPhase ? 'user_phase' : 'chapter_content',
-      state: evDigest.state,
-      summary: evDigest.summary || eventSummary,
+      kind: evDigest.kind || 'scene',
+      flow: evDigest.flow || (isUserPhase ? 'user_phase' : 'chapter_content'),
+      status: evDigest.state || 'active',
+      summary: curEv.targetSummary || curEv.name || evDigest.summary || eventSummary,
       facts: evDigest.facts.length ? evDigest.facts : eventFacts,
-      window: evDigest.window || '',
-      label: curEv.label || curEv.name || '',
-      targetSummary: curEv.targetSummary || curEv.name || '',
-      body: curEv.body || '',
+      memory_summary: (memCtx.summary || '').slice(0, 2000),
+      memory_facts: [],
+      window: evDigest.window || curEv.body || '',
+      curr_stage: evDigest.curr_stage || {
+        index: eventIdx,
+        id: curEv.id || '',
+        label: curEv.label || curEv.name || '',
+        kind: isUserNode ? 'user' : 'scene',
+        targetSummary: curEv.targetSummary || curEv.name || '',
+        summary: curEv.targetSummary || curEv.name || '',
+      },
     },
-    // 当前进度（对齐 toonflow current_progress）
-    current_progress: {
-      phase_id: phase.id || phase.name || '',
-      phase_label: phase.label || phase.name || '',
-      phase_targetSummary: phase.targetSummary || '',
-      phase_index: phaseIdx,
-      stage_index: eventIdx,
-      total_stages: events.length,
-      user_node_status: isUserPhase ? 'waiting_input' : 'idle',
-      completed_events: progress.completedEvents || [],
-      completed_phases: progress.completedPhases || [],
-      user_speak_count: recentDialogue.filter(m => m.speaker === '用户').length,
-      user_speak_required: isUserNode ? true : null,
-    },
-    // 当前阶段（对齐 toonflow current_stage）
-    current_stage: {
-      index: eventIdx,
-      id: curEv.id || '',
-      label: curEv.label || curEv.name || '事件',
-      kind: isUserNode ? 'user' : 'scene',
-      targetSummary: curEv.targetSummary || curEv.name || '',
-      summary: curEv.targetSummary || curEv.name || '',
-      body: curEv.body || '',
-      user_speak_required: isUserNode ? true : null,
-    },
-    // 下一阶段（对齐 toonflow next_stage）
-    next_stage: nextEv ? {
-      index: eventIdx + 1,
-      id: nextEv.id || '',
-      label: nextEv.label || nextEv.name || '',
-      kind: /用户发言|用户/.test(nextEv.name || '') ? 'user' : 'scene',
-      targetSummary: nextEv.targetSummary || nextEv.name || '',
-      summary: nextEv.targetSummary || nextEv.name || '',
-    } : null,
-    // 下一事件提示（对齐 toonflow next_event）
-    next_event: nextEvInfo,
+    // turn_state（对齐 toonflow）
     turn_state: {
       can_player_speak: canPlayerSpeak,
+      expected_role_type: isUserNode ? 'player' : (isUserPhase ? 'narrator' : 'npc'),
+      expected_role: isUserNode ? '用户' : (curEv.label || curEv.name || ''),
+      last_speaker_role_type: /^(旁白|narrator)$/i.test(lastSpeaker || '') ? 'narrator' : 'npc',
       last_speaker: lastSpeaker,
-      allowed_speakers: allowedSpeakers,
     },
+    active_task: null,
     recent_dialogue: recentDialogue.slice(-n),
     latest_player_message: userInput_clean,
     ...(freeMode ? { free_mode: true } : {}),
-    ...(progress.pendingGuide ? {
-      pending_guide: {
-        summary: progress.pendingGuide.summary || '',
-        facts: progress.pendingGuide.facts || [],
-        reason: progress.pendingGuide.reason || '',
-        chapter_title: progress.pendingGuide.chapterTitle || '',
-      }
-    } : {}),
   };
+  if (false) {
+    // 占位块已替换
+  }
 
   // 章节状态说明（人类可读，追加到 prompt）
   const storyStatusNote = (() => {
@@ -933,7 +929,6 @@ const _PROMPT_ORCHESTRATOR_SYSTEM = `你是剧情编排师（极简版）。
 - 当检测到用户输入为 "." 时，应认为当前需要用户回应的阶段已经**被用户主动跳过并完成**。`;
 
 const promptParts = [
-    `你是剧情编排师（对齐 Toonflow story-orchestrator-compact）。`,
     `返回严格 JSON（不要前缀注释、不要代码块、不要 markdown 围栏）。`,
     storyStatusNote,
     intentCtx,
@@ -955,9 +950,11 @@ const promptParts = [
   const outputSchema = `直接输出 JSON，不要任何其他文字：
 {"speaker":"角色名","role_type":"npc/narrator/general","motive":"一句话动机","await_user":false,"trigger_memory_agent":false,"event_adjust_mode":"keep","event_status":"active","event_summary":"当前事件一句话","event_facts":["关键事实1","关键事实2"]}`;
   console.log('[multi-character_stage][buildOrchestrationPrompt ]promptParts last');
-  const user = promptParts.join('\n') + '\n\n' + outputSchema;
+  // 对齐 toonflow-game-app buildOrchestratorUserPrompt：user prompt 仅为 JSON.stringify(snapshot)
+  // 所有规则（NPC优先/@角色名/await_user/JSON schema）都在 system prompt 里
+  const user = JSON.stringify(snapshotJson, null, 2);
   return {
-    prompt: _PROMPT_ORCHESTRATOR_SYSTEM + '\n\n' + user, // 兼容老调用
+    prompt: _PROMPT_ORCHESTRATOR_SYSTEM + '\n\n' + user, // 兼容老调用（拼接单字符串）
     system: _PROMPT_ORCHESTRATOR_SYSTEM,
     user,
     evDigest,
@@ -1025,6 +1022,7 @@ function buildSpeakerCurrentEventLines(curEv, chapterTitle, chapterIdx) {
   // 当前阶段信息（对齐 toonflow current_event.curr_stage）
   if (curEv.curr_stage) {
     const cs = curEv.curr_stage;
+    lines.push(`currStageIndex: ${cs.index || 0}`);
     lines.push(`curr_stage: [${cs.index}] ${cs.label || ''} (${cs.kind || 'scene'}) ${cs.targetSummary || ''}`);
   }
   // 当前进度（对齐 toonflow current_progress）
@@ -1045,6 +1043,35 @@ function buildSpeakerNextEventLines(nextEv) {
     nextEv.targetSummary ? `targetSummary: ${nextEv.targetSummary}` : (nextEv.name ? `summary: ${nextEv.name}` : ''),
   ].filter(Boolean);
   return lines.join('\n');
+}
+
+// 角色发言用的最近对话（返回数组，对齐 toonflow）
+async function buildSpeakerRecentDialogue(n) {
+  try {
+    const cnt = await tavo.message.count();
+    if (!cnt) return [];
+    const start = Math.max(0, cnt - n);
+    const msgs = await tavo.message.find([start, cnt - 1]);
+    let _charMap = {};
+    try {
+      const _chat = await tavo.chat.current();
+      for (const c of ((_chat && _chat.characters) || [])) {
+        if (c && c.id !== undefined && c.name) _charMap[c.id] = c.name;
+      }
+    } catch (_e) {}
+    return (msgs || []).map(m => {
+      let role = '旁白', roleType = 'narrator', eventType = 'on_message';
+      if (m.role === 'user') { role = '用户'; roleType = 'player'; }
+      else if (m.role === 'assistant' && m.characterId !== undefined && _charMap[m.characterId]) {
+        role = _charMap[m.characterId];
+        roleType = /^(旁白|narrator)$/i.test(role) ? 'narrator' : 'npc';
+      }
+      return {
+        role, roleType, eventType,
+        content: String(m.content || '').replace(/<[^>]+>/g, '').slice(0, 200),
+      };
+    });
+  } catch (e) { return []; }
 }
 
 // 对齐 fixDB.prompts.ts: _PROMPT_STORY_SPEAKER
@@ -1125,26 +1152,94 @@ async function buildSpeakerPrompt(speaker, roleType, motive, eventSummary, evDig
   const phase = phases[phaseIdx] || {};
   const phaseGoal = phase.name || '';
 
+  // 动态全局背景
+  const state = readChatVar('tmm') || {};
+  const dynamicBg = (state.dynamic_world_global_background || '').slice(0, 2000);
+
+  // 记忆上下文
+  const memCtx = await buildMemoryContext();
+
   const speakerType = {
     npc: '一般角色', narrator: '旁白', player: '用户', system: '系统角色', general: '万能角色',
   }[roleType] || roleType;
 
-  // user prompt：把对齐 fixDB 入参格式展开
+  // 当前说话人设定（从 castState 提取）
+  const speakerSetting = (() => {
+    if (!castState) return '';
+    // 尝试从 castState 中找到当前 speaker 的设定
+    const lines = castState.split('\n');
+    let capture = false;
+    const parts = [];
+    for (const line of lines) {
+      if (line.startsWith('## ' + speaker) || line.startsWith('## ' + speaker + '（')) { capture = true; }
+      else if (capture && line.startsWith('## ')) break;
+      if (capture) parts.push(line);
+    }
+    return parts.slice(0, 5).join('\n');
+  })();
+
+  // 用户最近输入（从 recentDialogue 提取最后一条用户输入）
+  const recentDialogue = await buildSpeakerRecentDialogue(10);
+  const lastUserMsg = [...recentDialogue].reverse().find(m => m.role === '用户');
+  const userInputText = lastUserMsg ? lastUserMsg.content : '无';
+
+  // 其他可见角色（排除当前说话人和用户）
+  const otherChars = roles.filter(r => r.name !== speaker && r.name !== '用户').map(r => r.name).join('、') || '无';
+
+  // user prompt：对齐 toonflow 角色发言输入格式
   const lines = [
-    `# 在场角色动态状态（来自记忆管理器，必须严格按此状态发言）`,
-    castState || '（无角色动态状态）',
+    `[世界]`,
+    `名称: ${edit.title || '故事世界'}`,
     ``,
-    `# 当前事件（仅可使用本事件内容，不得提前使用后续章节）`,
+    `[原始全局背景]`,
+    (edit.globalBackground || '').slice(0, 1000),
+    ``,
+    dynamicBg ? `[动态全局背景]\n${dynamicBg}` : '',
+    ``,
+    `[章节]`,
+    `标题: ${chapter.title || '无章节'}`,
+    `章节内容: ${(chapter.content || '').slice(0, 500)}`,
+    ``,
+    `[当前阶段]`,
+    `label: ${phase.name || phase.label || '未命名阶段'}`,
+    ``,
+    `[当前事件]`,
     buildSpeakerCurrentEventLines(evDigest, chapter.title || '无章节', chapterIdx),
-    nextEvInfo ? `\n# 下一事件（仅供参考，不要让角色泄漏）\n` + buildSpeakerNextEventLines(nextEvInfo) : '',
     ``,
-    `# 入参`,
-    `- [当前说话人] name: ${speaker}`,
-    `- [当前说话人] role_type: ${roleType || 'npc'}（${speakerType}）`,
-    `- [本轮动机]: ${motive}`,
-    `- [最近对话]: （拼接自 recent_dialogue）`,
-    freeMode ? `- 当前为自由模式，可根据用户提问自由回应，不必强制推进剧情` : '',
+    `[下一事件]`,
+    nextEvInfo ? buildSpeakerNextEventLines(nextEvInfo) : '无',
     ``,
+    `[当前说话人]`,
+    `name: ${speaker}`,
+    `role_type: ${roleType || 'npc'}`,
+    speakerSetting ? `设定:${speakerSetting}` : '',
+    ``,
+    `[本轮动机]`,
+    motive,
+    ``,
+    `[剧情摘要]`,
+    (memCtx.summary || eventSummary || '暂无额外摘要').slice(0, 200),
+    ``,
+    `[最近对话(JSON数组)]`,
+    JSON.stringify(recentDialogue.slice(-8).map((m, i) => ({
+      role: m.role,
+      roleType: m.roleType || 'npc',
+      eventType: m.eventType || 'on_message',
+      content: m.content,
+      eventIndex: evDigest?.index || 1,
+      stageIndex: evDigest?.curr_stage?.index || 0,
+    })), null, 2),
+    ``,
+    `[用户最近输入]`,
+    userInputText,
+    ``,
+    `[其他可见角色]`,
+    otherChars,
+    ``,
+    `[输出要求]`,
+    `直接输出本轮真正展示给用户的一段正文，不要 JSON，不要字段名，不要代码块。`,
+    ``,
+    castState ? `# 在场角色动态状态\n${castState}` : '',
     worldKb || '',
   ].filter(Boolean).join('\n');
 
@@ -1341,7 +1436,9 @@ function game_orchestration(userText,intentResult){
 
       const { system: orchSystem, user: orchUser, prompt: orchPrompt, evDigest, nextEvInfo, storyStatus, memCtx, chapterIdx, chapterTitle } = await buildOrchestrationPrompt(userText);
 
-      console.log('[multi-character_stage][game_orchestration][event_speaker_line] orchPrompt:',JSON.stringify(orchPrompt));
+      console.log('[multi-character_stage][game_orchestration][event_speaker_line] [orchestration_orchPrompt]orchPrompt:',JSON.stringify(orchPrompt));
+      console.log('[multi-character_stage][game_orchestration][event_speaker_line][orchestration_orchUser] orchUser:',JSON.stringify(orchUser));
+
       // console.log("[game_orchestration] orchPrompt:", orchPrompt);
       // ===== 全链路编排 TRACE =====
       console.log('[multi-character_stage]══════════════════════════════════════════════════');
