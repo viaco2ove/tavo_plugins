@@ -950,9 +950,8 @@ const promptParts = [
   const outputSchema = `直接输出 JSON，不要任何其他文字：
 {"speaker":"角色名","role_type":"npc/narrator/general","motive":"一句话动机","await_user":false,"trigger_memory_agent":false,"event_adjust_mode":"keep","event_status":"active","event_summary":"当前事件一句话","event_facts":["关键事实1","关键事实2"]}`;
   console.log('[multi-character_stage][buildOrchestrationPrompt ]promptParts last');
-  // 对齐 toonflow-game-app buildOrchestratorUserPrompt：user prompt 仅为 JSON.stringify(snapshot)
-  // 所有规则（NPC优先/@角色名/await_user/JSON schema）都在 system prompt 里
-  const user = JSON.stringify(snapshotJson, null, 2);
+  // 对齐 toonflow-game-app buildOrchestratorUserPrompt：user prompt = JSON.stringify(snapshot) + 世界知识
+  const user = JSON.stringify(snapshotJson, null, 2) + (worldKb ? '\n\n【世界知识】\n' + worldKb : '');
   return {
     prompt: _PROMPT_ORCHESTRATOR_SYSTEM + '\n\n' + user, // 兼容老调用（拼接单字符串）
     system: _PROMPT_ORCHESTRATOR_SYSTEM,
@@ -1248,6 +1247,7 @@ async function buildSpeakerPrompt(speaker, roleType, motive, eventSummary, evDig
 
 // 暴露 buildSpeakerPrompt 给 speaker 插件（跨插件调用）
 window.buildSpeakerPrompt = buildSpeakerPrompt;
+window.getWorldbookInject = getWorldbookInject;
 
 // 读取 tf_story boot 状态（event_manager 维护）
 function readTfBoot() {

@@ -2729,7 +2729,16 @@ async function buildEventProgressSnapshot(chapter, progress, latestMessageConten
 async function evaluateEventProgressByAi(chapter, progress, latestMessageContent, latestMessageRole) {
   try {
     const snapshot = await buildEventProgressSnapshot(chapter, progress, latestMessageContent, latestMessageRole);
-    const userPrompt = JSON.stringify(snapshot, null, 2);
+    // 对齐 toonflow EventProgressRuntimeService：世界知识注入
+    let worldKnowledge = '';
+    try {
+      if (window.getWorldbookInject) {
+        const scanText = (latestMessageContent || '') + ' ' + (latestMessageRole || '');
+        worldKnowledge = await window.getWorldbookInject(scanText);
+      }
+    } catch (e) { console.warn('[event_manager][event_progress] 世界知识加载失败', e); }
+    const snapshotText = JSON.stringify(snapshot, null, 2);
+    const userPrompt = worldKnowledge ? snapshotText + '\n\n【世界知识】\n' + worldKnowledge : snapshotText;
     const llmMode = (window.tf_llm && window.tf_llm.callDirect) ? '接管' : 'tavo原生';
 
     const rawText = llmMode === '接管'
@@ -3074,13 +3083,28 @@ async function evaluateChapterOutcomeByAi(chapter, progress, latestMessageConten
             role: role,
             role_type: role_type,
             content: String(m.content || '').replace(/<[^>]+>/g, '').slice(0, 160),
+            // 对齐 toonflow recent_dialogue 字段
+            event_type: m.event_type || 'on_message',
+            event_index: typeof m.event_index === 'number' ? m.event_index : 1,
+            stage_index: typeof m.stage_index === 'number' ? m.stage_index : 0,
+            role_num_speech_curr_event: 0,
+            role_num_speech_curr_stage: 0,
           };
         });
       }
     } catch (e) {}
 
     const snapshot = await buildChapterJudgeSnapshot(chapter, progress, latestMessageContent, recentDialogue);
-    const userPrompt = JSON.stringify(snapshot, null, 2);
+    // 对齐 toonflow ChapterRuntimeService：世界知识注入
+    let worldKnowledge = '';
+    try {
+      if (window.getWorldbookInject) {
+        const scanText = recentDialogue.map(d => d.content).join(' ');
+        worldKnowledge = await window.getWorldbookInject(scanText);
+      }
+    } catch (e) { console.warn('[event_manager][chapter_judge] 世界知识加载失败', e); }
+    const snapshotText = JSON.stringify(snapshot, null, 2);
+    const userPrompt = worldKnowledge ? snapshotText + '\n\n【世界知识】\n' + worldKnowledge : snapshotText;
     const llmMode = (window.tf_llm && window.tf_llm.callDirect) ? '接管' : 'tavo原生';
 
     const rawText = llmMode === '接管'

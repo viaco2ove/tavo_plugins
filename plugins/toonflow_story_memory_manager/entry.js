@@ -915,7 +915,7 @@ async function runMemoryAgent(directive) {
         role = info ? info.name : 'NPC';
         roleType = info ? info.roleType : 'npc';
       }
-      return { role, roleType, eventType, content };
+      return { role, roleType, eventType, content, eventIndex: null, stageIndex: null };
     }).filter(Boolean);
     const cur = readChatVar(NS) || defaultState();
     const cardList = buildCharacterCardList();
@@ -1046,6 +1046,14 @@ async function runMemoryAgent(directive) {
       prompt += '\n[用户直接指令]\n' + pendingDirective + '（按「@记忆管理 特殊指令优先级规则」处理）\n';
     }
     prompt += '\n[任务]\n根据现有记忆、当前事件、最近对话和角色参数卡，更新整个故事所需的长期记忆。\n如果对话里出现用户或 NPC 的长期状态变化，必须同时输出参数卡 patch。\n只保留对后续剧情真的有用的变化，重复项请合并，冲突项按最新剧情修正。\n[输出格式(JSON)]\n请参考系统提示词里的输出格式要求，只输出 JSON，不要其他内容。';
+    // 对齐 toonflow：世界知识注入
+    try {
+      if (window.getWorldbookInject) {
+        const scanText = (cur.summary || '') + ' ' + (recentDialogue.map(d => d.content).join(' '));
+        const worldKnowledge = await window.getWorldbookInject(scanText);
+        if (worldKnowledge) prompt += '\n\n【世界知识】\n' + worldKnowledge;
+      }
+    } catch (e) { console.warn('[memory_manager][tmm] 世界知识加载失败', e); }
     console.log('[memory_manager][tmm] runMemoryAgent: calling tf_llm.callDirect (prompt len=' + prompt.length + ')');
     // 改用 tf_llm.callDirect（跟 mcs / llm-opt / classifyLLM 同一通道，已验证能通）
     // 不再用 tavo.generate — 那条 tavo 自带 LLM 通道会卡死
