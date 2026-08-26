@@ -3403,7 +3403,7 @@ _safeOnSide('tf-story-reset', async () => {
 
 // look at [md/currdesign/logic/logtag/logtag.md]
 var whitelist =['event_manager', 'memory_manager'];
-var blacklist =['memory_manager']
+//var blacklist =['memory_manager']
 ConsoleTag.patchConsole({
   // mode:'whitelist'/'blacklist'
   mode: 'whitelist',
