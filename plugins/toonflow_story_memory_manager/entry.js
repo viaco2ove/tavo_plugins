@@ -827,10 +827,29 @@ async function runMemoryAgent(directive) {
       tavo.message.find([msgStart, Math.max(0, (msgCnt || 1) - 1)]),
       new Promise((_, reject) => setTimeout(() => reject(new Error('tavo.message.find timeout 5s')), 5000))
     ]);
-    const recentDialogue = (Array.isArray(messages) ? messages : []).map(m => ({
-      role: m.characterName || (m.role === 'user' ? '用户' : (m.role === 'assistant' ? 'NPC' : m.role)),
-      content: (m.content || '').replace(/<[^>]+>/g, '').slice(0, 400000000),
-    }));
+    // Build characterId → {name, roleType} map from chat.characters
+    let charIdMap = {};
+    try {
+      const chatInfo = await tavo.chat.current();
+      const chatChars = (chatInfo && chatInfo.characters) || [];
+      for (const c of chatChars) {
+        if (c && c.id !== undefined) charIdMap[c.id] = { name: c.name || '未命名', roleType: 'npc' };
+      }
+    } catch (e) {}
+
+    const recentDialogue = (Array.isArray(messages) ? messages : []).map(m => {
+      const content = (m.content || '').replace(/<[^>]+>/g, '').trim();
+      if (!content) return null;
+      let role = '系统', roleType = 'system', eventType = 'on_message';
+      if (m.role === 'user') {
+        role = '用户'; roleType = 'player';
+      } else if (m.role === 'assistant') {
+        const info = (m.characterId !== undefined && charIdMap[m.characterId]) || null;
+        role = info ? info.name : 'NPC';
+        roleType = info ? info.roleType : 'npc';
+      }
+      return { role, roleType, eventType, content };
+    }).filter(Boolean);
     const cur = readChatVar(NS) || defaultState();
     const cardList = buildCharacterCardList();
     const globalBg = await getGlobalBackground();

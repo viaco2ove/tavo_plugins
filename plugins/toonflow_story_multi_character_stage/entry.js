@@ -284,6 +284,28 @@ function getOrchestration() {
   } catch (e) { return 'plugin'; }
 }
 
+// Build characterId → name map from chat.characters
+let _mcsCharIdMap = null;
+async function getCharIdMap() {
+  if (_mcsCharIdMap) return _mcsCharIdMap;
+  try {
+    const chat = await tavo.chat.current();
+    const chars = (chat && chat.characters) || [];
+    _mcsCharIdMap = {};
+    for (const c of chars) {
+      if (c && c.id !== undefined && c.name) _mcsCharIdMap[c.id] = c.name;
+    }
+  } catch (e) { _mcsCharIdMap = {}; }
+  return _mcsCharIdMap;
+}
+function resolveSpeaker(m) {
+  if (m.role === 'user') return '用户';
+  if (m.role === 'assistant' && m.characterId !== undefined && _mcsCharIdMap && _mcsCharIdMap[m.characterId]) return _mcsCharIdMap[m.characterId];
+  if (m.role === 'assistant') return '旁白';
+  if (m.role === 'system') return '系统';
+  return 'NPC';
+}
+
 // 台词数量：传给 agent 的「最近对话」条数（对齐 Toonflow recent_dialogue 入参），默认 20
 // 从 tf_story_setting.edit（global scope）读取，多故事共享
 function getLineCount() {
@@ -609,11 +631,12 @@ async function buildOrchestrationPrompt(userInput) {
   // recent_dialogue: 角色：台词
   let recentDialogue = [];
   try {
+    await getCharIdMap();
     const cnt = await tavo.message.count();
     if (cnt > 0) {
       const msgs = tavo.message.find([Math.max(0, cnt - n), cnt]) || [];
       recentDialogue = msgs.map(m => {
-        const name = m.characterName || (m.role === 'user' ? '用户' : '旁白');
+        const name = resolveSpeaker(m);
         console.log('[multi-character_stage][buildOrchestrationPrompt ]promptParts get 2');
         return { speaker: name, content: String(m.content || '').slice(0, 150000000) };
       });
@@ -1181,8 +1204,9 @@ function game_orchestration(userText,intentResult){
             const _js = Math.max(0, (_jc || 0) - 10);
             const _jm = await tavo.message.find([_js, Math.max(0, (_jc || 1) - 1)]);
             if (Array.isArray(_jm) && _jm.length) {
+              await getCharIdMap();
               _judgeMsgCount = _jm.length;
-              _judgeMsgs = _jm.map(m => (m.characterName || (m.role === 'user' ? '用户' : 'NPC')) + '：' + String(m.content || '').replace(/<[^>]+>/g, '').slice(0, 400)).join('\n');
+              _judgeMsgs = _jm.map(m => resolveSpeaker(m) + '：' + String(m.content || '').replace(/<[^>]+>/g, '').slice(0, 400)).join('\n');
             }
           } catch(_) {}
           const r = await window.tfStoryJudge.checkChapterDoneLLM({
@@ -1204,8 +1228,9 @@ function game_orchestration(userText,intentResult){
             const _es = Math.max(0, (_ec || 0) - 10);
             const _em = await tavo.message.find([_es, Math.max(0, (_ec || 1) - 1)]);
             if (Array.isArray(_em) && _em.length) {
+              await getCharIdMap();
               _epMsgs = JSON.stringify(_em.map(m => ({
-                role: m.characterName || (m.role === 'user' ? '用户' : 'NPC'),
+                role: resolveSpeaker(m),
                 content: String(m.content || '').replace(/<[^>]+>/g, '').slice(0, 400),
               })));
             }

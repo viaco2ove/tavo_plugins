@@ -306,7 +306,20 @@ async function _llmJudgeChapter(chapter, cond, ctx) {
       const _js = Math.max(0, (_jc || 0) - 10);
       const _jm = await tavo.message.find([_js, Math.max(0, (_jc || 1) - 1)]);
       if (Array.isArray(_jm) && _jm.length) {
-        recentDialogue = _jm.map(m => (m.characterName || (m.role === 'user' ? '用户' : 'NPC')) + '：' + String(m.content || '').replace(/<[^>]+>/g, '').slice(0, 400)).join('\n');
+        // Build charIdMap for chapter judge
+        let _charMap = {};
+        try {
+          const _chat = await tavo.chat.current();
+          for (const c of ((_chat && _chat.characters) || [])) {
+            if (c && c.id !== undefined && c.name) _charMap[c.id] = c.name;
+          }
+        } catch (_e) {}
+        recentDialogue = _jm.map(m => {
+          let name = '旁白';
+          if (m.role === 'user') name = '用户';
+          else if (m.role === 'assistant' && m.characterId !== undefined && _charMap[m.characterId]) name = _charMap[m.characterId];
+          return name + '：' + String(m.content || '').replace(/<[^>]+>/g, '').slice(0, 400);
+        }).join('\n');
       }
     } catch(_) {}
   }
@@ -558,10 +571,22 @@ async function tfEventProgress_advance(messageContext) {
       const _msgStart = Math.max(0, (_msgCnt || 0) - 10);
       const _msgs = await tavo.message.find([_msgStart, Math.max(0, (_msgCnt || 1) - 1)]);
       if (Array.isArray(_msgs) && _msgs.length) {
-        recentDialogue = JSON.stringify(_msgs.map(m => ({
-          role: m.characterName || (m.role === 'user' ? '用户' : (m.role === 'assistant' ? 'NPC' : m.role)),
-          content: String(m.content || '').replace(/<[^>]+>/g, '').slice(0, 4000000000),
-        })));
+        // Build characterId → name map
+        let _charMap = {};
+        try {
+          const _chat = await tavo.chat.current();
+          for (const c of ((_chat && _chat.characters) || [])) {
+            if (c && c.id !== undefined) _charMap[c.id] = c.name || '未命名';
+          }
+        } catch (_e) {}
+        recentDialogue = JSON.stringify(_msgs.map(m => {
+          const content = String(m.content || '').replace(/<[^>]+>/g, '').trim();
+          if (!content) return null;
+          let role = '系统';
+          if (m.role === 'user') role = '用户';
+          else if (m.role === 'assistant') role = (m.characterId !== undefined && _charMap[m.characterId]) || 'NPC';
+          return { role, content };
+        }).filter(Boolean));
       }
     } catch(_) {}
     if (!recentDialogue) {
@@ -1277,7 +1302,19 @@ async function getAllMessagesText() {
     const count = await tavo.message.count();
     if (!count) return '';
     const msgs = await tavo.message.find([0, Math.min(count, 30) - 1]);
-    return (msgs || []).map(m => (m.characterName || (m.role === 'user' ? '用户' : 'NPC')) + '：' + (m.content || '')).join('\n');
+    let _charMap = {};
+    try {
+      const _chat = await tavo.chat.current();
+      for (const c of ((_chat && _chat.characters) || [])) {
+        if (c && c.id !== undefined && c.name) _charMap[c.id] = c.name;
+      }
+    } catch (_e) {}
+    return (msgs || []).map(m => {
+      let name = 'NPC';
+      if (m.role === 'user') name = '用户';
+      else if (m.role === 'assistant' && m.characterId !== undefined && _charMap[m.characterId]) name = _charMap[m.characterId];
+      return name + '：' + (m.content || '');
+    }).join('\n');
   } catch (e) { return ''; }
 }
 
@@ -2082,9 +2119,18 @@ async function buildEventProgressSnapshot(chapter, progress, latestMessageConten
     const cnt = await tavo.message.count();
     if (cnt > 0) {
       const msgs = tavo.message.find([Math.max(0, cnt - 10), cnt]) || [];
+      // Build charIdMap
+      let _charMap = {};
+      try {
+        const _chat = await tavo.chat.current();
+        for (const c of ((_chat && _chat.characters) || [])) {
+          if (c && c.id !== undefined && c.name) _charMap[c.id] = c.name;
+        }
+      } catch (_e) {}
       recentDialogue = msgs.map(m => {
-        const role = m.characterName || (m.role === 'user' ? '用户' : '旁白');
-        const role_type = m.role === 'user' ? 'player' : (m.characterName ? 'npc' : 'narrator');
+        let role = '旁白', role_type = 'narrator';
+        if (m.role === 'user') { role = '用户'; role_type = 'player'; }
+        else if (m.role === 'assistant' && m.characterId !== undefined && _charMap[m.characterId]) { role = _charMap[m.characterId]; role_type = 'npc'; }
         return {
           role: role,
           role_type: role_type,
@@ -2479,11 +2525,24 @@ async function evaluateChapterOutcomeByAi(chapter, progress, latestMessageConten
       const cnt = await tavo.message.count();
       if (cnt > 0) {
         const msgs = tavo.message.find([Math.max(0, cnt - 10), cnt]) || [];
-        recentDialogue = msgs.map(m => ({
-          role: m.characterName || (m.role === 'user' ? '用户' : '旁白'),
-          role_type: m.role === 'user' ? 'player' : (m.characterName ? 'npc' : 'narrator'),
-          content: String(m.content || '').replace(/<[^>]+>/g, '').slice(0, 160),
-        }));
+        // Build charIdMap
+        let _charMap = {};
+        try {
+          const _chat = await tavo.chat.current();
+          for (const c of ((_chat && _chat.characters) || [])) {
+            if (c && c.id !== undefined && c.name) _charMap[c.id] = c.name;
+          }
+        } catch (_e) {}
+        recentDialogue = msgs.map(m => {
+          let role = '旁白', role_type = 'narrator';
+          if (m.role === 'user') { role = '用户'; role_type = 'player'; }
+          else if (m.role === 'assistant' && m.characterId !== undefined && _charMap[m.characterId]) { role = _charMap[m.characterId]; role_type = 'npc'; }
+          return {
+            role: role,
+            role_type: role_type,
+            content: String(m.content || '').replace(/<[^>]+>/g, '').slice(0, 160),
+          };
+        });
       }
     } catch (e) {}
 

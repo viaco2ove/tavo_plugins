@@ -267,9 +267,19 @@ async function buildRecentDialogue(n) {
     if (!count) return '';
     const start = Math.max(0, count - n);
     const msgs = await tavo.message.find([start, count - 1]);
+    // Build charIdMap once per call
+    let _charMap = {};
+    try {
+      const _chat = await tavo.chat.current();
+      for (const c of ((_chat && _chat.characters) || [])) {
+        if (c && c.id !== undefined && c.name) _charMap[c.id] = c.name;
+      }
+    } catch (_e) {}
     const lines = (msgs || []).map((m) => {
-      const name = m.characterName || (m.role === 'user' ? '用户' : '旁白');
-      return name + '：' + String(m.content || '').replace(/\s+/g, ' ').slice(0, 2000000);
+      let name = '旁白';
+      if (m.role === 'user') name = '用户';
+      else if (m.role === 'assistant' && m.characterId !== undefined && _charMap[m.characterId]) name = _charMap[m.characterId];
+      return name + '：' + String(m.content || '').replace(/\s+/g, ' ').slice(0, 2000);
     });
     return lines.join('\n');
   } catch (e) { return ''; }
