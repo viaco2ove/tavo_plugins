@@ -87,10 +87,8 @@ function tfStoryJudge_checkAndAdvance(messageContext) {
     // 关键修复（bug A 兜底）：重建 outline 时不要无脑重置指针到 [0][0]。
     // 只有「指针在 outline 里找不到」时才 fallback 到首个 phase/首个 stage。
     let prog = Object.assign({}, progress);
-    if (!prog.runtimeOutline || prog.chaptersKey !== chapters.length + ':' + idx) {
-      prog.runtimeOutline = (chapter && chapter.runtimeOutline && Array.isArray(chapter.runtimeOutline.phases) && chapter.runtimeOutline.phases.length)
-        ? chapter.runtimeOutline
-        : parseProgress(chapter.content || '');
+    if (!prog.runtimeOutline || prog.chaptersKey !== chapters.length + ':' + idx || isOldRuntimeOutlineFormat(prog.runtimeOutline)) {
+      prog.runtimeOutline = resolveChapterRuntimeOutline(chapter, chapter.content || '');
       // 指针：优先保留 prog 已有指针（如果在新 outline 里找得到）
       const phases = prog.runtimeOutline.phases || [];
       let keepPhase = null, keepStage = null;
@@ -478,7 +476,7 @@ async function _llmJudgeEventProgress(progress, chapters, recentDialogue) {
   // runtimeOutline 是数据真相：phases[].stages[]，不再读老 phases[].events[]
   const outline = progress.runtimeOutline || {};
   const outlinePhases = Array.isArray(outline.phases) ? outline.phases : [];
-
+  console.log("[event_manager][_llmJudgeEventProgress] outlinePhases:",JSON.stringify(outlinePhases))
   // 找当前 phase（按 currentPhaseId）和当前 stage（按 currentStageId）
   const currentPhaseId = progress.currentPhaseId || '';
   const currentStageId = progress.currentStageId || '';
@@ -614,11 +612,9 @@ async function tfEventProgress_advance(messageContext) {
     const idx = progress.currentChapterIndex || 0;
     const chapter = chapters[idx];
     if (!chapter) return { advanced: false, reason: 'no_chapter' };
-    if (!progress.runtimeOutline || progress.chaptersKey !== chapters.length + ':' + idx) {
+    if (!progress.runtimeOutline || progress.chaptersKey !== chapters.length + ':' + idx || isOldRuntimeOutlineFormat(progress.runtimeOutline)) {
       // 优先读 chapter.runtimeOutline（sync_story 阶段预解析），fallback 才用 parseProgress
-      progress.runtimeOutline = (chapter && chapter.runtimeOutline && Array.isArray(chapter.runtimeOutline.phases) && chapter.runtimeOutline.phases.length)
-        ? chapter.runtimeOutline
-        : parseProgress(chapter.content || '');
+      progress.runtimeOutline = resolveChapterRuntimeOutline(chapter, chapter.content || '');
       // 指针：保留已有（如果在新 outline 里找得到），否则 fallback 到首个未完成 phase
       const phases = progress.runtimeOutline.phases || [];
       let keepPhase = progress.currentPhaseId ? phases.find(p => p.id === progress.currentPhaseId) : null;
@@ -1234,6 +1230,27 @@ function markStageCompleted(progress, phaseId, stageId) {
   }
 }
 
+// 检测 runtimeOutline 是否是旧格式（phases[].events）还是新格式（phases[].stages）
+// 旧格式没有 id 字段且子级叫 events，新格式有 id 且子级叫 stages
+function isOldRuntimeOutlineFormat(outline) {
+  if (!outline || !Array.isArray(outline.phases) || !outline.phases.length) return false;
+  const first = outline.phases[0];
+  if (!first) return false;
+  // 旧格式：有 events 没有 stages，或没有 id 字段
+  return !!(first.events && !first.stages) || !first.id;
+}
+
+// 安全读取 chapter.runtimeOutline：旧格式（events）强制用 parseProgress 重生成
+function resolveChapterRuntimeOutline(chapter, content) {
+  if (!chapter) return parseProgress(content || '');
+  const ro = chapter.runtimeOutline;
+  if (ro && Array.isArray(ro.phases) && ro.phases.length && !isOldRuntimeOutlineFormat(ro)) {
+    return ro; // 新格式，直接用
+  }
+  // 旧格式或没有 outline → 从 content 重新解析
+  return parseProgress(content || '');
+}
+
 // 从 stage.state 字段读取状态标记（[s]/[f]/[i]）
 function getStageStateTag(stage) {
   if (!stage) return '';
@@ -1599,10 +1616,8 @@ async function judgeAndAdvance(messageContext) {
 
     console.log('[event_manager][tf_story_game][judge] 解析章节 content → runtimeOutline...');
   // 解析事件进度（首次进入新章节时）
-  if (!progress.phases || progress.phaptersKey !== chapters.length + ':' + idx) {
-    const outlinePhases = (chapter && chapter.runtimeOutline && Array.isArray(chapter.runtimeOutline.phases) && chapter.runtimeOutline.phases.length)
-      ? chapter.runtimeOutline.phases
-      : parseProgress(chapter.content || '');
+  if (!progress.phases || progress.phaptersKey !== chapters.length + ':' + idx || isOldRuntimeOutlineFormat(progress.runtimeOutline)) {
+    const outlinePhases = resolveChapterRuntimeOutline(chapter, chapter.content || '').phases;
     progress.phases = outlinePhases;
     progress.currentPhase = 0;
     progress.currentEvent = 0;
@@ -1649,9 +1664,7 @@ async function judgeAndAdvance(messageContext) {
       // 从 chapter.runtimeOutline 读 phases（sync 阶段预解析），fallback parseProgress
       const nextCh = chapters[nextIdx];
       if (nextCh) {
-        const nextOutline = (nextCh && nextCh.runtimeOutline && Array.isArray(nextCh.runtimeOutline.phases) && nextCh.runtimeOutline.phases.length)
-          ? nextCh.runtimeOutline
-          : parseProgress(nextCh.content || '');
+        const nextOutline = resolveChapterRuntimeOutline(nextCh, nextCh.content || '');
         progress.phases = nextOutline.phases;
         progress.runtimeOutline = nextOutline;
         // 新结构指针重置到首章首段
@@ -1922,66 +1935,40 @@ function restoreStaticData() {
     return false;
   }
 }
-
+function initProgress(chapters) {
+  let prog = defaultProgress();
+  if (chapters.length) {
+    const ch0 = chapters[0];
+    prog.runtimeOutline = resolveChapterRuntimeOutline(ch0, ch0.content || '');
+    // 指针：保留已有（如果在新 outline 里找得到），否则 fallback 到首个未完成 phase
+    const phases0 = prog.runtimeOutline.phases || [];
+    let keep0 = prog.currentPhaseId ? phases0.find(p => p.id === prog.currentPhaseId) : null;
+    if (!keep0) {
+      keep0 = phases0.find(p => !isPhaseCompleted(prog, p.id)) || phases0[0] || null;
+    }
+    if (keep0) {
+      let keepSt0 = (keep0.stages || []).find(s => !isStageCompleted(prog, keep0.id, s.id)) || (keep0.stages || [])[0] || null;
+      prog.currentPhaseId = keep0.id;
+      prog.currentStageId = keepSt0 ? keepSt0.id : null;
+    } else {
+      prog.currentPhaseId = null;
+      prog.currentStageId = null;
+    }
+  }
+  setProgress(prog);
+  return prog;
+}
 // 重建动态数据（对齐 Toonflow「重启聊天 = 动态数据重新生成」）：
 // tf_progress 若丢失 -> 按静态章节重新生成；tmm 记忆丢失 -> 重新初始化
 function rebuildDynamicData() {
   let rebuilt = false;
   // tf_progress
-  let prog = readVarAnyScope(progressNs());
+
+  console.log('[event_manager][_llmJudgeEventProgress] [rebuildDynamicData][tf_progress] prog:',JSON.stringify(prog))
   const edit = readVarAnyScope(ns('edit')) || defaultEditData();
   const chapters = edit.chapters || [];
-  if (!prog || typeof prog !== 'object' || !Array.isArray(prog.completedChapters)) {
-    prog = defaultProgress();
-    // 优先读 chapter.runtimeOutline.phases（sync 阶段预解析），fallback 才用 parseProgress
-    if (chapters.length) {
-      const ch0 = chapters[0];
-      prog.runtimeOutline = (ch0 && ch0.runtimeOutline && Array.isArray(ch0.runtimeOutline.phases) && ch0.runtimeOutline.phases.length)
-        ? ch0.runtimeOutline
-        : parseProgress(ch0.content || '');
-      // 指针：保留已有（如果在新 outline 里找得到），否则 fallback 到首个未完成 phase
-      const phases0 = prog.runtimeOutline.phases || [];
-      let keep0 = prog.currentPhaseId ? phases0.find(p => p.id === prog.currentPhaseId) : null;
-      if (!keep0) {
-        keep0 = phases0.find(p => !isPhaseCompleted(prog, p.id)) || phases0[0] || null;
-      }
-      if (keep0) {
-        let keepSt0 = (keep0.stages || []).find(s => !isStageCompleted(prog, keep0.id, s.id)) || (keep0.stages || [])[0] || null;
-        prog.currentPhaseId = keep0.id;
-        prog.currentStageId = keepSt0 ? keepSt0.id : null;
-      } else {
-        prog.currentPhaseId = null;
-        prog.currentStageId = null;
-      }
-    }
-    setProgress(prog);
-    rebuilt = true;
-  } else if (!prog.runtimeOutline || !prog.runtimeOutline.phases || !prog.runtimeOutline.phases.length) {
-    // progress 在但 runtimeOutline 空（换章后）-> 从 chapter.runtimeOutline 重读
-    const idx = Math.min(prog.currentChapterIndex || 0, Math.max(chapters.length - 1, 0));
-    if (chapters[idx]) {
-      const ch = chapters[idx];
-      prog.runtimeOutline = (ch && ch.runtimeOutline && Array.isArray(ch.runtimeOutline.phases) && ch.runtimeOutline.phases.length)
-        ? ch.runtimeOutline
-        : parseProgress(ch.content || '');
-      const phasesCh = prog.runtimeOutline.phases || [];
-      let keepCh = prog.currentPhaseId ? phasesCh.find(p => p.id === prog.currentPhaseId) : null;
-      if (!keepCh) {
-        keepCh = phasesCh.find(p => !isPhaseCompleted(prog, p.id)) || phasesCh[0] || null;
-      }
-      if (keepCh) {
-        let keepStCh = (keepCh.stages || []).find(s => !isStageCompleted(prog, keepCh.id, s.id)) || (keepCh.stages || [])[0] || null;
-        prog.currentPhaseId = keepCh.id;
-        prog.currentStageId = keepStCh ? keepStCh.id : null;
-      } else {
-        prog.currentPhaseId = null;
-        prog.currentStageId = null;
-      }
-      setProgress(prog);
-      rebuilt = true;
-    }
-  }
-  return rebuilt;
+  initProgress(chapters);
+  return true;
 }
 
 // 官方劫持检测：boot ready 之前落地的 assistant 消息 = 官方自动开场发言 -> 删
@@ -3477,7 +3464,7 @@ console.log('[event_manager] ConsoleTag installed');
 // look at [md/currdesign/logic/logtag/logtag.md]
 // var whitelist =['event_manager', 'memory_manager'];
 //var blacklist =['memory_manager']
-var whitelist =['_llmJudgeEventProgress'];
+var whitelist =['llm_optimization','multi-character_stage'];
 ConsoleTag.patchConsole({
   // mode:'whitelist'/'blacklist'
   mode: 'whitelist',

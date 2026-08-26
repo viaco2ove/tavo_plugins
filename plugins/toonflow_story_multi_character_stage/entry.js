@@ -656,7 +656,7 @@ async function buildOrchestrationPrompt(userInput) {
     await getCharIdMap();
     const cnt = await tavo.message.count();
     if (cnt > 0) {
-      const msgs = tavo.message.find([Math.max(0, cnt - n), cnt]) || [];
+      const msgs = await tavo.message.find([Math.max(0, cnt - n), cnt]) || [];
       recentDialogue = msgs.map(m => {
         const name = resolveSpeaker(m);
         console.log('[multi-character_stage][buildOrchestrationPrompt ]promptParts get 2');
