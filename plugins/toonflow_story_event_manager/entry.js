@@ -468,19 +468,28 @@ const _PROMPT_STORY_EVENT_PROGRESS = `你是事件进度检测器。你只判断
 {"ended":false,"event_status":"waiting_input","progress_summary":"当前事件仍在等待用户补充角色名称、性别和年龄","progress_facts":["用户尚未提供完整角色信息","当前仅完成开场引导","需要继续等待用户输入"],"reason":"当前事件目标尚未完成，仍需用户继续提供信息"}
 `;
 
+// 对齐 toonflow-game-app EventProgressInputSnapshot，从 runtimeOutline.phases[].stages[] 读数据
 async function _llmJudgeEventProgress(progress, chapters, recentDialogue) {
   console.log("[event_manager][_llmJudgeEventProgress] start");
   const idx = progress.currentChapterIndex || 0;
   const chapter = chapters[idx];
   if (!chapter) return null;
-  const phases = progress.phases || [];
-  normalizePhasesEvents(phases);
-  const phaseIdx = Math.max(0, progress.currentPhase || 0);
-  const eventIdx = Math.max(0, progress.currentEvent || 0);
-  const curPhase = phases[phaseIdx] || null;
-  const curEvent = (curPhase && curPhase.events) ? (curPhase.events[eventIdx] || null) : null;
-  console.log("[event_manager][_llmJudgeEventProgress] curEvent:",JSON.stringify(curEvent));
-  if (!curEvent) return null;
+
+  // runtimeOutline 是数据真相：phases[].stages[]，不再读老 phases[].events[]
+  const outline = progress.runtimeOutline || {};
+  const outlinePhases = Array.isArray(outline.phases) ? outline.phases : [];
+
+  // 找当前 phase（按 currentPhaseId）和当前 stage（按 currentStageId）
+  const currentPhaseId = progress.currentPhaseId || '';
+  const currentStageId = progress.currentStageId || '';
+  const curPhase = outlinePhases.find(p => p.id === currentPhaseId) || outlinePhases[0] || null;
+  const curPhaseIdx = outlinePhases.indexOf(curPhase);
+  const stages = Array.isArray(curPhase?.stages) ? curPhase.stages : [];
+  const curStage = stages.find(s => s.id === currentStageId) || stages[0] || null;
+  const curStageIdx = curStage ? stages.indexOf(curStage) : 0;
+
+  console.log("[event_manager][_llmJudgeEventProgress] curPhase:", curPhase?.id, "curStage:", curStage?.id);
+  if (!curStage) return null;
 
   // Parse recentDialogue into object array (align to toonflow-game-app)
   let recentDialogueList = [];
@@ -500,55 +509,64 @@ async function _llmJudgeEventProgress(progress, chapters, recentDialogue) {
   recentDialogueList = recentDialogueList.slice(-10);
 
   // 提取事件详细内容（@旁白/角色台词行等）
-  const eventWindow = extractEventContent(chapter?.content || '', curPhase?.label || curPhase?.name || '', curEvent?.name || '');
+  const eventWindow = extractEventContent(chapter?.content || '', curPhase?.label || curPhase?.name || '', curStage?.label || '');
 
-    const snapshot = {
-     chapter: { id: chapter.id || (idx || 0), title: chapter.title || '' ,content: chapter?.content || '',},
+  // 对齐 toonflow-game-app buildEventProgressInputSnapshot 结构
+  const snapshot = {
+    chapter: {
+      id: chapter.id || (idx || 0),
+      title: chapter.title || '',
+    },
     current_event: {
-      id: curEvent.id || '',
-      index: eventIdx,
-      kind: curEvent.kind || '',
-      flow: curEvent.flow || '',
-      status: curEvent.status || '',
-      label: curEvent.label || curEvent.name || '',
-      summary: curEvent.targetSummary || curEvent.summary || curEvent.name || '',
-      targetSummary: curEvent.targetSummary || '',
-      body: curEvent.body || '',
-      facts: curEvent.facts || [],
+      index: curPhaseIdx + 1,
+      kind: curStage.kind || 'scene',
+      flow: curStage.kind === 'user' ? 'waiting_input' : 'chapter_content',
+      status: curStage.status || (curStage.kind === 'user' ? 'waiting_input' : 'active'),
+      label: curStage.label || '',
+      summary: curStage.targetSummary || curStage.label || '',
+      facts: curStage.facts || [],
       window: eventWindow,
     },
     current_progress: {
-      phase_index: phaseIdx,
-      stage_index: 0,
-      total_stages: (curPhase && curPhase.events) ? curPhase.events.length : 0,
+      phase_id: curPhase?.id || '',
+      phase_index: curPhaseIdx,
+      stage_index: curStageIdx,
+      total_stages: stages.length,
       completed_events: progress.completedEvents || [],
       user_speak_count: 0,
-      user_speak_required: null,
+      user_speak_required: curStage.userSpeakRequired || null,
     },
-    current_stage: curPhase ? {
-      index: phaseIdx,
-      label: curPhase.label || curPhase.name || '',
-      summary: curEvent.summary || '',
-      user_speak_required: null,
+    current_stage: {
+      index: curStageIdx,
+      label: curStage.label || '',
+      kind: curStage.kind || 'scene',
+      summary: curStage.targetSummary || curStage.label || '',
+      user_speak_required: curStage.userSpeakRequired || null,
+    },
+    next_stage: stages[curStageIdx + 1] ? {
+      index: curStageIdx + 1,
+      label: stages[curStageIdx + 1].label || '',
+      kind: stages[curStageIdx + 1].kind || 'scene',
+      summary: stages[curStageIdx + 1].targetSummary || stages[curStageIdx + 1].label || '',
     } : null,
-    next_stage: phases[phaseIdx + 1] ? {
-      index: phaseIdx + 1,
-      label: phases[phaseIdx + 1].label || phases[phaseIdx + 1].name || '',
-      summary: (phases[phaseIdx + 1].events && phases[phaseIdx + 1].events[0]) ? (phases[phaseIdx + 1].events[0].summary || '') : '',
+    next_event: outlinePhases[curPhaseIdx + 1] ? {
+      index: curPhaseIdx + 2,
+      kind: 'scene',
+      phase_id: outlinePhases[curPhaseIdx + 1].id || '',
+      label: outlinePhases[curPhaseIdx + 1].label || '',
+      summary: outlinePhases[curPhaseIdx + 1].targetSummary || '',
     } : null,
-    next_event: (curPhase && curPhase.events) ? (curPhase.events[eventIdx + 1] || null) : null,
     latest_message: (() => {
-          // 从 recentDialogueList 中取最后一条用户消息作为 latest_message
-          const lastUserMsg = recentDialogueList.slice().reverse().find(m => m.role === '用户' || m.role_type === 'player');
-          return {
-            role: (lastUserMsg && lastUserMsg.role) || 'user',
-            content: (lastUserMsg && lastUserMsg.content) || '',
-          };
+      const lastUserMsg = recentDialogueList.slice().reverse().find(m => m.role === '用户' || m.role_type === 'player');
+      return {
+        role: (lastUserMsg && lastUserMsg.role) || 'user',
+        content: (lastUserMsg && lastUserMsg.content) || '',
+      };
     })(),
     recent_dialogue: recentDialogueList,
   };
   const userPrompt = JSON.stringify(snapshot, null, 2);
-  console.log("[event_manager][_llmJudgeEventProgress] userPrompt:", userPrompt);
+  console.log("[event_manager][_llmJudgeEventProgress] userPrompt:", userPrompt.slice(0, 500));
   let raw = null;
   try {
     if (window.tf_llm && window.tf_llm.callDirect) {
@@ -563,9 +581,8 @@ async function _llmJudgeEventProgress(progress, chapters, recentDialogue) {
     console.warn('[event_manager][tf_story_game][event_llm] 调用失败:', e.message);
     return { ended: false, event_status: 'active', reason: 'llm_error:' + e.message };
   }
-  // 解析 ended / event_status / progress_summary / progress_facts / reason
   if (!raw) return { ended: false, event_status: 'active', reason: 'empty' };
-    console.warn('[event_manager][tf_story_game][event_llm] 调用 :raw', JSON.stringify(raw));
+  console.warn('[event_manager][tf_story_game][event_llm] 调用 :raw', JSON.stringify(raw).slice(0, 300));
   let txt = String(raw).trim();
   const fence = txt.match(/```(?:json)?\s*([\s\S]*?)```/i);
   if (fence) txt = fence[1].trim();
@@ -686,64 +703,116 @@ async function tfEventProgress_advance(messageContext) {
     if (!llmRes.ended) llmRes.ended = true;
 
 
-    // 推进：对齐 applySessionUserEventProgress 的 completedEvents 标记逻辑
-    const phaseIdx = progress.currentPhase || 0;
-    const eventIdx = progress.currentEvent || 0;
-    const curPhase = phases[phaseIdx] || {};
-    const events = curPhase.events || [];
-    const phaseName = curPhase.name || '';
+    // 推进（对齐 toonflow-game-app applyAiEventProgressResolution）：
+    // 使用 runtimeOutline.phases[].stages[] + id-based 指针（currentPhaseId / currentStageId）
+    // phases 已在 line 606 声明，直接复用
+    const curPhaseId = progress.currentPhaseId || '';
+    const curStageId = progress.currentStageId || '';
+    const pi = phases.findIndex(p => p.id === curPhaseId);
+    const phase = pi >= 0 ? phases[pi] : (phases[0] || null);
+    if (!phase) return { advanced: false, reason: 'no_phase' };
+    const stages = phase.stages || [];
+    const si = stages.findIndex(s => s.id === curStageId);
+
     if (!progress.completedPhases) progress.completedPhases = [];
+    if (!progress.completedStages) progress.completedStages = [];
     if (!progress.completedEvents) progress.completedEvents = [];
-    // 标记当前 event 完成
-    const eventMarker = 'phase:' + phaseIdx + ':event:' + eventIdx;
-     console.log('[event_manager][_llmJudgeEventProgress][tfEventProgress_advance][tf_progress]eventMarker', eventMarker );
-    if (!progress.completedEvents.includes(eventMarker)) progress.completedEvents.push(eventMarker);
-    if (events[eventIdx]) events[eventIdx].state = '[s]'; // 直接写入 event.state，UI 不用推理
-    if (eventIdx + 1 < events.length) {
-      progress.currentEvent = eventIdx + 1;
-    } else if (phaseIdx + 1 < phases.length) {
-      // 当前 phase 完成
-      const phaseMarker = 'phase:' + phaseIdx;
-      if (!progress.completedEvents.includes(phaseMarker)) progress.completedEvents.push(phaseMarker);
-      if (phases[phaseIdx]) phases[phaseIdx].state = '[s]';
-      if (phaseName && !progress.completedPhases.includes(phaseName)) progress.completedPhases.push(phaseName);
-      progress.currentPhase = phaseIdx + 1;
-      progress.currentEvent = 0;
+
+    // 标记当前 stage 完成
+    if (curStageId) markStageCompleted(progress, phase.id, curStageId);
+    // 标记旧 stage label 显示 [s]
+    const oldStage = stages[si >= 0 ? si : 0];
+    if (oldStage && !getStageStateTag(oldStage)) {
+      const label = oldStage.label || oldStage.name || '';
+      oldStage.label = '[s]' + label;
+      oldStage.state = 's';
+      oldStage.status = 'completed';
+    }
+
+    // 尝试推进到下一个 stage
+    let nextSi = (si >= 0 ? si : 0) + 1;
+    // 跳过连续 user_node（用户刚说完话，下一个 user_node 视为已满足）
+    while (nextSi < stages.length && (stages[nextSi].kind === 'user' || /用户发言/.test(stages[nextSi].label || ''))) {
+      markStageCompleted(progress, phase.id, stages[nextSi].id);
+      nextSi += 1;
+    }
+
+    if (nextSi < stages.length) {
+      // 还在当前 phase，移到下一个 stage
+      progress.currentPhaseId = phase.id;
+      progress.currentStageId = stages[nextSi].id;
+      progress.currentPhase = pi;
+      progress.currentEvent = nextSi;
+      const ns = stages[nextSi];
+      if (!getStageStateTag(ns)) {
+        const lbl = ns.label || ns.name || '';
+        ns.label = '[i]' + lbl;
+        ns.state = 'i';
+        ns.status = ns.kind === 'user' ? 'waiting_input' : 'active';
+      }
     } else {
-      // 所有 event/phase 都完成
-      const phaseMarker = 'phase:' + phaseIdx;
-      if (!progress.completedEvents.includes(phaseMarker)) progress.completedEvents.push(phaseMarker);
-      if (phaseName && !progress.completedPhases.includes(phaseName)) progress.completedPhases.push(phaseName);
-      progress.phasesAllCompleted = true;
+      // 当前 phase 所有 stage 完成
+      markPhaseCompleted(progress, phase.id);
+      // 检查 phase 是否 terminated：[s]/[f] 状态标记 → 强制跳下一 phase
+      if (isPhaseTerminated(phase) && pi < phases.length - 1) {
+        const nextPhase = findNextUnterminatedPhase(phases, pi);
+        if (nextPhase) {
+          const np = phases.indexOf(nextPhase);
+          const ns2 = nextPhase.stages || [];
+          let ni = 0;
+          while (ni < ns2.length && (ns2[ni].kind === 'user' || /用户发言/.test(ns2[ni].label || ''))) {
+            markStageCompleted(progress, nextPhase.id, ns2[ni].id);
+            ni += 1;
+          }
+          progress.currentPhaseId = nextPhase.id;
+          progress.currentStageId = ns2[ni] ? ns2[ni].id : null;
+          progress.currentPhase = np;
+          progress.currentEvent = ni;
+          const firstStage = ns2[ni];
+          if (firstStage && !getStageStateTag(firstStage)) {
+            const lbl = firstStage.label || firstStage.name || '';
+            firstStage.label = '[i]' + lbl;
+            firstStage.state = 'i';
+            firstStage.status = firstStage.kind === 'user' ? 'waiting_input' : 'active';
+          }
+        } else {
+          // 最后一个 phase，章节完成
+          progress.currentPhaseId = phase.id;
+          progress.currentStageId = null;
+          progress.phasesAllCompleted = true;
+        }
+      } else if (pi + 1 < phases.length) {
+        // 进入下一 phase
+        const nextPhase = phases[pi + 1];
+        const ns3 = nextPhase.stages || [];
+        let ni2 = 0;
+        while (ni2 < ns3.length && (ns3[ni2].kind === 'user' || /用户发言/.test(ns3[ni2].label || ''))) {
+          markStageCompleted(progress, nextPhase.id, ns3[ni2].id);
+          ni2 += 1;
+        }
+        progress.currentPhaseId = nextPhase.id;
+        progress.currentStageId = ns3[ni2] ? ns3[ni2].id : null;
+        progress.currentPhase = pi + 1;
+        progress.currentEvent = ni2;
+        const firstStage2 = ns3[ni2];
+        if (firstStage2 && !getStageStateTag(firstStage2)) {
+          const lbl = firstStage2.label || firstStage2.name || '';
+          firstStage2.label = '[i]' + lbl;
+          firstStage2.state = 'i';
+          firstStage2.status = firstStage2.kind === 'user' ? 'waiting_input' : 'active';
+        }
+      } else {
+        // 最后一个 phase 完成
+        progress.currentPhaseId = phase.id;
+        progress.currentStageId = null;
+        progress.phasesAllCompleted = true;
+      }
     }
-    // LLM 返回 summary/facts 写到 event 对象（UI 读 phase.events[i]）
-    const writeEvt = (curPhase.events || [])[eventIdx];
-    if (writeEvt) {
-      if (llmRes.progress_summary) writeEvt.summary = llmRes.progress_summary;
-      if (llmRes.progress_facts && llmRes.progress_facts.length) writeEvt.facts = llmRes.progress_facts;
-      if (llmRes.event_status) writeEvt.status = llmRes.event_status;
-    }
-    // 兼容：progress 顶层保留快照
-    // 事件进度状态：[s] 完成 / [i] 进行中 / [] 未开始 / [f] 失败
-    // 如 （phases[currIndex](ph,pi)）-> 阶段pi:ph.name->阶段1:苏醒
-    // ph.events -> [s]穿越醒来 [i]发现身份 []用户发言
-    // [s]穿越醒来 [i]发现身份 []用户发言 -> [s]穿越醒来 [s]发现身份 [i]用户发言->[s]穿越醒来 [s]发现身份 [s]用户发言
-    // currIndex+1 , 进入下一个阶段
+
+    // LLM summary/facts 写入 progress 快照
     if (llmRes.progress_summary) progress.progressSummary = llmRes.progress_summary;
     if (llmRes.progress_facts && llmRes.progress_facts.length) {
       progress.progressFacts = [...(progress.progressFacts || []), ...llmRes.progress_facts].slice(-20);
-    }
-    // 标记新当前 event 为：“进行中”
-    const newPhaseIdx = progress.currentPhase || 0;
-    const newEventIdx = progress.currentEvent || 0;
-    const newPhase = phases[newPhaseIdx];
-    // tavo.utils.toast('🎉 进度阿推进 llmRes.ended'+llmRes.ended+", reason:"+llmRes.reason);
-    if (newPhase && newPhase.events && newPhase.events[newEventIdx] && !newPhase.events[newEventIdx].state) {
-      newPhase.events[newEventIdx].state = '[i]';
-      const _facts = Array.isArray(progress.progressFacts) ? progress.progressFacts.join('、') : (progress.progressFacts || '');
-      try { if (typeof tavo.utils.toast === 'function')
-        tavo.utils.toast('🎉 进度推进 newEventIdx:' + newEventIdx + ' | ' + _facts);
-      } catch(e){}
     }
     progress.updatedAt = Date.now();
 
@@ -3404,6 +3473,7 @@ _safeOnSide('tf-story-reset', async () => {
   };
 });
 
+console.log('[event_manager] ConsoleTag installed');
 // look at [md/currdesign/logic/logtag/logtag.md]
 // var whitelist =['event_manager', 'memory_manager'];
 //var blacklist =['memory_manager']

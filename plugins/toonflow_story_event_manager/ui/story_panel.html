@@ -2212,48 +2212,6 @@
                     var condText = cur.successCondition.length > 80 ? cur.successCondition.slice(0, 80) + '…' : cur.successCondition;
                     h += '<div class="tf-card__text">完成条件: ' + esc(condText) + '</div>';
                 }
-                // 事件进度（Phase Graph）
-                var phases = p.phases || [];
-                if (phases.length) {
-                    h += '<div class="tf-card__text">事件进度 (' + phases.length + ' 阶段):</div>';
-                    h += '<div class="tf-event-list">';
-                    var curPhaseIdx = p.currentPhase || 0;
-                    var curEventIdx = p.currentEvent || 0;
-                    phases.forEach(function (ph, pi) {
-                        // 优先读 phase.state（entry.js 直接写入），fallback 用 currentPhase 推断
-                        let phaseMark = ph.state || (pi < curPhaseIdx ? '[s]' : (pi === curPhaseIdx ? '[i]' : '[ ]'));
-                        h += '<div class="tf-event-item"><div class="tf-event-item__head">'
-                            + '<span class="tf-event-item__index" id="phase-' + pi + '">' + phaseMark + ' 阶段 ' + (pi + 1) + ': ' + esc(ph.name || '') + '</span></div>';
-                        if (ph.events && ph.events.length) {
-                            h += '<div class="tf-event-item__summary" id="phase-' + pi + '-events">';
-                            ph.events.forEach(function (ev, ei) {
-                                // 优先读 ev.state（entry.js 直接写入），fallback 用 currentEvent 推断
-                                var em = ev.state || (pi < curPhaseIdx ? '[s]' : (pi === curPhaseIdx && ei <= curEventIdx ? '[s]' : '[ ]'));
-                                var evStatus = ev.status ? ' (' + ev.status + ')' : '';
-                                h += '<span class="tf-tag" style="margin:2px 4px 2px 0;">' + em + ' ' + esc(ev.name || '') + evStatus + '</span>';
-                            });
-                            h += '</div>';
-                        }
-                        // 当前 phase 的 LLM 摘要 + 事实（对齐 toonflow dynamicEvents）
-                        if (pi === curPhaseIdx) {
-                            var curEv = (ph.events || [])[curEventIdx];
-                            if (curEv && (curEv.summary || (curEv.facts && curEv.facts.length))) {
-                                if (curEv.summary) {
-                                    h += '<div class="tf-card__text" style="margin-top:6px;color:#7cb3ff;">📝 ' + esc(curEv.summary) + '</div>';
-                                }
-                                if (curEv.facts && curEv.facts.length) {
-                                    h += '<ul style="margin:4px 0 0 16px;padding:0;color:#a0a0a0;font-size:12px;">';
-                                    curEv.facts.forEach(function (f) {
-                                        h += '<li>' + esc(f) + '</li>';
-                                    });
-                                    h += '</ul>';
-                                }
-                            }
-                        }
-                        h += '</div>';
-                    });
-                    h += '</div>';
-                }
             }
             h += '</div>';
             h += '</div>'; // close #tf-progress-card
