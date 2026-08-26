@@ -367,7 +367,7 @@ function storyNsGlobal(name) {
 function progressVarNameGlobal() {
   return _tmmChatId ? (PROGRESS_NS_BASE + '_' + _tmmChatId) : PROGRESS_NS_BASE;
 }
-// 优先用 event_manager 暴露的 window.tfRuntime.getProgress（自动派生老结构 phases[]/currentPhase/currentEvent）
+// 优先用 event_manager 暴露的 window.tfRuntime.getProgress（自动派生 phases[]/currentPhase/currentEvent）
 function readProgress() {
   try {
     if (typeof window !== 'undefined' && window.tfRuntime && typeof window.tfRuntime.getProgress === 'function') {
@@ -375,7 +375,18 @@ function readProgress() {
       if (p) return p;
     }
   } catch (e) {}
-  return readDualScope(progressVarName(), progressVarNameGlobal());
+  // fallback: 直接读 tavo 变量（不依赖其他插件的 readDualScope）
+  try {
+    let v = readChatVar(progressVarName());
+    if (v && typeof v === 'object') return v;
+  } catch (_) {}
+  try {
+    let g = tavo.get(progressVarNameGlobal(), 'global');
+    let guard = 0;
+    while (g && typeof g === 'object' && g.found !== undefined && 'value' in g && guard < 5) { g = g.value; guard++; }
+    if (g && typeof g === 'object') return g;
+  } catch (_) {}
+  return null;
 }
 
 // Tavo 的 chat 变量经 tavo.get 返回的是包装对象 {target,name,found,value}，
@@ -1159,7 +1170,7 @@ async function runMemoryAgent(directive) {
       tavo.utils.toast('@记忆管理 指令解析失败');
     }
   } catch (e) {
-    console.warn('[memory_manager][tmm] agent failed', e);
+    console.warn('[memory_manager][tmm] agent failed', e && e.message ? e.message : e, e && e.stack ? e.stack.slice(0, 300) : '');
     if (directive) tavo.utils.toast('@记忆管理 执行异常');
   } finally {
     refreshing = false;

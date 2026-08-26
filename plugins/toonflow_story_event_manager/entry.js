@@ -1514,11 +1514,18 @@ function defaultProgress() {
   return {
     currentChapterIndex: 0,
     completedChapters: [],
-    completedPhases: [],
-    completedEvents: [],
+    // 新结构：id-based 指针（真相源）
+    currentPhaseId: null,
+    currentStageId: null,
+    runtimeOutline: null,
+    chaptersKey: '',
+    completedPhases: [],   // phase 完成标记 ['phase:xxx']
+    completedStages: [],   // stage 完成标记 ['phaseId:stageId']
+    completedEvents: [],   // 旧兼容：派生缓存
     failedAttempts: 0,
     sessionFreeMode: false,
     storyCompleted: false,
+    // 派生缓存（syncLegacyProgressFields 自动生成，不要手动写入）
     currentPhase: 0,
     currentEvent: 0,
     phases: [],
@@ -1944,18 +1951,23 @@ function initProgress(chapters) {
     }
   }
   setProgress(prog);
+  console.warn('[event_manager][tf_story_game] [initProgress][rebuildDynamicData] prog:', JSON.stringify(prog));
+
   return prog;
 }
 // 重建动态数据（对齐 Toonflow「重启聊天 = 动态数据重新生成」）：
 // tf_progress 使用静态章节重新生成；tmm 记忆丢失 -> 重新初始化
 function rebuildDynamicData() {
-  // tf_progress
-
-  console.log('[event_manager][_llmJudgeEventProgress] [rebuildDynamicData][tf_progress] prog:',JSON.stringify(prog))
-  const edit = readVarAnyScope(ns('edit')) || defaultEditData();
-  const chapters = edit.chapters || [];
-  initProgress(chapters);
-  return true;
+  try {
+    // tf_progress
+    const edit = readVarAnyScope(ns('edit')) || defaultEditData();
+    const chapters = edit.chapters || [];
+    initProgress(chapters);
+    return true;
+  } catch (e) {
+    console.warn('[event_manager][tf_story_game] rebuildDynamicData failed:', e && e.message ? e.message : e);
+    return false;
+  }
 }
 
 // 官方劫持检测：boot ready 之前落地的 assistant 消息 = 官方自动开场发言 -> 删
@@ -2297,35 +2309,36 @@ _safeOn('message:added', async (event) => {
 });
 
 _safeOn('chat:opened', async () => {
-  // Boot 序列接管：数据恢复 -> 官方劫持清理 -> 开场白 -> 编排应用
-  console.log('[event_manager][tf_story_game] Boot 序列接管：数据恢复 -> 官方劫持清理 -> 开场白 -> 编排应用');
-  await bootSequence();
+  try {
+    // Boot 序列接管：数据恢复 -> 官方劫持清理 -> 开场白 -> 编排应用
+    console.log('[event_manager][tf_story_game] Boot 序列接管：数据恢复 -> 官方劫持清理 -> 开场白 -> 编排应用');
+    await bootSequence();
 
-  // 章节修复（仅补全缺失字段，绝不清空/丢弃已有章节 —— 静态故事数据受保护）
-  const cur = getEdit();
-  let repaired = false;
-  if (cur.chapters && cur.chapters.length) {
-    cur.chapters = cur.chapters.map((ch) => {
-      const c = (ch && typeof ch === 'object') ? { ...ch } : { title: '未命名章节' };
-      if (typeof c.title !== 'string' || !c.title) { c.title = '未命名章节'; repaired = true; }
-      if (typeof c.content !== 'string') { c.content = ''; repaired = true; }
-      if (typeof c.openingRole !== 'string') { c.openingRole = '旁白'; repaired = true; }
-      if (typeof c.openingLine !== 'string') c.openingLine = '';
-      if (typeof c.successCondition !== 'string') c.successCondition = '';
-      if (typeof c.background !== 'string') c.background = '';
-      if (!Array.isArray(c.events)) c.events = [];
-      return c;
-    });
-    if (repaired) setEdit(cur);
+    // 章节修复（仅补全缺失字段，绝不清空/丢弃已有章节 —— 静态故事数据受保护）
+    const cur = getEdit();
+    let repaired = false;
+    if (cur.chapters && cur.chapters.length) {
+      cur.chapters = cur.chapters.map((ch) => {
+        const c = (ch && typeof ch === 'object') ? { ...ch } : { title: '未命名章节' };
+        if (typeof c.title !== 'string' || !c.title) { c.title = '未命名章节'; repaired = true; }
+        if (typeof c.content !== 'string') { c.content = ''; repaired = true; }
+        if (typeof c.openingRole !== 'string') { c.openingRole = '旁白'; repaired = true; }
+        if (typeof c.openingLine !== 'string') c.openingLine = '';
+        if (typeof c.successCondition !== 'string') c.successCondition = '';
+        if (typeof c.background !== 'string') c.background = '';
+        return c;
+      });
+      if (repaired) setEdit(cur);
+    }
+
+    // 进度时间戳更新（不重置章节进度等动态数值，仅刷新时间）
+    const progress = getProgress();
+    progress.updatedAt = Date.now();
+    setProgress(progress);
+    console.log('[event_manager][tf_story_game] Boot 序列接管：数据恢复 -> 官方劫持清理 -> 开场白 -> 编排应用 end');
+  } catch (e) {
+    console.warn('[event_manager][tf_story_game] chat:opened handler failed:', e && e.message ? e.message : e);
   }
-
-  // lineCount 只读 tf_story_setting.edit，不写回 _edit
-
-  // 进度时间戳更新（不重置章节进度等动态数值，仅刷新时间）
-  const progress = getProgress();
-  progress.updatedAt = Date.now();
-  setProgress(progress);
-  console.log('[event_manager][tf_story_game] Boot 序列接管：数据恢复 -> 官方劫持清理 -> 开场白 -> 编排应用 end');
 });
 
 // 判定器入口：每轮对话后评估章节结局（仅 boot ready 后生效）
