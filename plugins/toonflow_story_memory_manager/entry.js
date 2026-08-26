@@ -683,6 +683,7 @@ function syncStoryDynamicCards() {
     const story = readChatVar(tmmNs('story'));
     if (!story || !story.characters) return;
     const mem = readChatVar(NS) || defaultState();
+    console.log('[memory_manager][tmm][event_speaker_line] [syncStoryDynamicCards][[event_speaker_line]] mem:',JSON.stringify(mem));
     const playerPatch = (mem.cards && mem.cards.player) ? mem.cards.player : {};
     const npcPatches = (mem.cards && mem.cards.npcs) ? mem.cards.npcs : {};
     let changed = false;
@@ -690,6 +691,7 @@ function syncStoryDynamicCards() {
       let patch = null;
       if (ch.roleType === 'player' && Object.keys(playerPatch).length) patch = playerPatch;
       else if (npcPatches[ch.name] && Object.keys(npcPatches[ch.name]).length) patch = npcPatches[ch.name];
+      console.log('[memory_manager][tmm_story_static][event_speaker_line] patch？',JSON.stringify(patch));
       if (patch) {
         // 深度合并：只覆盖 patch 里的字段，保留 card 原有其他字段
         ch.card = Object.assign({}, ch.card || {}, patch);
@@ -706,7 +708,8 @@ function syncStoryDynamicCards() {
         changed = true;
       }
     });
-    console.log('[memory_manager][tmm_story_static]');
+    console.log('[memory_manager][tmm_story_static][event_speaker_line] changed？',changed);
+    console.log('[memory_manager][tmm_story_static][event_speaker_line] story？',JSON.stringify(story));
     if (changed) tavo.set(tmmNs('story'), story, 'chat');
   } catch (e) {}
 }
@@ -1038,7 +1041,7 @@ async function runMemoryAgent(directive) {
     const llm = (typeof window !== 'undefined') ? window.tf_llm : null;
     let raw;
     let timeoutHandle;
-     console.log('[memory_manager][tmm] runMemoryAgent: calling tf_llm.callDirect prompt:',prompt);
+     console.log('[memory_manager][tmm][event_speaker_line] runMemoryAgent: calling tf_llm.callDirect prompt:',prompt);
     if (llm && typeof llm.callDirect === 'function') {
       try {
         raw = await Promise.race([
@@ -1068,7 +1071,7 @@ async function runMemoryAgent(directive) {
       }
     }
     console.log('[memory_manager][tmm] runMemoryAgent: LLM returned, len=' + (raw ? raw.length : 0));
-     console.log('[memory_manager][tmm] runMemoryAgent: LLM returned raw:' ,raw );
+     console.log('[memory_manager][tmm][event_speaker_line] runMemoryAgent: LLM returned raw:' ,raw );
 
     let parsed = null;
     try {
@@ -1157,9 +1160,10 @@ async function runMemoryAgent(directive) {
       state.turnsSinceRefresh = 0;
       state.updatedAt = Date.now();
       delete state._pendingDirective; // 清理指令标记
-      console.log('[memory_manager][tmm]' );
+      console.log('[memory_manager][tmm][event_speaker_line] state：',JSON.stringify(state) );
       tavo.set(NS, state, 'chat');
       // 把动态参数补丁回流到 tmm_story，供信息面板/发言器展示实时数值与关键信息
+      console.log('[memory_manager][tmm][event_speaker_line][event_speaker_line][syncStoryDynamicCards] start');
       syncStoryDynamicCards();
       let safetyLabel = '';
       if (safetyOn && safety) {
@@ -1316,7 +1320,19 @@ _safeOn('input:beforeSend', async (event) => {
   tavo.utils.toast('@记忆管理 指令处理中…');
   runMemoryAgent(m[2] || '')
     .catch(err => { console.warn('[memory_manager][tmm] directive failed', err); tavo.utils.toast('@记忆管理 执行异常'); });
+  await auto_memory_orchestrate()
 });
+
+async function auto_memory_orchestrate() {
+ try {
+    await new Promise(resolve => setTimeout(resolve, 100));
+    // 触发下一轮编排
+    console.log('[memory_manager][orchestrate] → 继续编排，auto_orchestrate');
+    if (window.tf_story_emit) window.tf_story_emit('auto_orchestrate', {});
+  } catch (e) {
+    console.warn('[memory_manager][orchestrate] auto_orchestrate失败', e);
+  }
+}
 
 _safeOn('message:added', async (event) => {
   console.log('[memory_manager][tmm][msg:added] role=' + ((event&&event.message&&event.message.role)||'?'));

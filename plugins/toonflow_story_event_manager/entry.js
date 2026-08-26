@@ -564,7 +564,7 @@ async function _llmJudgeEventProgress(progress, chapters, recentDialogue) {
     recent_dialogue: recentDialogueList,
   };
   const userPrompt = JSON.stringify(snapshot, null, 2);
-  console.log("[event_manager][_llmJudgeEventProgress] userPrompt:", userPrompt.slice(0, 500));
+  console.log("[event_manager][_llmJudgeEventProgress][event_speaker_line] userPrompt:", JSON.stringify(userPrompt));
   let raw = null;
   try {
     if (window.tf_llm && window.tf_llm.callDirect) {
@@ -3464,11 +3464,12 @@ console.log('[event_manager] ConsoleTag installed');
 // look at [md/currdesign/logic/logtag/logtag.md]
 // var whitelist =['event_manager', 'memory_manager'];
 var blacklist =[]
-var whitelist =['llm_optimization','multi-character_stage'];
+var whitelist =['event_speaker_line'];
+var consoleTagMode = 'whitelist';
 ConsoleTag.patchConsole({
   // mode:'whitelist'/'blacklist'
-  mode: 'blacklist',
-  tags: blacklist,
+  mode: consoleTagMode,
+  tags: consoleTagMode === 'whitelist' ? whitelist : blacklist,
   minLevel: 'info',
 });
 //例子：

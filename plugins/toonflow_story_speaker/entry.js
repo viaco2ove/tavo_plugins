@@ -619,6 +619,8 @@ var steamCharEntry = null;
 
       // 4. speaker 自己生成台词（对齐 Toonflow story_speaker，对齐 fixDB.prompts.ts _PROMPT_STORY_SPEAKER）
       var speakerPromptObj = await buildSpeakerPrompt(steamRole, steamRoleType, steamMotive, steamEventSummary, steamEvDigest, steamNextEvInfo);
+      console.log('[speaker][tf_speaker][steam] [event_speaker_line] speakerPromptObj:',JSON.stringify(speakerPromptObj));
+
       console.log("[speaker][tf_speaker][steam] speaker prompt len=" + (speakerPromptObj.user ? speakerPromptObj.user.length : (speakerPromptObj.length || 0)));
       var llmPath = (window.tf_llm && window.tf_llm.callDirect) ? '接管' : 'tavo原生';
       var speechText = '';

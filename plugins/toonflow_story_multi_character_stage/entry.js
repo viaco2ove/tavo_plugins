@@ -59,6 +59,23 @@ function progressVarNameGlobal() {
   return _mcsChatId ? ('tf_progress_' + _mcsChatId) : 'tf_progress';
 }
 
+// 读变量：先 chat scope，再 global scope（每个插件独立作用域，不能依赖其他插件的 readDualScope）
+function readDualScope(chatName, globalName) {
+  try {
+    let v = tavo.get(chatName);
+    let guard = 0;
+    while (v && typeof v === 'object' && v.found !== undefined && 'value' in v && guard < 5) { v = v.value; guard++; }
+    if (v && typeof v === 'object') return v;
+  } catch (e) {}
+  try {
+    let g = tavo.get(globalName, 'global');
+    let guard = 0;
+    while (g && typeof g === 'object' && g.found !== undefined && 'value' in g && guard < 5) { g = g.value; guard++; }
+    if (g && typeof g === 'object') return g;
+  } catch (e) {}
+  return null;
+}
+
 // 优先用 event_manager 暴露的 window.tfRuntime.getProgress（自动派生老结构）
 // 兜底：直接读 chat/global scope
 function readProgress() {
@@ -1287,6 +1304,8 @@ function game_orchestration(userText,intentResult){
       // 2. 阶段一：编排器 → {speaker, role_type, motive, event_summary, evDigest, nextEvInfo, storyStatus, memCtx}
 
       const { system: orchSystem, user: orchUser, prompt: orchPrompt, evDigest, nextEvInfo, storyStatus, memCtx, chapterIdx, chapterTitle } = await buildOrchestrationPrompt(userText);
+
+      console.log('[multi-character_stage][game_orchestration][event_speaker_line] orchPrompt:',JSON.stringify(orchPrompt));
       // console.log("[game_orchestration] orchPrompt:", orchPrompt);
       // ===== 全链路编排 TRACE =====
       console.log('[multi-character_stage]══════════════════════════════════════════════════');
@@ -1403,7 +1422,7 @@ function game_orchestration(userText,intentResult){
         eventAdjustMode = obj.event_adjust_mode || 'keep';
         eventStatus = obj.event_status || obj.eventStatus || 'active';
         eventFacts = Array.isArray(obj.event_facts) ? obj.event_facts : [];
-        console.log('[multi-character_stage][' + ts() + '] 🎭 [mcs] 阶段一解析 → speaker=' + speaker + ' role_type=' + roleType
+        console.log('[multi-character_stage][event_speaker_line][' + ts() + '] 🎭 [mcs] 阶段一解析 → speaker=' + speaker + ' role_type=' + roleType
           + ' motive=' + motive + ' await_user=' + awaitUser + ' trigger_memory_agent=' + triggerMemoryAgent
           + ' event_adjust_mode=' + eventAdjustMode + ' event_status=' + eventStatus);
       console.log('[multi-character_stage][' + ts() + '] 🎭 [mcs] │ 🎤 编排结果: speaker="' + speaker + '" role_type="' + roleType + '"');
