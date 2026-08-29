@@ -494,7 +494,7 @@ async function voice_gen_play(steamCharEntry,speechText){
               if (vcfg && vcfg.auto_play !== false) {
                 if (typeof window.tf_voice().playFor === 'function') {
                   console.log('[speaker][tf_speaker] 调用 tf_voice.playFor(' + steamCharEntry.id + ', ...)');
-                  window.tf_voice().playFor(steamCharEntry.id, speechText);
+                  await window.tf_voice().playFor(steamCharEntry.id, speechText);
                 } else if (typeof window.tf_voice().speak === 'function') {
                   console.log('[speaker][tf_speaker] 调用 tf_voice.speak(' + steamCharEntry.id + ', ...)');
                   window.tf_voice().speak(steamCharEntry.id, speechText);
@@ -522,10 +522,11 @@ async function voice_gen_play_steam(steamCharEntry, speechText){
               if (vcfg && vcfg.auto_play !== false) {
                 if (typeof window.tf_voice().playFor === 'function') {
                   console.log('[speaker][tf_speaker][steam] 调用 tf_voice.playFor(' + steamCharEntry.id + ', ...)');
-                  window.tf_voice().playFor(steamCharEntry.id, speechText);
+                  await window.tf_voice().playFor(steamCharEntry.id, speechText);
+                  await new Promise(resolve => setTimeout(resolve, 1000));
                 } else if (typeof window.tf_voice().speak === 'function') {
                   console.log('[speaker][tf_speaker][steam] 调用 tf_voice.speak(' + steamCharEntry.id + ', ...)');
-                  window.tf_voice().speak(steamCharEntry.id, speechText);
+                  await window.tf_voice().speak(steamCharEntry.id, speechText);
                 } else {
                   console.warn('[speaker][tf_speaker][steam] voice.playFor 不可用');
                 }

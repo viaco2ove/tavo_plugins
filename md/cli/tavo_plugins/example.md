@@ -40,7 +40,7 @@ python -m tavo_plugins plugins
 python -m tavo_plugins plugins --install-all  --no-tpg
 
 # 安装 + 保存 tpg 文件
-python -m tavo_plugins plugins --install-all 
+
 
 ### 重新安装部分插件
 tavo plugins --install "toonflow_story_debug_eruda,toonflow_story_event_manager"

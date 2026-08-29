@@ -19,15 +19,22 @@ function voiceFileNsGlobal() {
   return _voiceChatId ? (VOICE_FILE_NS + '_' + _voiceChatId) : VOICE_FILE_NS;
 }
 
-// 日志时间戳
-const ts = () => {
+function ts() {
   const d = new Date();
   return [d.getFullYear(), String(d.getMonth() + 1).padStart(2, '0'), String(d.getDate()).padStart(2, '0')].join('-')
     + ' ' + [d.getHours(), d.getMinutes(), d.getSeconds()].map(n => String(n).padStart(2, '0')).join(':')
     + '.' + String(d.getMilliseconds()).padStart(3, '0');
-};
-const vl = (...a) => console.log('[voice][' + ts() + '] [voice] ' + a.join(' '));
-const vw = (...a) => console.warn('[voice][' + ts() + '] [voice] ' + a.join(' '));
+}
+
+function vl() {
+  var args = Array.prototype.slice.call(arguments);
+  console.log.apply(console, ['[voice][' + ts() + '] [voice]'].concat(args));
+}
+
+function vw() {
+  var args = Array.prototype.slice.call(arguments);
+  console.warn.apply(console, ['[voice][' + ts() + '] [voice]'].concat(args));
+}
 
 // ---------- 工具 ----------
 // 配置读取：优先 tf_voice_config 变量（跨插件面板可写），兜底插件 settings
@@ -453,8 +460,11 @@ async function playTtsForSegments(charId, segments) {
           audio.play().catch(reject);
         });
         vl('[逐句] 第' + (i + 1) + '/' + segments.length + '句播放完毕: ' + segText.slice(0, 20));
+        await new Promise(resolve => setTimeout(resolve, 1000));
       } catch (e) {
         vw('[逐句] 第' + (i + 1) + '句 TTS 失败: ' + e.message);
+        tavo.utils.toast('[逐句] 第' + (i + 1) + '句 TTS 失败: ');
+        await new Promise(resolve => setTimeout(resolve, 1000));
         break;
       }
     }
@@ -687,10 +697,10 @@ tavo.plugin.on('chat:opened', async () => {
   } catch (e) {}
   vl('chat:opened, platform=' + cfg('voice_platform', 'xiaomimimo') + ' chatId=' + _voiceChatId);
   window.tf_voice = tf_voice_funs;
-  console.log("window.tf_voice:",window.tf_voice);
+  //console.log("window.tf_voice:",window.tf_voice);
 });
 window.tf_voice = tf_voice_funs;
-console.log("window.tf_voice:",window.tf_voice);
+//console.log("window.tf_voice:",window.tf_voice);
 
 // ---------- 插件启动日志 ----------
 vl('========================================');
@@ -711,5 +721,5 @@ console.log('[voice][toonflow_story_voice] plugin entry loaded');
   } catch (e) {}
   window.tf_voice = tf_voice_funs;
 
-  console.log("window.tf_voice:",window.tf_voice);
+  //console.log("window.tf_voice:",window.tf_voice);
 })();
