@@ -65,13 +65,21 @@
     },
     {
       "name": "某女子",
+      "roleType": "general",
       "md_file": "某女子.md",
       "avatar_file": "某女子.png"
     },
     {
       "name": "某男子",
+       "roleType": "general",
       "md_file": "某男子.md",
       "avatar_file": "某男子.png"
+    },
+    {
+      "name": "旁白",
+      "roleType": "narrator",
+      "md_file": "",
+      "avatar_file": ""
     }
   ],
   "chapter_covers": {

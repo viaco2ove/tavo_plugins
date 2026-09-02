@@ -288,7 +288,8 @@ def chat_search(http_url, token, query):
     return _parse_search_result(r)
 
 def chat_current(http_url, token, chat_id):
-    r = rpc(http_url, token, "tavo_chat_get", {"chatId": chat_id})
+    # 注意：tavo_chat_get 的校验参数名是 "id"（传 chatId 会报 -32602 Invalid params）
+    r = rpc(http_url, token, "tavo_chat_get", {"id": chat_id})
     return unwrap(r)
 
 def variable_set(http_url, token, chat_id, name, value, scope="chat"):
@@ -1442,7 +1443,23 @@ def main():
     config = auto_generate_sync_config(story_dir, story_data)
     config["_story_dir"] = story_dir  # 透传给后续步骤
 
-    # 2.1 读缓存 chat_id（避免重复创建群聊）
+    # Clean cache（必须先于 2.1 读缓存，保证 --clean-cache 语义"清干净再读"）
+    if args.clean_cache:
+        import shutil
+        cache_dir = os.path.join(story_dir, 'story_cache')
+        if os.path.exists(cache_dir):
+            shutil.rmtree(cache_dir)
+            print('  [cache] Cleaned cache=%s' % cache_dir)
+        # char_ids.json 同样是 ID/chat_id 缓存，--clean-cache 语义下应一并清除；
+        # 否则旧环境残留的 chat_id 会被 2.1 复用，对已删除的群聊 update → Resource not found
+        cid_json = os.path.join(story_dir, 'char_ids.json')
+        if os.path.isfile(cid_json):
+            os.remove(cid_json)
+            print('  [cache] Cleaned %s' % cid_json)
+
+    # 2.1 读缓存 chat_id（避免重复创建群聊）。
+    #     缓存可能来自旧环境/旧设备，先 chat_get 校验其真实存在，失效则忽略
+    #     （视为新故事，走按名查找/新建），避免对已删除的群聊 update 报 Resource not found。
     if not args.chat_id:
         _cache_path = os.path.join(story_dir, "char_ids.json")
         if os.path.isfile(_cache_path):
@@ -1451,18 +1468,16 @@ def main():
                     _cdata = json.load(f)
                 _cached_cid = _cdata.get("chat_id") if isinstance(_cdata, dict) else None
                 if _cached_cid and str(_cached_cid).isdigit():
-                    args.chat_id = int(_cached_cid)
-                    print("  [cache] 复用 chat_id=%s" % args.chat_id)
+                    _cached_cid = int(_cached_cid)
+                    try:
+                        chat_current(http_url, token, _cached_cid)
+                    except Exception as _e:
+                        print("  [cache] chat_id=%s 已失效（%s），忽略缓存，将按名查找/新建群聊" % (_cached_cid, _e))
+                    else:
+                        args.chat_id = _cached_cid
+                        print("  [cache] 复用 chat_id=%s" % args.chat_id)
             except Exception:
                 pass
-
-    # Clean cache
-    if args.clean_cache:
-        import shutil
-        cache_dir = os.path.join(story_dir, 'story_cache')
-        if os.path.exists(cache_dir):
-            shutil.rmtree(cache_dir)
-            print('  [cache] Cleaned cache=%s' % cache_dir)
 
     # Duplicate-delete: 删除同名角色和世界书（在 sync_characters 之前，否则会被复用）
     if getattr(args, 'duplicate_delete', False):
