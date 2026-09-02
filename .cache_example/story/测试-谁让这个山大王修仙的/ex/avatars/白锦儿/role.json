@@ -1,0 +1,55 @@
+{
+  "id": "npc_3",
+  "roleType": "npc",
+  "name": "白锦儿",
+  "description": "同门师妹，被主角\"拉下水\"一起干坏事。\n\n与主角关系暧昧，是早期重要女性角色。\n\n性格天真活泼，但被主角带偏后也开始搞些小套路。\n\n**性别**：女\n**年龄**：18 岁左右\n**性格**：天真活泼、善良、容易被带偏、对主角有好感\n**外貌**：清秀少女，穿着青色宗门服饰，扎着双马尾\n**音色特点**：清脆的少女声，活泼可爱\n**技能**：基础剑法、宗门功法\n**物品**：宗门令牌、零食若干\n**装备**：青钢剑、宗门服饰\n**等级**：3 级\n**境界**：炼气 3 层\n**血量**：130\n**蓝量**：130\n**金钱**：少量灵石",
+  "avatarImagePrompt": "",
+  "attributes": {},
+  "voiceMode": "prompt_voice",
+  "voicePromptText": "女声,清脆,活泼,可爱,天真,明亮，温柔，魅惑",
+  "parameterCardJson": {
+    "name": "白锦儿",
+    "raw_setting": "同门师妹，被主角\"拉下水\"一起干坏事。与主角关系暧昧，是早期重要女性角色。性格天真活泼，但被主角带偏后也开始搞些小套路。性别：女，年龄：18 岁左右，性格：天真活泼、善良、容易被带偏、对主角有好感，外貌：清秀少女，穿着青色宗门服饰，扎着双马尾，音色特点：清脆的少女声，活泼可爱，技能：基础剑法、宗门功法，物品：宗门令牌、零食若干，装备：青钢剑、宗门服饰，等级：3 级，境界：炼气 3 层，血量：130，蓝量：130，金钱：少量灵石",
+    "gender": "女",
+    "age": 18,
+    "level": 3,
+    "level_desc": "炼气3层",
+    "personality": "天真活泼、善良、容易被带偏、对主角有好感",
+    "appearance": "清秀少女，穿着青色宗门服饰，扎着双马尾",
+    "voice": "女声,清脆,活泼,可爱",
+    "skills": [
+      "基础剑法",
+      "宗门功法"
+    ],
+    "items": [
+      "宗门令牌",
+      "零食若干"
+    ],
+    "equipment": [
+      "青钢剑",
+      "宗门服饰"
+    ],
+    "hp": 130,
+    "mp": 130,
+    "money": 10,
+    "other": [],
+    "roleType": "npc",
+    "information": "同门师妹，与主角关系暧昧，是早期重要女性角色",
+    "role_key_information": "同门师妹，与主角关系暧昧，是早期重要女性角色",
+    "exp": 0,
+    "next_level_exp": 300
+  },
+  "avatarSourcePath": "/1/game/world-copy/41/7d5e697a-c7be-44c2-ad2e-129fe606_09d25d6c16ee.png",
+  "avatarPath": "/1/game/world-copy/41/37d634cb-382d-4373-a1f1-0e65ba8e_a9c54a015099.webp",
+  "avatarBgPath": "/1/game/world-copy/41/fbb00b77-8724-4986-b1b8-15951544_359eeff1d894.png",
+  "voiceMixVoices": [],
+  "voice": "提示词：女声,清脆,活泼,可爱,",
+  "voicePresetId": "",
+  "voiceReferenceAudioPath": "/1/game/world-copy/41/prompt_voice_88773b926f9e0dea_e009a4b40b5c.wav",
+  "voiceReferenceAudioName": "prompt_voice_88773b926f9e0dea.wav",
+  "voiceReferenceText": "恭喜，已成功复刻并合成了属于自己的声音。现在，请保持自然、清晰、稳定的语气，完整读出这段固定示例文本，用于校验音色、节奏与发音质量。愿这份新的声音陪伴你进入故事，清楚表达每一句话，也让角色在之后的对话中拥有稳定、真实、可辨识的声音表现。",
+  "voiceGeneratedDownloadUrl": "http://122.51.232.171/voice/audioProxy?configId=63&source=%2Fuser%2F1%2Fgame%2Fvoice-preview%2F3fef6480-bb06-45ca-812a-e7aeedbcf0d1.wav&token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MSwibmFtZSI6ImFkbWluIiwiaWF0IjoxNzgzNTA5OTUxLCJleHAiOjE3OTkwNjE5NTF9.3_uUmkUDlw_w_3VbBp0WcgQ8kFHPCWzGmjtv0y1yU8A",
+  "avatarVideoPath": "/1/game/world-copy/41/c01e10b2-6f23-4143-9259-4afddd7f_534fb57f28a6.mp4",
+  "avatarFirstFramePath": "/1/game/world-copy/41/3c3037f7-f5e1-4e54-a296-f8b8d72e_cfe0ed97716f.png",
+  "avatarDurationMs": 5042
+}

@@ -1,0 +1,54 @@
+{
+  "id": "npc_2",
+  "roleType": "npc",
+  "name": "李玄风",
+  "description": "稳健型修仙者，主角早期的引路人。\n\n在主角被丢入修仙界后相遇，指引他修炼之路。\n\n性格谨慎，与主角的腹黑风格形成对比。\n\n**性别**：男\n**年龄**：30 岁左右\n**性格**：稳健、谨慎、热心\n**外貌**：中年男子，穿着朴素道袍，面容和善\n**音色特点**：沉稳的中年男声\n**技能**：《青云诀》、基础仙法\n**物品**：修炼丹药若干\n**装备**：道袍、飞剑\n**等级**：15 级\n**境界**：筑基 5 层\n**血量**：300（基础 100 + 等级×10，假设筑基期=20 级）\n**蓝量**：300\n**金钱**：若干灵石",
+  "avatarImagePrompt": "一位 30 岁左右的中年男子，穿着朴素青色道袍，手持拂尘。面容和善，眼神睿智，留着短须。站姿端正，气质沉稳。二次元动漫风格，半身像。",
+  "attributes": {},
+  "voiceMode": "prompt_voice",
+  "voicePromptText": "男声，沉稳，温和，谨慎，儒雅，仙侠风，中年道长",
+  "parameterCardJson": {
+    "name": "李玄风",
+    "raw_setting": "稳健型修仙者，主角早期的引路人。在主角被丢入修仙界后相遇，指引他修炼之路。性格谨慎，与主角的腹黑风格形成对比。性别男，年龄30岁左右，性格稳健、谨慎、热心，外貌为中年男子，穿着朴素道袍，面容和善，音色为沉稳的中年男声，掌握技能《青云诀》、基础仙法，持有物品修炼丹药若干，装备为道袍、飞剑，等级15级，境界为筑基5层，血量300，蓝量300，拥有若干灵石",
+    "gender": "男",
+    "age": 30,
+    "level": 15,
+    "level_desc": "筑基5层",
+    "personality": "稳健、谨慎、热心",
+    "appearance": "中年男子，穿着朴素道袍，面容和善",
+    "voice": "沉稳的中年男声，温和谨慎",
+    "skills": [
+      "《青云诀》",
+      "基础仙法"
+    ],
+    "items": [
+      "修炼丹药若干"
+    ],
+    "equipment": [
+      "道袍",
+      "飞剑"
+    ],
+    "hp": 300,
+    "mp": 300,
+    "money": 0,
+    "other": [],
+    "roleType": "npc",
+    "information": "主角早期修仙引路人，稳健型修仙者，与主角腹黑风格形成对比",
+    "role_key_information": "主角早期修仙引路人，稳健型修仙者，与主角腹黑风格形成对比",
+    "exp": 0,
+    "next_level_exp": 1500
+  },
+  "avatarSourcePath": "/1/game/world-copy/41/ba27f127-c1e7-4d7e-b5bd-b78fad78_86dbabb0f655.png",
+  "avatarPath": "/1/game/world-copy/41/766bf2c1-5352-41a8-a565-a0fdd880_6868ce084a4a.webp",
+  "avatarBgPath": "/1/game/world-copy/41/ae07b0a9-8418-4e03-b053-cbe705f7_334376c8dded.png",
+  "voiceMixVoices": [],
+  "voice": "提示词：男声，沉稳，温和，谨慎，",
+  "voicePresetId": "",
+  "voiceReferenceAudioPath": "/1/game/world-copy/41/prompt_voice_e757067eb824116f_f1e142d382c5.wav",
+  "voiceReferenceAudioName": "prompt_voice_e757067eb824116f.wav",
+  "voiceReferenceText": "恭喜，已成功复刻并合成了属于自己的声音。现在，请保持自然、清晰、稳定的语气，完整读出这段固定示例文本，用于校验音色、节奏与发音质量。愿这份新的声音陪伴你进入故事，清楚表达每一句话，也让角色在之后的对话中拥有稳定、真实、可辨识的声音表现。",
+  "voiceGeneratedDownloadUrl": "http://122.51.232.171/voice/audioProxy?configId=63&source=%2Fuser%2F1%2Fgame%2Fvoice-preview%2Ff3e02ca9-6a36-4f54-b68d-15fe8161a10f.wav&token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MSwibmFtZSI6ImFkbWluIiwiaWF0IjoxNzgzNTA5OTUxLCJleHAiOjE3OTkwNjE5NTF9.3_uUmkUDlw_w_3VbBp0WcgQ8kFHPCWzGmjtv0y1yU8A",
+  "avatarVideoPath": "/1/game/world-copy/41/60c2aa5a-ac72-4a4f-bb03-5d0df141_2bf91d34a35e.mp4",
+  "avatarFirstFramePath": "/1/game/world-copy/41/d67eff5e-6c63-483d-83ce-0976471d_cff3ae1bd78f.png",
+  "avatarDurationMs": 5042
+}

@@ -1,0 +1,52 @@
+{
+  "id": "npc_5",
+  "roleType": "npc",
+  "name": "林月",
+  "description": "主角需\"除掉\"的威胁。\n\n中期对手，与主角有冲突。\n\n可能是被利用的棋子。\n\n**性别**：女\n**年龄**：20 岁左右\n**性格**：高傲、嫉妒心强、可能被利用\n**外貌**：美丽女子，穿着宗门服饰，眼神带着敌意\n**音色特点**：尖锐的女声\n**技能**：宗门功法、剑法\n**物品**：宗门令牌\n**装备**：宗门服饰、宝剑\n**等级**：15 级\n**境界**：筑基 5 层\n**血量**：300\n**蓝量**：300\n**金钱**：中等灵石",
+  "avatarImagePrompt": "",
+  "attributes": {},
+  "voiceMode": "prompt_voice",
+  "voicePromptText": "女声,年轻,高傲,尖锐,敌意,清冷,稍快,修仙",
+  "parameterCardJson": {
+    "name": "林月",
+    "raw_setting": "主角需\"除掉\"的威胁，中期对手，与主角有冲突，可能是被利用的棋子。性别女，年龄20岁左右，性格高傲、嫉妒心强、可能被利用，外貌为美丽女子，穿着宗门服饰，眼神带着敌意，音色为尖锐的女声，掌握宗门功法、剑法，持有宗门令牌，装备为宗门服饰、宝剑，等级15级，境界筑基5层，血量300，蓝量300，拥有中等灵石",
+    "gender": "女",
+    "age": 20,
+    "level": 15,
+    "level_desc": "筑基5层",
+    "personality": "高傲、嫉妒心强、可能被利用",
+    "appearance": "美丽女子，穿着宗门服饰，眼神带着敌意",
+    "voice": "尖锐的年轻女声，音色高傲",
+    "skills": [
+      "宗门功法",
+      "剑法"
+    ],
+    "items": [
+      "宗门令牌",
+      "中等灵石"
+    ],
+    "equipment": [
+      "宗门服饰",
+      "宝剑"
+    ],
+    "hp": 300,
+    "mp": 300,
+    "money": 0,
+    "other": [],
+    "roleType": "npc",
+    "information": "主角中期对手，是主角需要除掉的威胁，与主角存在冲突，大概率是被他人利用的棋子",
+    "role_key_information": "主角中期对手，是主角需要除掉的威胁，与主角存在冲突，大概率是被他人利用的棋子",
+    "exp": 0,
+    "next_level_exp": 1500
+  },
+  "avatarSourcePath": "/1/game/world-copy/41/e9b37854-4ef9-4b69-bdb7-d2d9e340_ecbd9da55602.png",
+  "avatarPath": "/1/game/world-copy/41/6685e881-a7bc-4641-8e77-4b5dee17_1a4751b3e08e.png",
+  "avatarBgPath": "/1/game/world-copy/41/aff8fc71-463e-407d-a509-56c7e826_137b0db32a18.png",
+  "voiceMixVoices": [],
+  "voice": "提示词：女声,年轻,高傲,尖锐,",
+  "voicePresetId": "",
+  "voiceReferenceAudioPath": "/1/game/world-copy/41/prompt_voice_40aeda30de3d13c6_368bc41b9cb0.wav",
+  "voiceReferenceAudioName": "prompt_voice_40aeda30de3d13c6.wav",
+  "voiceReferenceText": "恭喜，已成功复刻并合成了属于自己的声音。现在，请保持自然、清晰、稳定的语气，完整读出这段固定示例文本，用于校验音色、节奏与发音质量。愿这份新的声音陪伴你进入故事，清楚表达每一句话，也让角色在之后的对话中拥有稳定、真实、可辨识的声音表现。",
+  "voiceGeneratedDownloadUrl": "http://122.51.232.171/voice/audioProxy?configId=63&source=%2Fuser%2F1%2Fgame%2Fvoice-preview%2F7e9b380b-6b50-48b7-b9d5-de20ff70b3a3.wav&token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MSwibmFtZSI6ImFkbWluIiwiaWF0IjoxNzgzNTA5OTUxLCJleHAiOjE3OTkwNjE5NTF9.3_uUmkUDlw_w_3VbBp0WcgQ8kFHPCWzGmjtv0y1yU8A"
+}

@@ -1,0 +1,169 @@
+{
+  "npc": [
+    {
+      "id": "npc_1",
+      "name": "红缥缈",
+      "roleType": "npc",
+      "files": {
+        "original": "avatars\\红缥缈\\original.png",
+        "background": "avatars\\红缥缈\\background.png",
+        "avatar": "avatars\\红缥缈\\avatar.webp",
+        "voice": "avatars\\红缥缈\\voice.wav",
+        "voiceGeneratedDownloadUrl": "http://122.51.232.171/voice/audioProxy?configId=63&source=%2Fuser%2F1%2Fgame%2Fvoice-preview%2F983fad30-1c19-4212-986d-4df368504eaa.wav&token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MSwibmFtZSI6ImFkbWluIiwiaWF0IjoxNzgzNTA5OTUxLCJleHAiOjE3OTkwNjE5NTF9.3_uUmkUDlw_w_3VbBp0WcgQ8kFHPCWzGmjtv0y1yU8A",
+        "voicePromptText": "女声，清冷，仙气，高冷，疏离，虚弱"
+      }
+    },
+    {
+      "id": "npc_2",
+      "name": "李玄风",
+      "roleType": "npc",
+      "files": {
+        "original": "avatars\\李玄风\\original.png",
+        "background": "avatars\\李玄风\\background.png",
+        "avatar": "avatars\\李玄风\\avatar.webp",
+        "voice": "avatars\\李玄风\\voice.wav",
+        "voiceGeneratedDownloadUrl": "http://122.51.232.171/voice/audioProxy?configId=63&source=%2Fuser%2F1%2Fgame%2Fvoice-preview%2Ff3e02ca9-6a36-4f54-b68d-15fe8161a10f.wav&token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MSwibmFtZSI6ImFkbWluIiwiaWF0IjoxNzgzNTA5OTUxLCJleHAiOjE3OTkwNjE5NTF9.3_uUmkUDlw_w_3VbBp0WcgQ8kFHPCWzGmjtv0y1yU8A",
+        "voicePromptText": "男声，沉稳，温和，谨慎，儒雅，仙侠风，中年道长"
+      }
+    },
+    {
+      "id": "npc_3",
+      "name": "白锦儿",
+      "roleType": "npc",
+      "files": {
+        "original": "avatars\\白锦儿\\original.png",
+        "background": "avatars\\白锦儿\\background.png",
+        "avatar": "avatars\\白锦儿\\avatar.webp",
+        "voice": "avatars\\白锦儿\\voice.wav",
+        "voiceGeneratedDownloadUrl": "http://122.51.232.171/voice/audioProxy?configId=63&source=%2Fuser%2F1%2Fgame%2Fvoice-preview%2F3fef6480-bb06-45ca-812a-e7aeedbcf0d1.wav&token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MSwibmFtZSI6ImFkbWluIiwiaWF0IjoxNzgzNTA5OTUxLCJleHAiOjE3OTkwNjE5NTF9.3_uUmkUDlw_w_3VbBp0WcgQ8kFHPCWzGmjtv0y1yU8A",
+        "voicePromptText": "女声,清脆,活泼,可爱,天真,明亮，温柔，魅惑"
+      }
+    },
+    {
+      "id": "npc_4",
+      "name": "云火月",
+      "roleType": "npc",
+      "files": {
+        "original": "avatars\\云火月\\original.png",
+        "background": "avatars\\云火月\\background.png",
+        "avatar": "avatars\\云火月\\avatar.webp",
+        "voice": "avatars\\云火月\\voice.wav",
+        "voiceGeneratedDownloadUrl": "http://122.51.232.171/voice/audioProxy?configId=63&source=%2Fuser%2F1%2Fgame%2Fvoice-preview%2F8a615aa9-f893-427c-80b9-d320eb90a1e9.wav&token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MSwibmFtZSI6ImFkbWluIiwiaWF0IjoxNzgzNTA5OTUxLCJleHAiOjE3OTkwNjE5NTF9.3_uUmkUDlw_w_3VbBp0WcgQ8kFHPCWzGmjtv0y1yU8A",
+        "voicePromptText": "温柔女声，英气坚定，独立清醒"
+      }
+    },
+    {
+      "id": "npc_5",
+      "name": "林月",
+      "roleType": "npc",
+      "files": {
+        "original": "avatars\\林月\\original.png",
+        "background": "avatars\\林月\\background.png",
+        "avatar": "avatars\\林月\\avatar.png",
+        "voice": "avatars\\林月\\voice.wav",
+        "voiceGeneratedDownloadUrl": "http://122.51.232.171/voice/audioProxy?configId=63&source=%2Fuser%2F1%2Fgame%2Fvoice-preview%2F7e9b380b-6b50-48b7-b9d5-de20ff70b3a3.wav&token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MSwibmFtZSI6ImFkbWluIiwiaWF0IjoxNzgzNTA5OTUxLCJleHAiOjE3OTkwNjE5NTF9.3_uUmkUDlw_w_3VbBp0WcgQ8kFHPCWzGmjtv0y1yU8A",
+        "voicePromptText": "女声,年轻,高傲,尖锐,敌意,清冷,稍快,修仙"
+      }
+    },
+    {
+      "id": "npc_6",
+      "name": "陆青山",
+      "roleType": "npc",
+      "files": {
+        "original": "avatars\\陆青山\\original.png",
+        "background": "avatars\\陆青山\\background.png",
+        "avatar": "avatars\\陆青山\\avatar.webp",
+        "voice": "avatars\\陆青山\\voice.wav",
+        "voiceGeneratedDownloadUrl": "http://122.51.232.171/voice/audioProxy?configId=63&source=%2Fuser%2F1%2Fgame%2Fvoice-preview%2F107e74a5-c900-4249-b2b7-d141c40a9800.wav&token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MSwibmFtZSI6ImFkbWluIiwiaWF0IjoxNzgzNTA5OTUxLCJleHAiOjE3OTkwNjE5NTF9.3_uUmkUDlw_w_3VbBp0WcgQ8kFHPCWzGmjtv0y1yU8A",
+        "voicePromptText": "中年男声,洪亮有威严,刚毅沉稳,语速稳健,长者气势,正气担当"
+      }
+    },
+    {
+      "id": "npc_7",
+      "name": "琳琅",
+      "roleType": "npc",
+      "files": {
+        "original": "avatars\\琳琅\\original.png",
+        "background": "avatars\\琳琅\\background.png",
+        "avatar": "avatars\\琳琅\\avatar.webp",
+        "voice": "avatars\\琳琅\\voice.wav",
+        "voiceGeneratedDownloadUrl": "http://122.51.232.171/voice/audioProxy?configId=63&source=%2Fuser%2F1%2Fgame%2Fvoice-preview%2F89a6a505-2690-46c8-9f3e-56c3d99c9e11.wav&token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MSwibmFtZSI6ImFkbWluIiwiaWF0IjoxNzgzNTA5OTUxLCJleHAiOjE3OTkwNjE5NTF9.3_uUmkUDlw_w_3VbBp0WcgQ8kFHPCWzGmjtv0y1yU8A",
+        "voicePromptText": "女声，清冷高傲，圣女气质，威严疏离，语速偏慢"
+      }
+    },
+    {
+      "id": "npc_8",
+      "name": "冷素心",
+      "roleType": "npc",
+      "files": {
+        "original": "avatars\\冷素心\\original.png",
+        "background": "avatars\\冷素心\\background.png",
+        "avatar": "avatars\\冷素心\\avatar.webp",
+        "voice": "avatars\\冷素心\\voice.wav",
+        "voiceGeneratedDownloadUrl": "http://122.51.232.171/voice/audioProxy?configId=63&source=%2Fuser%2F1%2Fgame%2Fvoice-preview%2Fa82bbefd-0757-4ad5-bd0b-5f536ae6fc92.wav&token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MSwibmFtZSI6ImFkbWluIiwiaWF0IjoxNzgzNTA5OTUxLCJleHAiOjE3OTkwNjE5NTF9.3_uUmkUDlw_w_3VbBp0WcgQ8kFHPCWzGmjtv0y1yU8A",
+        "voicePromptText": "女声，低沉，神秘，冷静，成熟，磁性"
+      }
+    },
+    {
+      "id": "npc_9",
+      "name": "苍山道人",
+      "roleType": "npc",
+      "files": {
+        "original": "avatars\\苍山道人\\original.png",
+        "background": "avatars\\苍山道人\\background.png",
+        "avatar": "avatars\\苍山道人\\avatar.webp",
+        "voice": "avatars\\苍山道人\\voice.wav",
+        "voiceGeneratedDownloadUrl": "http://122.51.232.171/voice/audioProxy?configId=63&source=%2Fuser%2F1%2Fgame%2Fvoice-preview%2F4f0cd2d6-25aa-41ad-924e-1d76e3f22cdf.wav&token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MSwibmFtZSI6ImFkbWluIiwiaWF0IjoxNzgzNTA5OTUxLCJleHAiOjE3OTkwNjE5NTF9.3_uUmkUDlw_w_3VbBp0WcgQ8kFHPCWzGmjtv0y1yU8A",
+        "voicePromptText": "老年男声,低沉,威严,神秘,沉稳,缓慢"
+      }
+    },
+    {
+      "id": "npc_10",
+      "name": "某女子",
+      "roleType": "general",
+      "files": {
+        "original": "avatars\\某女子\\original.png",
+        "background": "avatars\\某女子\\background.png",
+        "avatar": "avatars\\某女子\\avatar.png",
+        "voice": "avatars\\某女子\\voice.wav",
+        "voiceGeneratedDownloadUrl": "http://122.51.232.171/voice/audioProxy?configId=63&source=%2Fuser%2F1%2Fgame%2Fvoice-preview%2Fab7fd1dd-963e-47a4-8edd-dc15a2e4c925.wav&token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MSwibmFtZSI6ImFkbWluIiwiaWF0IjoxNzgzNTA5OTUxLCJleHAiOjE3OTkwNjE5NTF9.3_uUmkUDlw_w_3VbBp0WcgQ8kFHPCWzGmjtv0y1yU8A",
+        "voicePromptText": ""
+      }
+    },
+    {
+      "id": "npc_11",
+      "name": "某男子",
+      "roleType": "general",
+      "files": {
+        "original": "avatars\\某男子\\original.png",
+        "background": "avatars\\某男子\\background.png",
+        "avatar": "avatars\\某男子\\avatar.png",
+        "voice": "avatars\\某男子\\voice.wav",
+        "voiceGeneratedDownloadUrl": "http://122.51.232.171/voice/audioProxy?configId=63&source=%2Fuser%2F1%2Fgame%2Fvoice-preview%2F6017b7a4-2700-4921-ac70-318ac6eec1a8.wav&token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MSwibmFtZSI6ImFkbWluIiwiaWF0IjoxNzgzNTA5OTUxLCJleHAiOjE3OTkwNjE5NTF9.3_uUmkUDlw_w_3VbBp0WcgQ8kFHPCWzGmjtv0y1yU8A",
+        "voicePromptText": ""
+      }
+    }
+  ],
+  "player": {
+    "id": "player",
+    "name": "纯小白",
+    "roleType": "player",
+    "files": {
+      "background": "avatars\\纯小白\\background.png",
+      "avatar": "avatars\\纯小白\\avatar.webp",
+      "voice": "avatars\\纯小白\\voice.wav",
+      "voiceGeneratedDownloadUrl": "",
+      "voicePromptText": "青年男声，痞气，幽默，腹黑，明亮"
+    }
+  },
+  "narrator": {
+    "id": "narrator",
+    "name": "旁白",
+    "roleType": "narrator",
+    "files": {
+      "voiceGeneratedDownloadUrl": "",
+      "voice": "avatars\\某男子\\voice.wav",
+      "voicePromptText": ""
+    }
+  }
+}

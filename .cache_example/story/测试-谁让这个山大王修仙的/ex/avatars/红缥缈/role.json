@@ -1,0 +1,56 @@
+{
+  "id": "npc_1",
+  "roleType": "npc",
+  "name": "红缥缈",
+  "description": "神秘的，被纯小白误抢上山的\"压寨夫人\"。\n\n身上带有神秘小塔，被主角撸下手镯后一怒之下将他丢入修仙界。\n\n是一切故事的起源。\n\n**性别**：女\n**年龄**：外表 20 岁左右，实际未知（仙人寿命长）\n**性格**：高冷、恩怨分明、易怒\n**外貌**：绝美女子，身穿白色仙裙，气质出尘，但脸色苍白（重伤状态）\n**音色特点**：清冷的女声，带有仙气\n**技能**：仙法、空间转移、重伤状态\n**物品**：神秘小塔（已被主角获得）\n**装备**：仙人服饰、破损的手镯\n**等级**：35 级\n**境界**：元婴 5 层\n**血量**：100（重伤状态）\n**蓝量**：500（仙人底蕴）\n**金钱**：0",
+  "avatarImagePrompt": "一位绝美女子，身穿白色仙裙，裙摆有破损（重伤痕迹）。脸色苍白但不掩美貌，眉头微蹙，眼神带着怒意。长发及腰，部分发丝凌乱。手腕上有破损的手镯痕迹。二次元动漫风格，半身像。",
+  "attributes": {},
+  "voiceMode": "prompt_voice",
+  "voicePromptText": "女声，清冷，仙气，高冷，疏离，虚弱",
+  "parameterCardJson": {
+    "name": "红缥缈",
+    "raw_setting": "神秘的，被纯小白误抢上山的\"压寨夫人\"。身上带有神秘小塔，被主角撸下手镯后一怒之下将他丢入修仙界。是一切故事的起源。性别：女，年龄：外表20岁左右，实际未知（仙人寿命长），性格：高冷、恩怨分明、易怒，外貌：绝美女子，身穿白色仙裙，气质出尘，但脸色苍白（重伤状态），音色特点：清冷的女声，带有仙气，技能：仙法、空间转移、重伤状态，物品：神秘小塔（已被主角获得），装备：仙人服饰、破损的手镯，等级：35级，境界：元婴5层，血量：100（重伤状态），蓝量：500（仙人底蕴），金钱：0",
+    "gender": "女",
+    "age": 20,
+    "level": 35,
+    "level_desc": "元婴5层",
+    "personality": "高冷、恩怨分明、易怒",
+    "appearance": "绝美女子，身穿白色仙裙，气质出尘，但脸色苍白（重伤状态）",
+    "voice": "清冷的女声，带有仙气",
+    "skills": [
+      "仙法",
+      "空间转移"
+    ],
+    "items": [
+      "神秘小塔（已被主角获得）"
+    ],
+    "equipment": [
+      "仙人服饰",
+      "破损的手镯"
+    ],
+    "hp": 100,
+    "mp": 500,
+    "money": 0,
+    "other": [
+      "当前处于重伤状态"
+    ],
+    "roleType": "npc",
+    "information": "被主角误抢上山的神秘压寨夫人，持有神秘小塔，被撸下手镯后将主角丢入修仙界，是整个故事的起源人物",
+    "role_key_information": "被主角误抢上山的神秘压寨夫人，持有神秘小塔，被撸下手镯后将主角丢入修仙界，是整个故事的起源人物",
+    "exp": 0,
+    "next_level_exp": 3500
+  },
+  "avatarSourcePath": "/1/game/world-copy/41/dd128b80-6a87-4467-9948-42fca7fd_7d0a0dece6ce.png",
+  "avatarPath": "/1/game/world-copy/41/31f60377-acb4-4bb6-a052-b4a7ecaf_e77abd7b2eae.webp",
+  "avatarBgPath": "/1/game/world-copy/41/f39433d1-5438-42ae-9a13-90bb8cb0_35ab0c9b77d9.png",
+  "voiceMixVoices": [],
+  "voice": "提示词：女声，清冷，仙气，高冷，",
+  "voicePresetId": "",
+  "voiceReferenceAudioPath": "/1/game/world-copy/41/prompt_voice_9895b91e10960916_dd48387cce49.wav",
+  "voiceReferenceAudioName": "prompt_voice_9895b91e10960916.wav",
+  "voiceReferenceText": "恭喜，已成功复刻并合成了属于自己的声音。现在，请保持自然、清晰、稳定的语气，完整读出这段固定示例文本，用于校验音色、节奏与发音质量。愿这份新的声音陪伴你进入故事，清楚表达每一句话，也让角色在之后的对话中拥有稳定、真实、可辨识的声音表现。",
+  "voiceGeneratedDownloadUrl": "http://122.51.232.171/voice/audioProxy?configId=63&source=%2Fuser%2F1%2Fgame%2Fvoice-preview%2F983fad30-1c19-4212-986d-4df368504eaa.wav&token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MSwibmFtZSI6ImFkbWluIiwiaWF0IjoxNzgzNTA5OTUxLCJleHAiOjE3OTkwNjE5NTF9.3_uUmkUDlw_w_3VbBp0WcgQ8kFHPCWzGmjtv0y1yU8A",
+  "avatarVideoPath": "/1/game/world-copy/41/a637e7dc-ea03-4255-b0b0-be48ef68_6cd5e93c636e.mp4",
+  "avatarFirstFramePath": "/1/game/world-copy/41/41dea876-af93-49dc-afc2-ca969e97_dbbe3144d576.png",
+  "avatarDurationMs": 5042
+}

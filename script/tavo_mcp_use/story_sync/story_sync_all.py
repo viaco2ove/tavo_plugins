@@ -155,9 +155,21 @@ def upload_avatar(http_url, token, chat_id, name, local_path, dry=False):
         b64 = base64.b64encode(f.read()).decode()
     return file_save_b64(http_url, token, chat_id, fname, b64, scope="global")
 
+def character_get(http_url, token, cid):
+    """读取角色卡详情（search 返回不含 tags/extensions，需 get 二次确认）"""
+    r = rpc(http_url, token, "tavo_character_get", {"id": int(cid)})
+    rr = unwrap(r)
+    # 兼容 tavo 返回结构：{data:{...}} 或直接 {...}
+    if isinstance(rr, dict) and "data" in rr and isinstance(rr["data"], dict):
+        return rr["data"]
+    return rr
+
 def character_import(http_url, token, name, description, first_mes, personality,
-                     role_type, avatar_ref, dry=False):
-    """导入角色卡。avatar_ref = files/global/xxx.png 引用路径（不是 base64）"""
+                     role_type, avatar_ref, dry=False, extensions=None):
+    """导入角色卡。avatar_ref = files/global/xxx.png 引用路径（不是 base64）。
+
+    extensions: 可选 dict，写入角色卡 extensions 字段（如群聊归属标记）。
+    """
     data = {
         "name": name,
         "description": description or "",
@@ -167,6 +179,9 @@ def character_import(http_url, token, name, description, first_mes, personality,
     }
     if avatar_ref:
         data["avatar"] = avatar_ref
+    if extensions:
+        # 合并保留已有 extensions（import 时一般是新卡，直接赋值即可，兼容传 dict）
+        data["extensions"] = extensions
     card = {"spec": "chara_card_v3", "spec_version": "3.0", "data": data}
     if dry:
         print("  [char]    dry 创建 name=%s avatar=%s" % (name, avatar_ref or "无"))
@@ -174,6 +189,43 @@ def character_import(http_url, token, name, description, first_mes, personality,
     r = rpc(http_url, token, "tavo_character_import_card", {"card": card})
     rr = unwrap(r)
     return rr.get("id") or rr.get("characterId")
+
+def character_update_avatar(http_url, token, cid, name, description, first_mes, personality, avatar_ref, dry=False, extensions=None):
+    """原地更新角色卡 avatar 字段（不删除/重导，保持 character id 不变）。
+
+    此前 avatar 更新 = tavo_character_delete(旧id) + character_import(新id)，会产生新 id，
+    且服务端删除角色时会把该角色从【其所在的所有群聊】级联移除成员；当两个故事
+    共享同名 NPC 角色 id 时，重导一方会把另一故事的群聊成员清空。
+    改用 tavo_character_update 直接更新 avatar 字段，id 稳定、不触发级联删成员。
+
+    extensions: 可选 dict，随更新写入（合并到现有 extensions）。
+
+    返回更新后的 character id（与入参 cid 相同）。
+    """
+    data = {
+        "name": name,
+        "description": description or "",
+        "first_mes": first_mes or "",
+        "personality": personality or "NPC",
+        "avatar": avatar_ref,
+    }
+    if extensions:
+        # 更新走 merge 语义：先取现有 extensions，合并新键，避免覆盖已有标记
+        try:
+            cur = character_get(http_url, token, int(cid))
+            cur_ext = dict(cur.get("extensions") or {})
+            cur_ext.update(extensions)
+            data["extensions"] = cur_ext
+        except Exception as e:
+            print("  [char]    读取现有 extensions 失败（视为无），直接写新值: %s" % e)
+            data["extensions"] = extensions
+    if dry:
+        print("  [char]    dry 原地更新 avatar name=%s avatar=%s" % (name, avatar_ref))
+        return cid
+    r = rpc(http_url, token, "tavo_character_update", {"id": int(cid), "character": data})
+    rr = unwrap(r)
+    print("  [char]    原地更新 avatar id=%s name=%s avatar=%s" % (cid, name, avatar_ref))
+    return int(rr.get("id") or cid)
 
 def persona_create_minimal(http_url, token, name, description, dry=False, chat_id=None):
     """创建 persona（不传 avatar），用于在没有 chat_id 时拿到 persona_id 给 chat_create 用。
@@ -546,6 +598,15 @@ def sync_characters(http_url, token, config, story_dir, dry, force, chat_id_for_
                 results[name] = pid
 
     # NPCs（走 character_import_card，avatar 用 files/global 引用）
+    # 群聊归属标记：写进角色卡 extensions.tavo_chat，作为「该角色属于哪个群聊」的唯一标识。
+    # 查重从「仅按 name」升级为「name + 群聊归属」双匹配，同名但归属不同群聊的角色
+    # 不视为可复用 —— 这是避免两故事共享同一批角色 id 的关键（共享 + delete+reimport
+    # 是之前跨群聊级联清空 chat4 的根因，现 avatar 已改原地更新，归属隔离把共享也彻底切断）。
+    chat_tag = (config.get("chat_name") or "").strip() or (config.get("story_name") or "").strip()
+    if chat_tag:
+        print("  [char]    群聊归属标记 extensions.tavo_chat = %s" % chat_tag)
+    chat_ext = {"tavo_chat": chat_tag} if chat_tag else None
+
     for c in config.get("characters", []):
         name = c.get("name")
         if not name:
@@ -555,23 +616,36 @@ def sync_characters(http_url, token, config, story_dir, dry, force, chat_id_for_
         existing = None
         for it in found_list:
             if it.get("name") == name:
-                existing = it.get("id")
-                break
+                # search 结果不含 tags/extensions 字段，需 get 详情读 extensions.tavo_chat。
+                # 无 chat_tag 时退化为按 name 匹配（旧行为）；有 chat_tag 时要求归属一致才复用，
+                # 读详情失败视为不匹配（保守：不误复用其它群聊的角色）。
+                if not chat_tag:
+                    existing = it.get("id")
+                    break
+                try:
+                    detail = character_get(http_url, token, it.get("id"))
+                    ext = detail.get("extensions") or {}
+                    if ext.get("tavo_chat") == chat_tag:
+                        existing = it.get("id")
+                        break
+                except Exception:
+                    continue
         if existing:
-            # 即使角色已存在，如果本地有新头像且 --force 模式，重新导入
-            # skip_avatar=True（第一阶段，群聊未建、chat_id_for_files 无有效值）时不重导头像，
+            # 即使角色已存在，如果本地有新头像且 --force 模式，原地更新 avatar 字段
+            # （改用 character_update_avatar，不再 delete+reimport，避免 id 漂移与跨群聊级联删成员）。
+            # skip_avatar=True（第一阶段，群聊未建、chat_id_for_files 无有效值）时不更新头像，
             # 统一延后到 upload_character_avatars（sync_chat 拿到 chat_id 后）补传，避免把空 chatId 传给 tavo_file_save。
             if force and av_local and os.path.isfile(av_local) and not skip_avatar:
                 av_ref = upload_avatar(http_url, token, chat_id_for_files, name, av_local, dry=dry)
                 if not dry:
-                    cid = character_import(http_url, token, name,
-                                           c.get("description", ""), c.get("first_mes", ""),
-                                           c.get("personality", "NPC"),
-                                           c.get("roleType", "npc"), av_ref, dry=dry)
-                    print("  [char]    重导头像 id=%s name=%s avatar=%s" % (cid, name, av_ref or "无"))
+                    cid = character_update_avatar(http_url, token, existing, name,
+                                                  c.get("description", ""), c.get("first_mes", ""),
+                                                  c.get("personality", "NPC"), av_ref, dry=dry,
+                                                  extensions=chat_ext)
+                    print("  [char]    更新头像 id=%s name=%s avatar=%s" % (cid, name, av_ref or "无"))
                     results[name] = cid
                 else:
-                    print("  [char]    (dry) 重导头像 name=%s avatar=%s" % (name, av_local))
+                    print("  [char]    (dry) 更新头像 name=%s avatar=%s" % (name, av_local))
                     results[name] = existing
             else:
                 print("  [char]    复用 id=%s name=%s" % (existing, name))
@@ -584,7 +658,8 @@ def sync_characters(http_url, token, config, story_dir, dry, force, chat_id_for_
             cid = character_import(http_url, token, name,
                                    c.get("description", ""), c.get("first_mes", ""),
                                    c.get("personality", "NPC"),
-                                   c.get("roleType", "npc"), "", dry=dry)
+                                   c.get("roleType", "npc"), "", dry=dry,
+                                   extensions=chat_ext)
             if not dry:
                 print("  [char]    创建 (无 avatar) id=%s name=%s" % (cid, name))
             results[name] = cid
@@ -593,7 +668,8 @@ def sync_characters(http_url, token, config, story_dir, dry, force, chat_id_for_
             cid = character_import(http_url, token, name,
                                    c.get("description", ""), c.get("first_mes", ""),
                                    c.get("personality", "NPC"),
-                                   c.get("roleType", "npc"), av_ref, dry=dry)
+                                   c.get("roleType", "npc"), av_ref, dry=dry,
+                                   extensions=chat_ext)
             if not dry:
                 print("  [char]    创建 id=%s name=%s avatar=%s" % (cid, name, av_ref or "无"))
             results[name] = cid
@@ -632,7 +708,9 @@ def upload_character_avatars(http_url, token, chat_id, char_ids, story_dir, conf
                 except Exception as e:
                     print("  [persona avatar] 更新失败: %s" % e)
 
-    # NPC avatar: 上传后重新导入角色卡以更新 avatar
+    # NPC avatar: 上传后原地更新角色卡 avatar 字段
+    # 之前用 delete+reimport（id 漂移）导致：服务端删角色会从其所有群聊级联移除成员，
+    # 跨故事共享同名 NPC 时会把另一群聊清空。改用 tavo_character_update 原地更新，id 保持稳定。
     for c in config.get("characters", []):
         name = c.get("name")
         if not name or name not in char_ids:
@@ -641,25 +719,23 @@ def upload_character_avatars(http_url, token, chat_id, char_ids, story_dir, conf
         if not av_local or not os.path.isfile(av_local):
             continue
 
-        old_cid = char_ids.get(name)
+        cid = char_ids.get(name)
         av_ref = upload_avatar(http_url, token, chat_id, name, av_local, dry=dry)
         if av_ref:
             if not dry:
-                # 先删除旧角色
+                # 原地更新 avatar（不删除、不重导，id 不变）
                 try:
-                    rpc(http_url, token, "tavo_character_delete", {"id": old_cid})
-                    print("  [char]    删除旧角色 id=%s name=%s" % (old_cid, name))
+                    # 带上群聊归属标记（extensions.merge 语义，不会覆盖已有键）
+                    chat_tag = (config.get("chat_name") or "").strip() or (config.get("story_name") or "").strip()
+                    chat_ext = {"tavo_chat": chat_tag} if chat_tag else None
+                    character_update_avatar(http_url, token, cid, name,
+                                            c.get("description", ""), c.get("first_mes", ""),
+                                            c.get("personality", "NPC"), av_ref, dry=dry,
+                                            extensions=chat_ext)
+                    # id 不变，无需更新 char_ids
+                    print("  [char]    头像已更新 id=%s name=%s avatar=%s" % (cid, name, av_ref))
                 except Exception as e:
-                    print("  [char]    删除旧角色失败: %s" % e)
-
-                # 重新导入带 avatar 的角色卡
-                new_cid = character_import(http_url, token, name,
-                                          c.get("description", ""), c.get("first_mes", ""),
-                                          c.get("personality", "NPC"),
-                                          c.get("roleType", "npc"), av_ref, dry=dry)
-                if new_cid:
-                    char_ids[name] = new_cid
-                    print("  [char]    更新头像 id=%s->%s name=%s avatar=%s" % (old_cid, new_cid, name, av_ref))
+                    print("  [char]    更新头像失败: %s" % e)
             else:
                 print("  [char avatar] %s -> %s (dry)" % (name, av_ref))
 

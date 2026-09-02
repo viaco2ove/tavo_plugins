@@ -1,0 +1,54 @@
+{
+  "id": "npc_4",
+  "roleType": "npc",
+  "name": "云火月",
+  "description": "与主角有情感线的女性角色。\n\n性格独立坚强，实力不俗。\n\n对主角的腹黑行为既无奈又欣赏。\n\n**性别**：女\n**年龄**：20 岁左右\n**性格**：独立、坚强、聪明、对主角有好感\n**外貌**：美丽女子，穿着红色或紫色服饰，长发披肩，眼神坚定\n**音色特点**：温柔的女声，带点英气\n**技能**：火系功法、剑法\n**物品**：火系法宝\n**装备**：红色服饰、宝剑\n**等级**：15 级\n**境界**：筑基 5 层\n**血量**：300\n**蓝量**：350\n**金钱**：中等灵石",
+  "avatarImagePrompt": "",
+  "attributes": {},
+  "voiceMode": "prompt_voice",
+  "voicePromptText": "温柔女声，英气坚定，独立清醒",
+  "parameterCardJson": {
+    "name": "云火月",
+    "raw_setting": "与主角有情感线的女性角色，性格独立坚强，实力不俗，对主角的腹黑行为既无奈又欣赏，性别女，年龄20岁左右，穿着红色或紫色服饰，长发披肩，眼神坚定，拥有火系法宝，身着红色服饰、佩戴宝剑，境界为筑基5层",
+    "gender": "女",
+    "age": 20,
+    "level": 15,
+    "level_desc": "筑基5层",
+    "personality": "独立、坚强、聪明、对主角有好感",
+    "appearance": "美丽女子，穿着红色或紫色服饰，长发披肩，眼神坚定",
+    "voice": "温柔的女声，带点英气，音色英气坚定，独立",
+    "skills": [
+      "火系功法",
+      "剑法"
+    ],
+    "items": [
+      "火系法宝"
+    ],
+    "equipment": [
+      "红色服饰",
+      "宝剑"
+    ],
+    "hp": 300,
+    "mp": 350,
+    "money": 0,
+    "other": [],
+    "roleType": "npc",
+    "information": "与主角有情感线的女性角色，性格独立坚强，实力不俗，对主角的腹黑行为既无奈又欣赏，拥有火系相关功法与法宝",
+    "role_key_information": "与主角有情感线的女性角色，性格独立坚强，实力不俗，对主角的腹黑行为既无奈又欣赏，拥有火系相关功法与法宝",
+    "exp": 0,
+    "next_level_exp": 1500
+  },
+  "avatarSourcePath": "/1/game/world-copy/41/3fdec7b2-a4d5-44b1-a5dd-8c4cf012_2f457aa5edb1.png",
+  "avatarPath": "/1/game/world-copy/41/b7021ace-9d65-486e-ab26-e5c5517f_af2599c2b77e.webp",
+  "avatarBgPath": "/1/game/world-copy/41/6baabe88-deb5-4849-ba74-4278a19e_5e7cf4323c58.png",
+  "voiceMixVoices": [],
+  "voice": "提示词：温柔女声，英气坚定，独立",
+  "voicePresetId": "",
+  "voiceReferenceAudioPath": "/1/game/world-copy/41/prompt_voice_2c63b1269e7dae3a_3b2376cfacab.wav",
+  "voiceReferenceAudioName": "prompt_voice_2c63b1269e7dae3a.wav",
+  "voiceReferenceText": "恭喜，已成功复刻并合成了属于自己的声音。现在，请保持自然、清晰、稳定的语气，完整读出这段固定示例文本，用于校验音色、节奏与发音质量。愿这份新的声音陪伴你进入故事，清楚表达每一句话，也让角色在之后的对话中拥有稳定、真实、可辨识的声音表现。",
+  "voiceGeneratedDownloadUrl": "http://122.51.232.171/voice/audioProxy?configId=63&source=%2Fuser%2F1%2Fgame%2Fvoice-preview%2F8a615aa9-f893-427c-80b9-d320eb90a1e9.wav&token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MSwibmFtZSI6ImFkbWluIiwiaWF0IjoxNzgzNTA5OTUxLCJleHAiOjE3OTkwNjE5NTF9.3_uUmkUDlw_w_3VbBp0WcgQ8kFHPCWzGmjtv0y1yU8A",
+  "avatarVideoPath": "/1/game/world-copy/41/e0760a60-ccf4-4932-a3f4-5b1ac1ad_ebdf01826df5.mp4",
+  "avatarFirstFramePath": "/1/game/world-copy/41/c81b191a-adb6-4748-be31-54abfb7e_eab86303dea2.png",
+  "avatarDurationMs": 5056
+}

@@ -1,0 +1,57 @@
+{
+  "id": "npc_8",
+  "roleType": "npc",
+  "name": "冷素心",
+  "description": "后期登场角色，疑似与魔修有关。\n\n牵出魔修线索的关键人物。\n\n性格神秘，立场不明。\n\n**性别**：女\n**年龄**：25 岁左右\n**性格**：神秘、冷静、立场不明、可能亦正亦邪\n**外貌**：美丽女子，穿着黑色或深紫色服饰，眼神深邃\n**音色特点**：低沉的女声，带有神秘感\n**技能**：魔修功法、暗杀术\n**物品**：魔修宝物\n**装备**：黑色服饰、匕首\n**等级**：35 级\n**境界**：元婴 5 层\n**血量**：550\n**蓝量**：600\n**金钱**：未知",
+  "avatarImagePrompt": "",
+  "attributes": {},
+  "voiceMode": "prompt_voice",
+  "voicePromptText": "女声，低沉，神秘，冷静，成熟，磁性",
+  "parameterCardJson": {
+    "name": "冷素心",
+    "raw_setting": "后期登场角色，疑似与魔修有关，牵出魔修线索的关键人物，性格神秘立场不明，25岁左右的美丽女子，穿着黑色或深紫色服饰，眼神深邃，音色为低沉带神秘感的女声，掌握魔修功法与暗杀术，持有魔修宝物，装备黑色服饰与匕首，等级35级，境界元婴5层",
+    "gender": "女",
+    "age": 25,
+    "level": 35,
+    "level_desc": "元婴5层",
+    "personality": "神秘、冷静、立场不明、亦正亦邪",
+    "appearance": "美丽女子，穿着黑色或深紫色服饰，眼神深邃",
+    "voice": "低沉的女声，带有神秘感，音色冷静",
+    "skills": [
+      "魔修功法",
+      "暗杀术"
+    ],
+    "items": [
+      "魔修宝物"
+    ],
+    "equipment": [
+      "黑色服饰",
+      "匕首"
+    ],
+    "hp": 550,
+    "mp": 600,
+    "money": 0,
+    "other": [
+      "牵出魔修线索的关键人物",
+      "疑似与魔修有关"
+    ],
+    "roleType": "npc",
+    "information": "后期登场的魔修相关关键人物，立场不明，掌握魔修功法与暗杀术，是引出魔修线索的核心角色",
+    "role_key_information": "后期登场的魔修相关关键人物，立场不明，掌握魔修功法与暗杀术，是引出魔修线索的核心角色",
+    "exp": 0,
+    "next_level_exp": 3500
+  },
+  "avatarSourcePath": "/1/game/world-copy/41/8310e480-5584-44ba-8f16-418b2e77_18f3aafe1d88.png",
+  "avatarPath": "/1/game/world-copy/41/cb351e62-112d-49d0-a201-d90d76fe_a8300ce8852e.webp",
+  "avatarBgPath": "/1/game/world-copy/41/f9d73e82-25fc-43fc-bce3-88e7814b_2a7e5298a48e.png",
+  "voiceMixVoices": [],
+  "voice": "提示词：女声，低沉，神秘，冷静，",
+  "voicePresetId": "",
+  "voiceReferenceAudioPath": "/1/game/world-copy/41/prompt_voice_2375cdc00f4a73bf_540e54153a3f.wav",
+  "voiceReferenceAudioName": "prompt_voice_2375cdc00f4a73bf.wav",
+  "voiceReferenceText": "恭喜，已成功复刻并合成了属于自己的声音。现在，请保持自然、清晰、稳定的语气，完整读出这段固定示例文本，用于校验音色、节奏与发音质量。愿这份新的声音陪伴你进入故事，清楚表达每一句话，也让角色在之后的对话中拥有稳定、真实、可辨识的声音表现。",
+  "voiceGeneratedDownloadUrl": "http://122.51.232.171/voice/audioProxy?configId=63&source=%2Fuser%2F1%2Fgame%2Fvoice-preview%2Fa82bbefd-0757-4ad5-bd0b-5f536ae6fc92.wav&token=eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZCI6MSwibmFtZSI6ImFkbWluIiwiaWF0IjoxNzgzNTA5OTUxLCJleHAiOjE3OTkwNjE5NTF9.3_uUmkUDlw_w_3VbBp0WcgQ8kFHPCWzGmjtv0y1yU8A",
+  "avatarVideoPath": "/1/game/world-copy/41/630f9c88-6718-4a97-960f-c881695e_e6c625afd809.mp4",
+  "avatarFirstFramePath": "/1/game/world-copy/41/6dc6a0ee-786e-4792-a05b-1744d35e_3e7713c6fec4.png",
+  "avatarDurationMs": 5039
+}
