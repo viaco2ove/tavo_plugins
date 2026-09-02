@@ -127,9 +127,17 @@ def search_character(http_url, token, query):
     return _parse_search_result(r)
 
 def file_save_b64(http_url, token, chat_id, name, b64_data, scope="global"):
-    """上传 base64 文件，返回 files/<scope>/<name> 引用路径"""
+    """上传 base64 文件，返回 files/<scope>/<name> 引用路径
+
+    chat_id 无效（None/0/非正整数）= 群聊尚未创建（新故事），此时不调用
+    tavo_file_save（服务端拒绝 chatId<=0），跳过上传返回空，
+    由后续 upload_character_avatars 阶段在 chat 创建后再补传。
+    """
+    if chat_id is None or not str(chat_id).strip().lstrip("-").isdigit() or int(chat_id) <= 0:
+        print("  [file_save_b64] chat_id=%r 无有效群聊（新故事），跳过上传: %s" % (chat_id, name))
+        return ""
     r = rpc(http_url, token, "tavo_file_save", {
-        "chatId": chat_id, "name": name, "content": b64_data,
+        "chatId": int(chat_id), "name": name, "content": b64_data,
         "options": {"scope": scope, "encoding": "base64"}})
     rr = unwrap(r)
     return rr.get("path") or ""
@@ -489,7 +497,7 @@ def build_character_card(name, description, first_mes, personality, avatar_rel, 
 # ---------------------------------------------------------------------------
 # 同步角色卡
 # ---------------------------------------------------------------------------
-def sync_characters(http_url, token, config, story_dir, dry, force, chat_id_for_files=0, skip_avatar=False):
+def sync_characters(http_url, token, config, story_dir, dry, force, chat_id_for_files=None, skip_avatar=False):
     """同步角色卡。
 
     skip_avatar=True 时只创建/复用 character 记录，不上传 avatar（用于在 sync_chat 之前先拿 id，
@@ -550,7 +558,9 @@ def sync_characters(http_url, token, config, story_dir, dry, force, chat_id_for_
                 break
         if existing:
             # 即使角色已存在，如果本地有新头像且 --force 模式，重新导入
-            if force and av_local and os.path.isfile(av_local):
+            # skip_avatar=True（第一阶段，群聊未建、chat_id_for_files 无有效值）时不重导头像，
+            # 统一延后到 upload_character_avatars（sync_chat 拿到 chat_id 后）补传，避免把空 chatId 传给 tavo_file_save。
+            if force and av_local and os.path.isfile(av_local) and not skip_avatar:
                 av_ref = upload_avatar(http_url, token, chat_id_for_files, name, av_local, dry=dry)
                 if not dry:
                     cid = character_import(http_url, token, name,
@@ -1526,9 +1536,11 @@ def main():
     # 3. 同步角色卡（先 skip_avatar 拿 NPC character id 列表，给 sync_chat 用）
     #    解决循环依赖：MCP 要求 characterIds，但 tavo_file_save 又需要 chatId。
     #    第一阶段：只创建/复用 character 记录（不传 avatar），拿 char_ids
+    # chat_id_for_files=None = 尚无已有群聊（新故事），不把 0/null 传给 tavo_file_save，
+    # 头像全部延后到第 6 步 upload_character_avatars（拿到 chat_id 后）补传。
     char_ids = sync_characters(
         http_url, token, config, story_dir, args.dry, args.force,
-        chat_id_for_files=pre_existing_chat_id or 0, skip_avatar=True,
+        chat_id_for_files=pre_existing_chat_id or None, skip_avatar=True,
     )
     config["_char_id_map"] = char_ids
 
