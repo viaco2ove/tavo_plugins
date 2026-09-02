@@ -14,9 +14,9 @@ def p(r):
         return txt
 
 # 读取配置
-with open("D:/Users/viaco/tools/Toonflow-game/tavo_plugins/.cache/story/avd/谁让这个山大王修仙的/story_sync_config.json", encoding="utf-8") as f:
+with open("/.cache/bak/avd/谁让这个山大王修仙的/story_sync_config.json", encoding="utf-8") as f:
     config = json.load(f)
-with open("D:/Users/viaco/tools/Toonflow-game/tavo_plugins/.cache/story/avd/谁让这个山大王修仙的/chapters/chapter_1.json", encoding="utf-8") as f:
+with open("/.cache/bak/avd/谁让这个山大王修仙的/chapters/chapter_1.json", encoding="utf-8") as f:
     ch1 = json.load(f)
 
 edit = {

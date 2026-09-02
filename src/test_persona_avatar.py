@@ -11,7 +11,7 @@ from tavo_plugins.lib.mcp_client import McpClient
 import json, base64
 
 client = McpClient(env_path="D:/Users/viaco/tools/Toonflow-game/tavo_plugins/.env")
-STORY_DIR = "D:/Users/viaco/tools/Toonflow-game/tavo_plugins/.cache/story/avd/谁让这个山大王修仙的"
+STORY_DIR = "/.cache/bak/avd/谁让这个山大王修仙的"
 CHAT_ID = 12
 
 def parse(result):

@@ -47,7 +47,7 @@ print()
 print("=" * 60)
 print("char_ids.json 检查")
 print("=" * 60)
-char_ids_path = "D:/Users/viaco/tools/Toonflow-game/tavo_plugins/.cache/story/avd/谁让这个山大王修仙的/char_ids.json"
+char_ids_path = "/.cache/bak/avd/谁让这个山大王修仙的/char_ids.json"
 if os.path.exists(char_ids_path):
     with open(char_ids_path, encoding="utf-8") as f:
         char_ids = json.load(f)

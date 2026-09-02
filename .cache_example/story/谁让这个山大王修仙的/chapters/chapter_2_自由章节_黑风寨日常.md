@@ -1,3 +1,12 @@
+# "title"：自由章节：黑风寨日常
+# "sort": 1
+# "openingRole": null
+# "openingText": null
+# "background": "../image/chapter_2_background.png"
+# "completionCondition": "",
+# "backgroundPrompt": "中国仙侠风格场景：黑风寨聚义厅内部，古朴的木制大厅，虎皮座椅，悬挂的黑色旗帜，烛火摇曳，山寨日常景象，阳光透过窗户洒入，温暖而热闹的氛围，高清细节，电影级光影，中国风"
+# "content":
+```
 # 自由章节
 
 ## 飞仙台
@@ -86,3 +95,4 @@
 
 ### 风险提示
 @旁白：每个任务都有失败可能。高风险高回报。可用财气眼分析风险。可求助手下/盟友降低风险。
+```

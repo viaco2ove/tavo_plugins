@@ -1,0 +1,2095 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0,maximum-scale=1.0,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0b0f18">
+<title>觅长生 · 手机版</title>
+<style>
+:root{
+  --bg:#0b0f18; --bg2:#121826; --card:rgba(255,255,255,.045);
+  --line:rgba(201,169,97,.28); --gold:#c9a961; --gold2:#e8cf94;
+  --jade:#5fd3c0; --red:#e0604f; --purple:#a98cf0;
+  --txt:#e6e3da; --dim:#8b8b96;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0;height:100%;background:#05070c;overflow:hidden}
+body{
+  font-family:"Songti SC","STSong","Noto Serif SC","Source Han Serif SC",serif;
+  color:var(--txt); font-size:15px; line-height:1.6;
+  display:flex; align-items:center; justify-content:center;
+  user-select:none;
+}
+#app{
+  position:relative; width:100%; max-width:460px; height:100dvh; max-height:100dvh;
+  background:
+    radial-gradient(1000px 500px at 50% -10%, #1c2740 0%, transparent 60%),
+    linear-gradient(180deg,#0d131f 0%, #0b0f18 60%, #080b12 100%);
+  display:flex; flex-direction:column; overflow:hidden;
+  box-shadow:0 0 60px rgba(0,0,0,.8);
+}
+@media (min-width:520px){ #app{ height:92vh; border-radius:26px; border:1px solid rgba(201,169,97,.18)} }
+
+.screen{position:absolute;inset:0;display:flex;flex-direction:column;overflow:hidden}
+.hidden{display:none!important}
+
+/* ---------- 通用组件 ---------- */
+.card{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px;backdrop-filter:blur(6px)}
+.card.tight{padding:11px 13px}
+.ttl{font-size:13px;letter-spacing:3px;color:var(--gold);margin:0 0 10px;display:flex;align-items:center;gap:8px}
+.ttl::after{content:"";flex:1;height:1px;background:linear-gradient(90deg,var(--line),transparent)}
+.row{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:5px 0;font-size:14px}
+.row .k{color:var(--dim);flex-shrink:0}
+.row .v{color:var(--txt);text-align:right}
+.muted{color:var(--dim);font-size:12.5px}
+.gold{color:var(--gold2)} .jade{color:var(--jade)} .red{color:var(--red)} .pur{color:var(--purple)}
+
+.btn{
+  display:block;width:100%;padding:12px 14px;margin:9px 0;border-radius:12px;
+  background:linear-gradient(180deg,rgba(201,169,97,.18),rgba(201,169,97,.06));
+  border:1px solid var(--line);color:var(--gold2);font-size:15px;font-family:inherit;
+  letter-spacing:2px;cursor:pointer;transition:transform .08s,filter .15s;
+}
+.btn:active{transform:scale(.975);filter:brightness(1.25)}
+.btn.sm{padding:9px 12px;font-size:13.5px;letter-spacing:1px;margin:0}
+.btn.jade{background:linear-gradient(180deg,rgba(95,211,192,.18),rgba(95,211,192,.05));border-color:rgba(95,211,192,.32);color:#9ff0e2}
+.btn.ghost{background:rgba(255,255,255,.03);border-color:rgba(255,255,255,.12);color:#b9bcc6}
+.btn:disabled{opacity:.4;filter:grayscale(.6)}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:9px}
+.grid3{display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px}
+
+.bar{height:7px;border-radius:6px;background:rgba(255,255,255,.08);overflow:hidden;position:relative}
+.bar>i{display:block;height:100%;border-radius:6px;transition:width .45s cubic-bezier(.2,.8,.2,1)}
+.bar.exp>i{background:linear-gradient(90deg,#2f7d8f,#5fd3c0)}
+.bar.life>i{background:linear-gradient(90deg,#8a6a2a,#e8cf94)}
+.bar.life.low>i{background:linear-gradient(90deg,#7a2a25,#e0604f)}
+
+/* ---------- 顶部 HUD ---------- */
+#hud{padding:calc(env(safe-area-inset-top) + 10px) 14px 10px;background:linear-gradient(180deg,rgba(11,15,24,.96),rgba(11,15,24,.75));border-bottom:1px solid rgba(201,169,97,.14);flex-shrink:0}
+.hud-top{display:flex;align-items:baseline;gap:8px}
+.hud-name{font-size:17px;letter-spacing:2px;color:var(--gold2)}
+.hud-realm{font-size:13px;color:var(--jade);letter-spacing:1px}
+.hud-age{margin-left:auto;font-size:12.5px;color:var(--dim)}
+.hud-bars{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-top:9px}
+.hud-lb{font-size:11px;color:var(--dim);display:flex;justify-content:space-between;margin-bottom:3px;letter-spacing:1px}
+.hud-res{display:flex;gap:14px;margin-top:9px;font-size:12.5px;color:#c8c5bd;flex-wrap:wrap}
+.hud-res span b{color:var(--gold2);font-weight:400}
+
+/* ---------- 主内容 ---------- */
+#view{flex:1;overflow-y:auto;-webkit-overflow-scrolling:touch;padding:12px 14px calc(80px + env(safe-area-inset-bottom))}
+#view::-webkit-scrollbar{width:0}
+
+/* ---------- 底部导航 ---------- */
+#tabbar{
+  position:absolute;left:0;right:0;bottom:0;display:flex;
+  background:rgba(9,12,20,.97);border-top:1px solid rgba(201,169,97,.16);
+  padding-bottom:env(safe-area-inset-bottom);backdrop-filter:blur(10px);z-index:20
+}
+.tab{flex:1;padding:9px 0 8px;text-align:center;color:#6f7382;font-size:11.5px;letter-spacing:1px;cursor:pointer}
+.tab .ic{display:block;font-size:19px;line-height:1.3;filter:grayscale(1);opacity:.6}
+.tab.on{color:var(--gold2)}
+.tab.on .ic{filter:none;opacity:1;text-shadow:0 0 12px rgba(201,169,97,.55)}
+
+/* ---------- 日志 ---------- */
+#log{font-size:13px;line-height:1.75;color:#a9a89f}
+#log p{margin:0 0 7px;padding-left:11px;border-left:2px solid rgba(201,169,97,.25);animation:fade .35s}
+#log p.good{border-color:rgba(95,211,192,.6);color:#9ff0e2}
+#log p.bad{border-color:rgba(224,96,79,.6);color:#f0a89c}
+#log p.big{border-color:var(--gold);color:var(--gold2);letter-spacing:1px}
+@keyframes fade{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:none}}
+
+/* ---------- 开局 ---------- */
+#screen-create{padding:calc(env(safe-area-inset-top) + 22px) 22px 22px;overflow-y:auto}
+.logo{text-align:center;margin:14px 0 6px}
+.logo h1{font-size:34px;letter-spacing:12px;margin:0;color:var(--gold2);text-shadow:0 0 26px rgba(201,169,97,.4);font-weight:400}
+.logo p{margin:6px 0 0;font-size:12px;letter-spacing:6px;color:#6d7488}
+.roll{text-align:center;padding:22px 0}
+.roll .el{font-size:44px;letter-spacing:6px;color:var(--gold2);text-shadow:0 0 30px rgba(201,169,97,.5)}
+.roll .sc{font-size:12px;color:var(--dim);margin-top:8px;letter-spacing:2px}
+/* ---------- 开局选项 ---------- */
+.opts{display:flex;flex-direction:column;gap:8px}
+.opts.row5{grid-template-columns:repeat(5,1fr);display:grid;gap:6px}
+.opt{text-align:left;background:rgba(255,255,255,.04);border:1px solid var(--line);border-radius:11px;padding:10px 12px;color:var(--txt);font-family:inherit;font-size:14px;position:relative;transition:.15s}
+.opt .od{display:block;font-size:11px;color:var(--dim);margin-top:3px;line-height:1.5;letter-spacing:.5px}
+.opt.on{border-color:var(--gold);background:rgba(201,169,97,.12);color:var(--gold2);box-shadow:0 0 14px rgba(201,169,97,.18)}
+.opt.on .od{color:#c9b98a}
+.pt{position:absolute;top:9px;right:10px;font-size:11px;color:var(--jade);background:rgba(95,211,192,.12);border-radius:8px;padding:1px 7px}
+.pt.neg{color:#f0a89c;background:rgba(224,96,79,.14)}
+.sub{font-size:12px;color:var(--dim);margin:12px 0 6px;letter-spacing:1px}
+.ptbar{position:sticky;bottom:0}
+.ptrow{display:flex;justify-content:space-between;align-items:center;font-size:13px;padding:4px 0}
+.ptrow b{font-size:17px}
+
+/* ---------- toast / modal ---------- */
+#toast{position:absolute;left:50%;top:22%;transform:translateX(-50%);z-index:99;display:flex;flex-direction:column;gap:8px;pointer-events:none;width:86%;max-width:380px}
+.tst{background:rgba(14,19,30,.96);border:1px solid var(--line);border-radius:11px;padding:10px 14px;font-size:13.5px;text-align:center;animation:tin .3s;box-shadow:0 8px 26px rgba(0,0,0,.55)}
+.tst.good{border-color:rgba(95,211,192,.55);color:#9ff0e2}
+.tst.bad{border-color:rgba(224,96,79,.55);color:#f0a89c}
+.tst.big{border-color:var(--gold);color:var(--gold2);letter-spacing:2px;font-size:15px}
+@keyframes tin{from{opacity:0;transform:translateY(-10px) scale(.96)}to{opacity:1;transform:none}}
+
+#modal{position:absolute;inset:0;z-index:100;background:rgba(4,6,11,.82);display:flex;align-items:center;justify-content:center;padding:26px;backdrop-filter:blur(3px)}
+#modal .box{width:100%;max-height:76%;overflow-y:auto;background:linear-gradient(180deg,#141b2a,#0e131e);border:1px solid var(--line);border-radius:18px;padding:20px 18px;animation:min .28s}
+@keyframes min{from{opacity:0;transform:scale(.94)}to{opacity:1;transform:none}}
+#modal h3{margin:0 0 12px;font-size:17px;letter-spacing:3px;color:var(--gold2);text-align:center;font-weight:400}
+#modal .body{font-size:14px;line-height:1.85;color:#c9c6bd}
+
+.chip{display:inline-block;padding:3px 9px;border-radius:20px;border:1px solid rgba(255,255,255,.14);font-size:11.5px;margin:3px 5px 3px 0;color:#b6b3aa}
+.chip.on{border-color:var(--gold);color:var(--gold2);background:rgba(201,169,97,.1)}
+.item-row{display:flex;justify-content:space-between;align-items:center;padding:9px 0;border-bottom:1px dashed rgba(255,255,255,.07);font-size:13.5px}
+.item-row:last-child{border:0}
+
+/* ---------- 战斗 ---------- */
+#battle{position:absolute;inset:0;z-index:120;background:linear-gradient(180deg,#0a0e16,#0b0f18);display:flex;flex-direction:column;padding:calc(env(safe-area-inset-top) + 10px) 14px 12px;gap:8px}
+#battle .side-h{display:flex;align-items:baseline;gap:8px;font-size:15px;letter-spacing:1px}
+#battle .el-tag{font-size:11px;padding:1px 7px;border-radius:10px;border:1px solid currentColor}
+#battle .hpt{font-size:11.5px;color:var(--dim);margin-top:3px;text-align:right}
+#battle .st-row{display:flex;gap:6px;flex-wrap:wrap;margin-top:5px;min-height:16px}
+#battle .st{font-size:11px;padding:1px 7px;border-radius:10px}
+#battle .st.burn{color:#f08a6f;border:1px solid #f08a6f66}
+#battle .st.vuln{color:#e0604f;border:1px solid #e0604f66}
+#battle .st.armor{color:#9ff0e2;border:1px solid #9ff0e266}
+#battle #b-enemy{padding:10px 12px;background:rgba(224,96,79,.06);border:1px solid rgba(224,96,79,.22);border-radius:12px;flex-shrink:0}
+#battle #b-me{padding:10px 12px;background:rgba(95,211,192,.05);border:1px solid rgba(95,211,192,.2);border-radius:12px;flex-shrink:0}
+#battle .qi-row{display:flex;gap:6px;margin-top:8px}
+#battle .qi{font-size:11.5px;padding:3px 8px;border-radius:9px;border:1px solid;opacity:.32}
+#battle .qi.on{opacity:1}
+#battle .qi b{margin-left:4px;font-weight:400}
+#battle #b-log{flex:1;overflow-y:auto;font-size:12.5px;line-height:1.7;color:#bdbab2;padding:4px 2px}
+#battle #b-log .bl{border-left:2px solid rgba(201,169,97,.2);padding-left:8px;margin-bottom:5px;animation:fade .3s}
+#battle #b-log .bl.bad{border-color:rgba(224,96,79,.5);color:#f0a89c}
+#battle #b-log .bl.big{border-color:var(--gold);color:var(--gold2)}
+#battle #b-cards{display:grid;grid-template-columns:1fr 1fr 1fr;gap:7px;max-height:44%;overflow-y:auto;flex-shrink:0;padding-bottom:env(safe-area-inset-bottom)}
+#battle .bcard{background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:11px;padding:9px 5px;text-align:center;color:var(--txt);font-family:inherit;cursor:pointer;transition:filter .12s}
+#battle .bcard:active{filter:brightness(1.35)}
+#battle .bcard.dis{opacity:.32}
+#battle .bcard .bn{font-size:13px;color:var(--gold2);letter-spacing:1px}
+#battle .bcard .bc{font-size:10.5px;color:var(--dim);margin-top:3px;line-height:1.3}
+#battle .bcard .cd{font-size:9px;color:#e0604f;border:1px solid #e0604f66;border-radius:6px;padding:0 4px}
+#battle .bcard.el-jin{border-color:#e8cf9466}#battle .bcard.el-mu{border-color:#7fd48a66}#battle .bcard.el-shui{border-color:#6fc3f066}#battle .bcard.el-huo{border-color:#f08a6f66}#battle .bcard.el-tu{border-color:#d8b87866}
+#battle .bcard.flee{grid-column:span 3;background:rgba(224,96,79,.08);border-color:rgba(224,96,79,.3);color:#f0a89c;letter-spacing:3px;padding:10px}
+#battle .b-acts{display:flex;gap:6px;margin-bottom:8px}
+#battle .bact{flex:1;background:rgba(255,255,255,.06);border:1px solid var(--line);border-radius:10px;padding:9px 4px;color:var(--txt);font-family:inherit;font-size:12.5px;cursor:pointer;letter-spacing:1px}
+#battle .bact.xue{color:#f0a89c;border-color:rgba(224,96,79,.4);background:rgba(224,96,79,.08)}
+#battle .bact:active{filter:brightness(1.3)}
+#battle .bcard.t-shen{border-color:#a98bd6}
+#battle .bcard.t-shen .bn{color:#c9b3ec}
+.bitem-hd{font-size:13px;color:var(--gold2);margin:2px 0 8px;letter-spacing:1px}
+.st.freeze{color:#6fc3f0;border:1px solid #6fc3f066}
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- ========== 开局：捏脸/抽灵根 ========== -->
+  <section id="screen-create" class="screen">
+    <div class="logo">
+      <h1>觅长生</h1>
+      <p>手 机 版 · 修 仙 一 生</p>
+    </div>
+
+    <div class="card">
+      <div class="ttl">道号</div>
+      <input id="in-name" maxlength="6" placeholder="为自己取一个道号"
+        style="width:100%;background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:11px;padding:12px;color:var(--txt);font-family:inherit;font-size:16px;letter-spacing:3px;text-align:center;outline:none">
+      <div class="grid3" style="margin-top:10px">
+        <button class="btn sm ghost" onclick="document.getElementById('in-name').value=randName();document.getElementById('in-name').dispatchEvent(new Event('input'))">随机</button>
+        <button class="btn sm ghost" onclick="S.gender='男';renderCreate()">♂ 男修</button>
+        <button class="btn sm ghost" onclick="S.gender='女';renderCreate()">♀ 女修</button>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="ttl">灵根 · 自择</div>
+      <div class="roll">
+        <div class="el" id="el-root">— — —</div>
+        <div class="sc" id="el-desc">原版开局为天赋点分配，自行择定灵根与根基</div>
+      </div>
+    </div>
+
+    <div id="create-body"></div>
+
+    <div class="card ptbar" id="pt-bar"></div>
+
+    <div class="card" id="card-start" style="display:none">
+      <div class="ttl">命数</div>
+      <div id="start-info" class="muted" style="line-height:2"></div>
+      <button class="btn" style="margin-top:12px" onclick="startGame()">入 仙 途</button>
+    </div>
+
+    <div class="muted" style="text-align:center;margin:16px 0 30px;font-size:11.5px;line-height:1.9">
+      寿元有尽，大道无穷。<br>此生若未能长生，来世重修，道行不灭。
+    </div>
+  </section>
+
+  <!-- ========== 主界面 ========== -->
+  <div id="screen-main" class="screen hidden">
+    <header id="hud">
+      <div class="hud-top">
+        <span class="hud-name" id="h-name">—</span>
+        <span class="hud-realm" id="h-realm">—</span>
+        <span class="hud-age" id="h-age">—</span>
+      </div>
+      <div class="hud-bars">
+        <div>
+          <div class="hud-lb"><span>修为</span><span id="h-exp-t">0/0</span></div>
+          <div class="bar exp"><i id="h-exp" style="width:0%"></i></div>
+        </div>
+        <div>
+          <div class="hud-lb"><span>寿元</span><span id="h-life-t">0/0</span></div>
+          <div class="bar life" id="h-life-bar"><i id="h-life" style="width:100%"></i></div>
+        </div>
+      </div>
+      <div class="hud-res">
+        <span>灵石 <b id="h-stone">0</b></span>
+        <span>战力 <b id="h-atk">0</b></span>
+        <span>神识 <b id="h-mind">0</b></span>
+        <span>传承 <b id="h-legacy">0</b></span>
+      </div>
+    </header>
+
+    <main id="view"></main>
+
+    <nav id="tabbar">
+      <div class="tab on" data-tab="home" onclick="go('home')"><span class="ic">☯</span>洞府</div>
+      <div class="tab" data-tab="train" onclick="go('train')"><span class="ic">⚔</span>历练</div>
+      <div class="tab" data-tab="pill" onclick="go('pill')"><span class="ic">⚱</span>丹房</div>
+      <div class="tab" data-tab="shop" onclick="go('shop')"><span class="ic">⌘</span>坊市</div>
+      <div class="tab" data-tab="jh" onclick="go('jh')"><span class="ic">⚑</span>江湖</div>
+      <div class="tab" data-tab="dex" onclick="go('dex')"><span class="ic">⛩</span>图鉴</div>
+      <div class="tab" data-tab="more" onclick="go('more')"><span class="ic">☰</span>道途</div>
+    </nav>
+  </div>
+
+  <div id="toast"></div>
+
+  <!-- ========== 战斗（卡牌式回合制 · 五行灵气）========== -->
+  <div id="battle" class="hidden">
+    <div id="b-enemy"></div>
+    <div id="b-log"></div>
+    <div id="b-me"></div>
+    <div id="b-cards"></div>
+  </div>
+</div>
+
+<script>
+/* ============================================================
+   觅长生 · 手机版  —— 单文件修仙放置/文字冒险
+   ============================================================ */
+/* ---------------- 工具 ---------------- */
+const $=s=>document.querySelector(s);
+const rnd=(a,b)=>a+Math.floor(Math.random()*(b-a+1));
+const pick=a=>a[Math.floor(Math.random()*a.length)];
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const fmt=n=>{n=Math.round(n);if(n>=1e8)return (n/1e8).toFixed(2)+'亿';if(n>=1e4)return (n/1e4).toFixed(2)+'万';return ''+n};
+
+/* ---------------- 五行 / 灵根 ---------------- */
+const ELN={jin:'金',mu:'木',shui:'水',huo:'火',tu:'土'};
+const ELC={jin:'#e8cf94',mu:'#7fd48a',shui:'#6fc3f0',huo:'#f08a6f',tu:'#d8b878'};
+const ELS=['jin','mu','shui','huo','tu'];
+const ROOTS=[
+  {n:'天灵根',   c:1.65, d:'万中无一，修炼一日千里'},
+  {n:'变异灵根', c:1.42, d:'两系相生，罕见异象'},
+  {n:'双灵根',   c:1.24, d:'上乘之资，门派必争'},
+  {n:'三灵根',   c:1.02, d:'中规中矩，勤能补拙'},
+  {n:'四灵根',   c:0.86, d:'略有驳杂，进境迟缓'},
+  {n:'五灵根',   c:0.70, d:'杂灵根，仙途艰难'},
+];
+
+/* ---------------- 境界 ---------------- */
+const REALMS=[
+ {n:'练气',life:70,  subs:['一层','二层','三层','四层','五层','六层','七层','八层','九层','十层','十一层','十二层','十三层']},
+ {n:'筑基',life:100, subs:['初期','中期','后期','大圆满']},
+ {n:'金丹',life:135, subs:['初期','中期','后期','大圆满']},
+ {n:'元婴',life:170, subs:['初期','中期','后期','大圆满']},
+ {n:'化神',life:215, subs:['初期','中期','后期','大圆满']},
+ {n:'炼虚',life:270, subs:['初期','中期','后期','大圆满']},
+ {n:'合体',life:330, subs:['初期','中期','后期','大圆满']},
+ {n:'大乘',life:400, subs:['初期','中期','后期','大圆满']},
+ {n:'渡劫',life:500, subs:['初期','中期','后期','大圆满']},
+ {n:'真仙',life:99999,subs:['地仙','金仙']},
+];
+const LV=[];
+REALMS.forEach((r,ri)=>r.subs.forEach((s,si)=>LV.push({ri,si,name:r.n+s,realm:r.n,sub:s,life:r.life})));
+const MAXLV=LV.length-1;
+const needExp=i=>Math.round(180*Math.pow(1.26,i));      // 升到 i+1 所需修为
+const isBigStep=i=>(i<MAXLV)&&(LV[i+1].ri>LV[i].ri);    // 大境界跨越
+function realmName(i){return LV[i].name}
+function ageStr(a){const y=Math.floor(a),m=Math.round((a-y)*12);return y+'岁'+(m>0?m+'月':'')}
+
+/* ---------------- 物品 ---------------- */
+const ITEMS={
+ h1:{n:'凝灵草',t:'herb',lv:1,v:20},   h2:{n:'赤血参',t:'herb',lv:1,v:35},
+ h3:{n:'紫云芝',t:'herb',lv:2,v:70},   h4:{n:'龙血藤',t:'herb',lv:2,v:110},
+ h5:{n:'七星草',t:'herb',lv:3,v:200},  h6:{n:'雪魄莲',t:'herb',lv:3,v:320},
+ h7:{n:'玄阴参',t:'herb',lv:4,v:600},  h8:{n:'千年参王',t:'herb',lv:4,v:1000},
+ h9:{n:'太虚灵髓',t:'herb',lv:5,v:2200},h10:{n:'混沌青莲',t:'herb',lv:6,v:6000},
+ p_qi:{n:'凝气丹',t:'pill',v:120,d:'立即获得当前境界所需修为的三成'},
+ p_yuan:{n:'培元丹',t:'pill',v:180,d:'疗愈伤势，恢复元气'},
+ p_zhang:{n:'破障丹',t:'pill',v:900,d:'下次突破成功率 +25%'},
+ p_qing:{n:'清心丹',t:'pill',v:400,d:'心魔 -2'},
+ p_shou:{n:'延寿丹',t:'pill',v:3000,d:'寿元 +40 年'},
+ p_zhu:{n:'筑基丹',t:'pill',v:2600,d:'突破筑基期成功率 +35%'},
+ p_jin:{n:'结金丹',t:'pill',v:9000,d:'突破金丹期成功率 +35%'},
+ p_ying:{n:'元婴丹',t:'pill',v:30000,d:'突破元婴期成功率 +35%'},
+ p_shen:{n:'化神丹',t:'pill',v:100000,d:'突破化神期成功率 +35%'},
+ p_xu:{n:'太虚还魂丹',t:'pill',v:400000,d:'寿元 +200 年，并痊愈伤势'},
+
+ a_yinqi:{n:'引气诀',t:'art',rank:7,el:null,v:0,d:'入门功法'},
+ a_jin:{n:'庚金诀',t:'art',rank:6,el:'jin',v:1200,d:'金系功法'},
+ a_mu:{n:'青木长生功',t:'art',rank:5,el:'mu',v:2600,d:'木系功法，生生不息'},
+ a_shui:{n:'玄水真经',t:'art',rank:5,el:'shui',v:2600,d:'水系功法'},
+ a_huo:{n:'离火诀',t:'art',rank:6,el:'huo',v:1400,d:'火系功法'},
+ a_tu:{n:'厚土镇元功',t:'art',rank:5,el:'tu',v:2600,d:'土系功法'},
+ a_taiyin:{n:'太阴玄功',t:'art',rank:3,el:'shui',v:22000,d:'阴属性上乘功法'},
+ a_wuxing:{n:'五行归一诀',t:'art',rank:2,el:null,v:90000,d:'五行圆满者方可修习'},
+ a_hunyuan:{n:'混元一气诀',t:'art',rank:1,el:null,v:400000,d:'无上道法，万法归宗'},
+
+ w_jian:{n:'青锋飞剑',t:'wp',rank:6,atk:180,v:1500},
+ w_dun:{n:'玄龟盾',t:'wp',rank:5,atk:140,v:4000},
+ w_yin:{n:'镇魂印',t:'wp',rank:4,atk:520,v:18000},
+ w_ding:{n:'乾坤鼎',t:'wp',rank:3,atk:1800,v:70000},
+ w_shan:{n:'山河扇',t:'wp',rank:2,atk:6000,v:260000},
+ w_zhu:{n:'太虚神珠',t:'wp',rank:1,atk:24000,v:1200000},
+ w_fu:{n:'洞天福地符',t:'wp',rank:4,atk:0,v:20000,d:'洞府灵气 +30%'},
+
+ a_zhushan:{n:'青木长生功',t:'art',rank:4,el:'mu',v:0,d:'竹山宗镇派功法'},
+ a_jinhong:{n:'神剑诀',t:'art',rank:4,el:'jin',v:0,d:'金虹剑派镇派功法'},
+ a_xinghe:{n:'霜涛剑诀',t:'art',rank:4,el:'shui',v:0,d:'星河剑派镇派功法'},
+ a_lihuo:{n:'离火真诀',t:'art',rank:4,el:'huo',v:0,d:'离火门镇派功法'},
+ a_huachen:{n:'厚土沉沙诀',t:'art',rank:4,el:'tu',v:0,d:'化尘教镇派功法'},
+
+ w_xiujian:{n:'锈剑',t:'wp',rank:6,atk:60,v:0,d:'溪边捡来的钝剑，剑中睡着一缕残魂'},
+ w_jiuzhuan:{n:'九转游身剑',t:'wp',rank:3,atk:2200,v:0,d:'御剑门藏经阁中悟得的剑法'},
+ w_zhuxian:{n:'诛仙剑',t:'wp',rank:1,atk:40000,v:0,d:'白帝飞升前留下的剑'},
+ p_pei:{n:'破碎玉佩',t:'prop',v:0,d:'御剑门遗物，涵虚仙府的开启信物'},
+
+ /* ---- 神通（战斗主动神通：耗五行/同气灵气，部分每场仅一次）---- */
+ s_sanmei:{n:'三昧真火',t:'shen',v:90000,d:'地阶下品·烈焰焚敌并令其【灼烧】'},
+ s_yehuo:{n:'业火掌',t:'shen',v:22000,d:'火系神通·灼烧焚身'},
+ s_liehuo:{n:'烈火掌',t:'shen',v:42000,d:'火系神通·刚猛一击'},
+ s_houtu:{n:'厚土障',t:'shen',v:90000,d:'地阶中品·凝【护罩】，火系连击再添护罩'},
+ s_bengyan:{n:'崩岩术',t:'shen',v:24000,d:'土系神通·落石伤敌并护身'},
+ s_sanshan:{n:'三山印',t:'shen',v:18000,d:'土系神通·固本减伤'},
+ s_jinren:{n:'金刃',t:'shen',v:22000,d:'金系神通·锋锐无匹'},
+ s_jinmang:{n:'金芒术',t:'shen',v:34000,d:'金系神通·金芒裂敌'},
+ s_jinguang:{n:'金光罩',t:'shen',v:26000,d:'金系神通·金光护体'},
+ s_shuiliao:{n:'水疗术',t:'shen',v:34000,d:'地阶下品·疗伤回血，溢出化护罩'},
+ s_nutao:{n:'怒涛',t:'shen',v:20000,d:'水系神通·怒浪连击'},
+ s_xuanbing:{n:'玄冰刺',t:'shen',v:18000,d:'水系神通·寒冰冻敌，使其停手一回合'},
+ s_yimu:{n:'乙木妙法',t:'shen',v:34000,d:'木系神通·伤敌并汲血'},
+ s_jixue:{n:'汲血藤',t:'shen',v:28000,d:'木系神通·藤缠吸血'},
+ s_quteng:{n:'驱藤术',t:'shen',v:14000,d:'木系神通·缠绕令敌易伤'},
+ s_jinghun:{n:'惊魂咒',t:'shen',v:30000,d:'神识神通·同气伤敌，神识愈深愈烈'},
+ s_ranhun:{n:'燃魂咒',t:'shen',v:26000,d:'神识神通·灼魂令敌易伤'},
+ s_guiyuan:{n:'归元剑气',t:'shen',v:60000,d:'剑系神通·同气凝剑，势大力沉'},
+ s_jiangang:{n:'剑罡诀',t:'shen',v:36000,d:'剑系神通·剑罡护身'},
+ s_tianjian:{n:'斩天剑',t:'shen',v:400000,d:'天阶神通·同气六点，无视护罩，每场仅一次'},
+
+ /* ---- 遁术（提升遁速，利于先手与遁走；血遁可舍命遁逃）---- */
+ d_qing:{n:'轻身术',t:'dun',v:6000,d:'人阶下品·遁速 +3'},
+ d_yufeng:{n:'御风术',t:'dun',v:24000,d:'人阶上品·遁速 +6'},
+ d_yujian:{n:'御剑飞行',t:'dun',v:260000,d:'地阶上品·遁速 +10，可大地图飞渡'},
+ d_xue:{n:'血遁',t:'dun',v:120000,d:'地阶中品·临阵舍弃 20% 气血，必可遁走（每场一次）'},
+};
+
+const RECIPES={
+ r_qi:{n:'凝气丹方',out:'p_qi',need:{h1:2,h2:1},v:300,diff:1},
+ r_yuan:{n:'培元丹方',out:'p_yuan',need:{h2:2,h3:1},v:500,diff:1},
+ r_qing:{n:'清心丹方',out:'p_qing',need:{h3:2,h5:1},v:1200,diff:2},
+ r_zhang:{n:'破障丹方',out:'p_zhang',need:{h4:2,h6:2},v:2500,diff:3},
+ r_zhu:{n:'筑基丹方',out:'p_zhu',need:{h3:3,h4:2,h5:1},v:3500,diff:3},
+ r_shou:{n:'延寿丹方',out:'p_shou',need:{h6:2,h7:1,h8:1},v:9000,diff:4},
+ r_jin:{n:'结金丹方',out:'p_jin',need:{h5:3,h6:2,h7:1},v:16000,diff:4},
+ r_ying:{n:'元婴丹方',out:'p_ying',need:{h6:3,h7:2,h8:1},v:60000,diff:5},
+ r_shen:{n:'化神丹方',out:'p_shen',need:{h7:3,h8:2,h9:1},v:250000,diff:6},
+ r_xu:{n:'太虚丹方',out:'p_xu',need:{h9:3,h10:1},v:900000,diff:7},
+};
+
+const DZ=[null,
+  {stone:[80,220],bp:110},
+  {stone:[350,900],bp:520},
+  {stone:[1600,4200],bp:2600},
+  {stone:[7000,18000],bp:12000},
+  {stone:[30000,80000],bp:55000},
+  {stone:[140000,360000],bp:260000},
+  {stone:[600000,1500000],bp:1200000}];
+const ZONES=[
+ {k:'wuling',n:'武陵城',area:'宁州·城邑',kind:'city',lv:0,d:1,herbs:['h1','h2'],
+  desc:'倪家所建之城，散修云集。白帝楼高耸入云，乃化神剑修白帝所创；升仙台上，五年一届英杰会。'},
+ {k:'yifeng',n:'逸风城',area:'宁州·城邑',kind:'city',lv:0,d:1,herbs:['h1','h3'],
+  desc:'宁王府治下之城，擂台之上武道会年年不休。城中洞府可买，只是价钱不菲。'},
+ {k:'yunxi',n:'云汐城',area:'宁州·城邑',kind:'city',lv:4,d:2,herbs:['h3','h6'],
+  desc:'听雨阁、中草阁、百草阁沿河而立。公孙家掌城，暗地里却是杀手组织风雨楼的地盘。'},
+ {k:'tianxing',n:'天星城',area:'宁州·城邑',kind:'city',lv:4,d:2,herbs:['h5','h6'],
+  desc:'宁州第一大城，林家与星宫并立，问道楼中神通功法俱全，是散修最愿来的地方。'},
+ {k:'guangling',n:'广陵城',area:'宁州·城邑',kind:'city',lv:8,d:2,herbs:['h4','h8'],
+  desc:'百里家与龙族的地界，广陵港千帆出海，尽头便是无尽之海。'},
+ {k:'dongshigu',n:'东石谷',area:'宁州·城邑',kind:'city',lv:0,d:1,herbs:['h1','h2'],
+  desc:'青羽门所在。每年正月至二月办仙师集会，二月伴月楼还有一场拍卖会。'},
+
+ {k:'fanghu',n:'方壶山',area:'宁州·五派',kind:'sect',el:'mu',lv:4,d:2,herbs:['h1','h4'],sect:'zhushan',
+  desc:'竹山宗山门，古木参天，碧幽潭畔丹香不散。五大派中唯有此地有化神坐镇。'},
+ {k:'lianshi',n:'连石山',area:'宁州·五派',kind:'sect',el:'jin',lv:4,d:2,herbs:['h5','h2'],sect:'jinhong',
+  desc:'金虹剑派山门，剑壁千仞，悟道四次可斩天。山下永安镇的学堂最养心境。'},
+ {k:'fenglei',n:'风雷谷',area:'宁州·五派',kind:'sect',el:'shui',lv:8,d:3,herbs:['h6','h7'],sect:'xinghe',
+  desc:'星河剑派山门，只收女弟子。惊雷谷中隐世长老传下雾相化身，清月潭里藏着幻雾术。'},
+ {k:'wojiao',n:'沃焦山',area:'宁州·五派',kind:'sect',el:'huo',lv:8,d:3,herbs:['h2','h4'],sect:'lihuo',
+  desc:'离火门山门，火山口终年赤红，火麒麟守着血菩提。焱峰之上，麟庙供着炎麟大圣。'},
+ {k:'zhengyang',n:'正阳山',area:'宁州·五派',kind:'sect',el:'tu',lv:13,d:3,herbs:['h3','h8'],sect:'huachen',
+  desc:'化尘教山门，第五年方开。尘沙漫天，近年谢绝外客，山中有兽潮之患。'},
+
+ {k:'yishan',n:'沂山',area:'宁州·邪派',kind:'evil',lv:4,d:2,herbs:['h2','h3'],
+  desc:'沂山派盘踞之地，杜老二与沂山双鬼在此横行，邪术害人。'},
+ {k:'heshan',n:'禾山',area:'宁州·邪派',kind:'evil',lv:8,d:3,herbs:['h1','h2'],
+  desc:'禾山道御兽为恶，麻老九、颜老怪在此出没，山中有灵猴，村人时有失踪。'},
+
+ {k:'wushan',n:'巫山',area:'宁州·险地',kind:'danger',lv:13,d:3,herbs:['h3','h7'],
+  desc:'山脚洞窟幽深，第七年时有魔影出没，山下修士避之唯恐不及。'},
+ {k:'jiuyi',n:'九嶷山',area:'宁州·险地',kind:'danger',lv:17,d:4,herbs:['h5','h7','h8'],
+  desc:'御剑门遗迹。养剑池底沉着神秘铁剑，藏经阁中残存九转游身剑，破庙里有人相争不休。'},
+ {k:'tianmoyan',n:'天魔眼',area:'宁州·险地',kind:'danger',lv:21,d:5,herbs:['h7','h8','h9'],
+  desc:'每逢二十的倍数年开启，三十日为期。泥沼、毒区、寒潭，尽头是魔气最盛的核心区。'},
+ {k:'xiuluo',n:'岫络谷',area:'宁州·险地',kind:'danger',lv:25,d:5,herbs:['h8','h9'],
+  desc:'五百年时，宁州古迹自此现世：空间裂隙、古战场、剑魂冢，登仙殿中藏着玄清天衍录。'},
+
+ {k:'wujin',n:'无尽之海',area:'海外',kind:'danger',lv:21,d:5,herbs:['h8','h9','h10'],
+  desc:'蓬莎岛、碎星岛、千流岛、南崖城散落其间。海上有妖圣，也有化龙的机缘。'},
+ {k:'tunan',n:'图南漩涡',area:'海外',kind:'danger',lv:29,d:6,herbs:['h9','h10'],
+  desc:'图南海东南部的大漩涡，金鸿剑仙的幻影常在漩涡上空浮现，海底遗迹藏于其下。'},
+
+ {k:'hanxu',n:'涵虚仙府',area:'秘境',kind:'secret',lv:17,d:4,herbs:['h8','h9'],
+  desc:'一百二十年至三百年间现世于云汐城左近，需御剑门玉佩方可入。内有天、地、人三阵，头奖是道源丹与旋龟舟。'},
+];
+/* 一仙道人按月巡游：1月武陵、3月逸风、6月云汐、8月天星、11月广陵（均在客栈） */
+const YIXIAN={wuling:1,yifeng:3,yunxi:6,tianxing:8,guangling:11};
+
+/* ---------------- 门派 ---------------- */
+const SECTS=[
+ {k:'zhushan',n:'竹山宗',el:'mu',place:'方壶山',art:'a_zhushan',
+  desc:'木系叠毒，丹道冠绝宁州。五大派中唯一有化神坐镇（太上长老明山散人）。',
+  req:'入门须赢下擂台赛；双灵根以上免试，天灵根直入内门。',
+  ok:()=>S.roots.length<=2||S.apt>=85},
+ {k:'jinhong',n:'金虹剑派',el:'jin',place:'连石山',art:'a_jinhong',
+  desc:'金系剑修，神剑诀一脉。剑壁悟道四次可斩天，山下永安镇学堂最养心境。',
+  req:'资质 ≥70（≥90 直入内门）。',
+  ok:()=>S.apt>=70},
+ {k:'xinghe',n:'星河剑派',el:'shui',place:'风雷谷',art:'a_xinghe',
+  desc:'水系剑修，只收女弟子。需在三十日内通过星河剑阵三路试炼。',
+  req:'限女修。',
+  ok:()=>S.gender==='女'},
+ {k:'lihuo',n:'离火门',el:'huo',place:'沃焦山',art:'a_lihuo',
+  desc:'火系叠焰，零门槛收徒。后山火山口产血菩提，麟庙供着化神妖圣炎麟大圣。',
+  req:'零门槛，来者不拒。',
+  ok:()=>true},
+ {k:'huachen',n:'化尘教',el:'tu',place:'正阳山',art:'a_huachen',
+  desc:'土系尘沙，掌门常年闭关。第五年方开山门，内部以砂晶为货币。',
+  req:'入道满五年后开山门。',
+  ok:()=>S.months>=60},
+];
+
+/* ---------------- 人物 ---------------- */
+const NPCS=[
+ {k:'yixian',n:'一仙道人',role:'游历算命先生',place:'五城客栈（按月巡游）',lv:30,
+  desc:'来历不明的算命先生，逢人便道一声"道友与我佛有缘"。三次算命之后，他会摸出一块破碎的玉佩。'},
+ {k:'nixuxin',n:'倪旭欣',role:'武陵城倪家少主',place:'武陵城倪府',lv:6,
+  desc:'被你从沂山派修士手中救下的少年，性子跳脱却极重情义。倪府答谢宴上，那柄锈剑让倪振东变了脸色。'},
+ {k:'yangyi',n:'杨易',role:'倪府管家',place:'武陵城倪府',lv:9,
+  desc:'倪府老管家，见多识广。宁州五大派的门道，他都能给你说明白。'},
+ {k:'nizhendong',n:'倪振东',role:'倪家家主·白帝亲传',place:'武陵城倪府',lv:20,
+  desc:'元婴大修，白帝亲传弟子。答谢宴上他盯着你的锈剑看了很久，终究什么也没说。'},
+ {k:'baidi',n:'白帝',role:'白帝楼主·九州剑修第一人',place:'武陵城白帝楼',lv:28,
+  desc:'化神后期大能，本为御剑门大弟子。八百年前后，他将在此渡劫飞升。'},
+ {k:'bailiqi',n:'百里奇',role:'广陵城百里家少主',place:'广陵城百里府',lv:8,
+  desc:'英杰会决赛的对手，性情豪爽，与龙族颇有渊源。切磋一场，便成了朋友。'},
+ {k:'gongsunji',n:'公孙季',role:'云汐城公孙家',place:'云汐城',lv:16,
+  desc:'公孙家的话事人，也是"御剑门之谜"的线索源头之一，只是他轻易不开口。'},
+ {k:'linmuxin',n:'林沐心',role:'天星城林家',place:'天星城林府',lv:19,
+  desc:'林家姊妹之一。星宫那桩牵扯百年的旧事，终究绕不开她。'},
+ {k:'xingning',n:'星凝',role:'星宫宫主',place:'天星城星宫',lv:26,
+  desc:'化神中期的星宫之主，不公开收徒。双修一脉的功法，尽出她手。'},
+ {k:'xiaoqianjue',n:'萧千绝',role:'金虹剑派首席弟子',place:'连石山',lv:10,
+  desc:'金虹年轻一辈的翘楚，待人冷淡，却会默默丢给你一件道袍。'},
+ {k:'lingwuzhenren',n:'灵武真人',role:'金虹剑派掌门',place:'连石山',lv:22,
+  desc:'金系剑修大宗师。昔日与御剑门掌门交好，那段旧事他从不提起。'},
+ {k:'murongying',n:'慕容颖',role:'星河剑派首席弟子',place:'风雷谷',lv:11,
+  desc:'星河首席，剑心通明。三十日过三路剑阵，她是那一届走得最远的。'},
+ {k:'yunji',n:'云玑天师',role:'星河剑派掌门',place:'风雷谷',lv:22,
+  desc:'水系剑修掌门，性子冷清。惊雷谷中隐世长老的来历，只有她清楚。'},
+ {k:'yanxiao',n:'炎萧',role:'离火门大师兄',place:'沃焦山',lv:12,
+  desc:'年轻一辈三大天才之一，性烈如火。焱峰上那个内鬼，是他最先察觉的。'},
+ {k:'henghuo',n:'恒火真君',role:'离火门掌门',place:'沃焦山',lv:22,
+  desc:'离火门掌门。数百年前古神教安插的内鬼，就藏在他门中。'},
+ {k:'dantaixian',n:'澹台仙',role:'化尘教首席弟子',place:'正阳山',lv:13,
+  desc:'化尘教首席，沉默寡言。正阳兽潮那年，是他守的山门。'},
+ {k:'liqinglin',n:'李青麟',role:'竹山宗首席弟子',place:'方壶山',lv:11,
+  desc:'竹山首席，天魔眼猎魔试炼里出了名的狠角色。'},
+ {k:'mingshan',n:'明山散人',role:'竹山宗太上长老',place:'方壶山长老洞府',lv:27,
+  desc:'化神期大能，五大派中唯一坐镇者。关于飞升，他知道的比谁都多。'},
+ {k:'weiwuji',n:'魏无极',role:'御剑门遗孤',place:'九嶷山',lv:20,
+  desc:'守着御剑门遗迹的人。九转游身剑与长生诀的来龙去脉，都系在他身上。'},
+ {k:'fanjiu',n:'范杰',role:'天机阁阁主',place:'天衍阁',lv:20,
+  desc:'元婴巅峰的富商阁主，主办天机大比。天衍阁里六品材料堆积如山。'},
+ {k:'mojuren',n:'墨居仁',role:'离火门内鬼',place:'沃焦山焱峰',lv:18,
+  desc:'古神教安插在离火门的内鬼，藏着一块灿字牌。'},
+ {k:'heixin',n:'黑心老人',role:'魔道巨擘',place:'九嶷山破庙',lv:24,
+  desc:'九嶷山破庙中与天邪子相争之人。帮谁，都是一场因果。'},
+ {k:'tianxiezi',n:'天邪子',role:'古神教',place:'九嶷山破庙',lv:24,
+  desc:'古神教高手，在破庙里与人相争。胜他可得一部邪门功法。'},
+ {k:'xuewei',n:'血薇仙子',role:'血剑宫',place:'雍州',lv:26,
+  desc:'血剑宫化神。魔门入侵那一年，白帝楼下的血，多半是她放的。'},
+ {k:'xuehe',n:'血河老祖',role:'血剑宫',place:'雍州',lv:25,
+  desc:'剑碧通落一战中守着最后一条线索的人。败他，御剑门真相才见天日。'},
+ {k:'kumu',n:'枯木长老',role:'竹山宗长老',place:'方壶山枯木林',lv:21,
+  desc:'与天魔道勾结的竹山长老。求援之役中，明山散人亲自处置了他。'},
+ {k:'malaoliu',n:'麻老九',role:'禾山道',place:'禾山',lv:7,
+  desc:'禾山道的地头蛇，欺负散修、拐带村民，坏事做尽。'},
+ {k:'dulaoer',n:'杜老二',role:'沂山派',place:'沂山',lv:7,
+  desc:'沂山派的打手头目，当年围攻倪旭欣的就有他一份。'},
+ {k:'yanling',n:'炎麟大圣',role:'麟庙之主·化神妖圣',place:'沃焦山麟庙',lv:26,
+  desc:'化神期的妖圣，魔焰真君的至交。麟庙中人，都敬它三分。'},
+];
+function npcPow(n){return Math.round(60*Math.pow(1.42,n.lv)*1.3)}
+
+/* ---------------- 主线剧情 ---------------- */
+const STORY=[
+{id:'xiujian',t:'溪边锈剑',year:0,lv:0,need:null,
+ txt:'十六岁那年，你在武陵城外的溪涧边捡到一柄锈迹斑斑的钝剑。指腹刚触到剑柄，一道苍老的声音便在识海中响起：「小子……多少年了，终于又有人拿起这柄剑。」',
+ opts:[
+  {t:'细问他的来历',e:{item:'w_xiujian',flag:'changsheng'},r:'剑灵说他只剩一缕残魂，只记得自己曾守过一座剑门。他许诺教你一门养剑的古法——长生诀。'},
+  {t:'握紧剑柄，静观其变',e:{item:'w_xiujian',exp:0.15},r:'一股凉意顺着手臂爬上心口。老者沉默良久，叹道：「罢了，来日方长。」他不再说话，却在你体内留下了一缕剑气。'},
+  {t:'锈剑换酒钱算了',e:{stone:300},r:'你把锈剑卖给了镇上的铁匠，换了三百灵石。夜里，识海中再没有声音。你翻了个身，睡得很沉。'},
+ ]},
+{id:'nixuxin',t:'初遇倪旭欣',year:0,lv:2,need:null,
+ txt:'出城数十里，三名沂山派修士正围着一个锦衣少年。少年背靠枯树，衣袍已被血浸透，却仍咬着牙不肯交出腰间的玉牌。',
+ opts:[
+  {t:'拔剑相助',e:{like:{nixuxin:30},injury:1},r:'你一剑逼退三人。少年愣了愣，抱着拳说：「武陵城倪家，倪旭欣。这份恩情，我记下了。」你肩上添了一道口子，却觉得值。'},
+  {t:'先看看再说',e:{like:{nixuxin:5},mind:2},r:'你藏在树后看完了整场。沂山派的人抢走玉牌扬长而去，少年瘫坐在地，眼里全是不甘。你记住了那几个人的模样。'},
+  {t:'趁乱捞一笔',e:{stone:500,like:{nixuxin:-10}},r:'你等两败俱伤才出手，捡走了散落的储物袋。少年躺在地上看着你，什么也没说。那眼神你记了一辈子。'},
+ ]},
+{id:'dongshigu',t:'东石谷仙师集会',year:0,lv:0,need:'nixuxin',
+ txt:'倪旭欣派人送来请帖：正月的东石谷仙师集会，宁州散修云集，二月伴月楼还有一场拍卖会。青羽门的执事正在谷口收入场费——十块灵石。',
+ opts:[
+  {t:'交灵石入场',e:{stone:-10,mind:3,herb:['h1','h2','h3']},r:'谷中热闹非凡。你与各方散修论道换帖，听了不少秘境传闻，还换回几株灵草。'},
+  {t:'翻墙进去',e:{mind:2,stone:200,demon:1},r:'你绕到后山翻进谷中，省下十块灵石，却听得不踏实。中途还顺了摊主两颗灵石——道心上，终究落了点灰。'},
+  {t:'在谷外摆摊',e:{stone:600},r:'你在谷口支了个摊，卖自制的符纸与灵草。三日后收摊，竟比进去听会赚得还多。'},
+ ]},
+{id:'yingjie',t:'升仙台·英杰会',year:0,lv:6,need:'dongshigu',
+ txt:'武陵城升仙台，五年一届的英杰会。台下人头攒动，规则简单：四十岁以下的练气修士皆可上台，最后站着的那位，得一枚筑基丹，并可入白帝楼。',
+ opts:[
+  {t:'登台',e:{pill:'p_zhu',like:{bailiqi:20,baidi:10},injury:1},r:'你一路打到决赛，最后败给了广陵城来的百里奇——不，是他的剑慢了半分。他笑着把筑基丹推给你：「这枚丹，该你的。」台上的白帝多看了你一眼。'},
+  {t:'在台下观战',e:{mind:4,stone:300},r:'你站在人群里看完了整场。台上那些剑招你记了个七七八八，散场时还顺手赢了点赌注。'},
+  {t:'先去别处历练',e:{exp:0.25},r:'你转身出了城。升仙台上的喧嚣留在身后，你在山里闭关数月，倒也安稳。'},
+ ]},
+{id:'rumen',t:'拜入仙门',year:0,lv:4,need:'yingjie',
+ txt:'倪府管家杨易把宁州五大派的门道一一说给你听：竹山宗在方壶山，金虹剑派在连石山，星河剑派在风雷谷只收女修，离火门在沃焦山来者不拒，化尘教在正阳山，第五年才开山门。',
+ opts:[
+  {t:'去方壶山（竹山宗）',e:{sect:'zhushan'},r:'你在擂台上连胜三人，竹山宗收下了你。紫菱仙子递来一册《青木长生功》。'},
+  {t:'去连石山（金虹剑派）',e:{sect:'jinhong'},r:'萧千绝上下打量你一番，丢来一件道袍：「悟性还行，跟我走。」'},
+  {t:'去风雷谷（星河剑派）',e:{sect:'xinghe'},r:'你用了二十七日走过三路剑阵。慕容颖在尽头等你：「从今日起，你是星河的人。」'},
+  {t:'去沃焦山（离火门）',e:{sect:'lihuo'},r:'离火门不挑人。炎萧往你手里塞了枚火晶：「炼化了，就算入了门。」'},
+  {t:'不入宗门，做散修',e:{stone:800,mind:2},r:'你谢过杨管家，转身走出了武陵城。散修自在，只是风雨都要自己扛。'},
+ ]},
+{id:'jianling',t:'狂暴的剑灵',year:0,lv:5,need:'rumen',
+ txt:'大地图上一柄飞剑横冲直撞，剑气所过之处树木尽折。倪府管家认出那是御剑门的路数，让你去九嶷山走一趟。御剑门早已灭门——因"私通魔门"，被五大派合力围剿。',
+ opts:[
+  {t:'去九嶷山一探究竟',e:{flag:'jiuyi',item:'w_jiuzhuan',exp:0.5},r:'养剑池底沉着那柄神秘铁剑，藏经阁的残卷里你悟出九转游身剑。老者的记忆复苏了一角——那是长生诀的真正开篇。'},
+  {t:'先把消息告诉师门',e:{mind:5,stone:1200,like:{nixuxin:10}},r:'你把飞剑之事报给师门，得了赏赐。九嶷山的秘密，暂时还躺在原地等你。'},
+  {t:'置之不理',e:{exp:0.2},r:'你绕开了那柄飞剑。它撞在山壁上，碎成了一地铁屑。'},
+ ]},
+{id:'daxie',t:'倪府答谢宴',year:0,lv:6,need:'nixuxin',
+ txt:'倪振东设宴答谢救子之恩。酒过三巡，他忽然问起你腰间那柄锈剑的来历。你刚要开口，剑身嗡鸣，一道剑气将你击晕。醒来时，枕边放着一千五百块灵石。',
+ opts:[
+  {t:'收下灵石，闭口不问',e:{stone:1500,like:{nizhendong:15}},r:'你收下灵石，从此不再提锈剑的事。倪振东看你的眼神里，多了一分说不清的东西。'},
+  {t:'当面追问锈剑来历',e:{like:{nixuxin:25,nizhendong:-5},mind:6,demon:1},r:'倪振东沉默良久，只说了一句：「御剑门的剑，不该再出现在宁州。」你听出了别的东西——不只是忌惮，还有旧情。'},
+ ]},
+{id:'ningwang',t:'宁王府',year:1,lv:13,need:'rumen',
+ txt:'逸风城擂台上的武道会年年不休，今年的魁首被宁王亲自召见。你循着线索潜入王府，在后堂听见了不该听的话——宁王与天魔道，已经勾结多年。',
+ opts:[
+  {t:'潜入取证',e:{flag:'qicheng',injury:1,mind:5},r:'你带出了那封密信，也带出了一身伤。宁州五大派自此知道：宁王府，是魔门在宁州的根。作为报偿，你得到一部全天下仅此一本的《气沉丹田》。'},
+  {t:'直接上报师门',e:{stone:3000,mind:3,like:{nixuxin:10}},r:'你把消息交给师门，长老们自会处置。赏赐下来，你一分没留，全都换成了修炼所需。'},
+  {t:'睁一只眼闭一只眼',e:{stone:2000,demon:2},r:'宁王的管家塞给你两千灵石。你收下了，那封密信还留在原位。夜里，你做了个很长的噩梦。'},
+ ]},
+{id:'wushan',t:'巫山魔影',year:7,lv:13,need:'ningwang',
+ txt:'第七年，巫山脚下的村人接连失踪。山洞深处魔气翻涌，洞口石壁上刻着一枚熟悉的印记——与当年御剑门被指"私通魔门"时，那些人身上的一样。',
+ opts:[
+  {t:'入洞除魔',e:{exp:0.35,injury:1,herb:['h7','h3']},r:'洞窟深处的魔物被你一剑斩灭。石壁上的印记被你拓了下来——它会是日后揭开御剑门真相的线索之一。'},
+  {t:'请师门同往',e:{exp:0.3,mind:4,stone:2000},r:'你带了两位同门前来。魔影散去，功劳记在门中，你落得一份安稳。'},
+  {t:'避而远之',e:{demon:1},r:'你没有进洞。那年冬天，巫山脚下再没有人家。'},
+ ]},
+{id:'canzipai',t:'灿字牌',year:30,lv:13,need:'wushan',
+ txt:'第三十年，沃焦山焱峰。离火门弟子墨居仁腰间那块灿字牌，与古神教的记号分毫不差。数百年前，古神教便已开始向离火门安插内鬼。',
+ opts:[
+  {t:'当众揭穿',e:{flag:'canzi',injury:1,stone:5000,like:{yanxiao:20,henghuo:15}},r:'你在焱峰击败墨居仁，坐实了古神教的图谋。恒火真君的脸色很难看，但还是把那枚麒麟玉塞进了你手里。'},
+  {t:'私下要挟',e:{stone:12000,demon:2,like:{henghuo:-10}},r:'你没有声张，只是让墨居仁知道你掌握了什么。此后每年，他都会"孝敬"你一笔灵石——直到他被门中清理。'},
+  {t:'交给炎萧处理',e:{exp:0.25,like:{yanxiao:25}},r:'你把证据交给了炎萧。他处理得干净利落，也记住了你这个人情。'},
+ ]},
+{id:'yujian',t:'御剑门之谜',year:60,lv:17,need:'jianling',
+ txt:'金丹之后，你开始追查御剑门的旧案。七条线索散在倪府管家、公孙季与五大派长老手中。最后一条，在剑碧通落——血河老祖守在那里。',
+ opts:[
+  {t:'一一追问，再战血河',e:{flag:'yujian',injury:2,item:'w_zhuxian',like:{weiwuji:30,lingwuzhenren:15}},
+   r:'七条线索拼齐：御剑门并未私通魔门，遗迹中的封印阵法，实为吸收魔气之用。当年五大派围攻，是被魔门利用了。血河老祖败在你剑下，真相终见天日。'},
+  {t:'只查线索，不与人争',e:{flag:'yujian',mind:12,like:{gongsunji:20}},
+   r:'你花了许多年，把七条线索一一问到手，却没有踏上剑碧通落。真相写在纸上，血河老祖还活着——但你活得更久。'},
+  {t:'把此事彻底放下',e:{exp:0.3,demon:1},r:'人死灯灭，一门兴衰与你何干？你把卷宗烧了，转身闭关。'},
+ ]},
+{id:'moru',t:'魔门入侵',year:78,lv:17,need:'yujian',
+ txt:'血剑宫大举来犯，白帝楼首当其冲。你赶回武陵城时，城下的血已经流成了河。一名重伤的金丹修士拦住了你——他背后，是白帝楼的门。',
+ opts:[
+  {t:'死战不退',e:{injury:2,exp:0.5,like:{baidi:40,nizhendong:20},flag:'moru'},
+   r:'你守住了白帝楼的门。白帝从楼上走下来，只说了一句：「御剑门的剑，原来还在这里。」'},
+  {t:'护送城中凡人撤退',e:{mind:10,life:20,like:{nixuxin:30}},r:'你没有留在城下。那一日你护着三千凡人撤出武陵城，回望时，白帝楼仍立着。有些仗，不在城下打。'},
+  {t:'趁乱取利',e:{stone:60000,demon:3,like:{baidi:-30}},r:'你在废墟里捡走了不少东西。多年后有人提起那一战，会说到白帝楼下的血，也会说到你。'},
+ ]},
+{id:'hanxu',t:'涵虚仙府',year:120,lv:17,need:'moru',
+ txt:'云汐城左近，涵虚仙府现世。入口处的禁制认玉不认人——一仙道人卖给你的那块破碎玉佩，此时正微微发烫。',
+ opts:[
+  {t:'入府闯三阵',need:'p_pei',e:{flag:'fenshen',exp:0.6,pill:'p_xu',item:'w_shan'},
+   r:'天、地、人三阵一一闯过。你没能拿到道源丹，却得了一部结婴秘术分神术、一枚太虚还魂丹，还有一柄山河扇。'},
+  {t:'把玉佩让给倪旭欣',e:{like:{nixuxin:60},stone:20000,mind:8},
+   r:'你把玉佩塞给了老友。他在府中得了天大的机缘，出来后什么也没说，只是重重抱了抱你。'},
+  {t:'在府外守候',e:{exp:0.35,herb:['h9','h8','h8']},r:'你没有进去。仙府关闭前的最后几日，山门外散落的灵药，够你用上百年。'},
+ ]},
+{id:'tianji',t:'天机大比',year:50,lv:21,need:'canzipai',
+ txt:'天衍阁的天机大比，纯比武，禁装备、禁丹药。阁主范杰坐在高台上，笑眯眯地看着台下元婴修士们互相放倒。',
+ opts:[
+  {t:'一路打到夺魁',e:{flag:'taixu',mind:20,demon:-3,stone:100000},
+   r:'你赢了。高台之上，范杰亲自为你挂上那枚玉牌。闭幕之后，你在天衍阁顶坐了七日——太虚境的感悟涌上来，心境大涨，心魔尽消。'},
+  {t:'打一场就走',e:{stone:20000,mind:6,like:{fanjiu:15}},r:'你赢了两场便弃权。范杰有些遗憾，还是把赏钱给了你。'},
+  {t:'只做看客',e:{mind:4},r:'你在台下看了整整一月。别人的道，看明白了，也是自己的。'},
+ ]},
+{id:'guji',t:'宁州古迹',year:500,lv:25,need:'yujian',
+ txt:'第五百年，岫络谷裂开一道空间裂隙。古战场、古原城、剑魂冢……登仙殿中藏着一部《玄清天衍录》，而剑魂冢里，恒如真人正等着你。',
+ opts:[
+  {t:'登仙殿取书',e:{flag:'xuanqing',mind:40,exp:0.5},
+   r:'你在登仙殿中枯坐三年，出殿时神识大涨。《玄清天衍录》——推演天机，洞察万物，从此你眼中的宁州，与从前再不一样。'},
+  {t:'剑魂冢战恒如',e:{injury:2,item:'w_zhu',exp:0.5},r:'剑魂冢中万剑齐鸣。你败了恒如真人，也取走了太虚神珠。那些剑，终于安静下来。'},
+  {t:'在古原城寻宝',e:{stone:300000,herb:['h10','h9','h9']},r:'你没有去争那些大道。古原城的废墟里，你挖出了足够几世花用的东西。'},
+ ]},
+{id:'jiantong',t:'剑通碧落',year:750,lv:25,need:'moru',
+ txt:'第八百年，白帝渡劫。血河老祖、恶饕老祖、玄骨……一个接一个从暗处走出来。这一次，九州剑修第一人把背后，交给了你。',
+ opts:[
+  {t:'替他挡下所有人',e:{flag:'jiantong',item:'w_zhuxian',injury:3,like:{baidi:60}},
+   r:'你连战三场，最后一剑斩落恶饕。云端雷劫落下时，白帝回头看了你一眼，御剑而上，再无牵挂。那柄诛仙剑，他留给了你。'},
+  {t:'护住渡劫法阵',e:{flag:'jiantong',mind:30,exp:0.7},r:'你没有去追那些魔头，只是守在阵眼。雷劫尽数落下，白帝飞升。他欠你的，来世再还。'},
+  {t:'远远看着',e:{mind:15,life:100},r:'你站在八百里外，看那道剑光破开云层。天地间静了很久，然后下了一场雨。'},
+ ]},
+{id:'jianzheng',t:'见证',year:1000,lv:25,need:'jiantong',
+ txt:'第一千年，阴魂岛。幽荧吸尽了满岛阴魂，欲要逆天飞升。天道不容，把她从云层中抛了下来。',
+ opts:[
+  {t:'记下这一幕',e:{mind:50,life:500,flag:'jianzheng'},
+   r:'你看着她坠落，看着天道闭合。回去后，你在洞府石壁上刻下八个字：逆天有术，长生无门。此后千年，你再未踏出山门半步。'},
+  {t:'上前扶她一把',e:{life:-200,mind:30,exp:0.8},r:'你接住了她。她睁开眼看你，问：值得吗？你说不知道。她笑了，把一身阴魂修为散给了你，然后化作一缕青烟。'},
+ ]},
+];
+
+/* ---------------- 奇遇 ---------------- */
+const EVENTS=[
+ {c:'good',t:'洞府遗藏',min:0,txt:'你在山壁间发现一座前辈洞府，石门上的禁制早已朽坏。',fn(){gainExp(needExp(S.lv)*rnd(2,4)/10);addItem(pick(['h1','h2','h3']),rnd(1,3));S.stone+=rnd(200,600)}},
+ {c:'good',t:'古修遗骸',min:0,txt:'一具枯骨盘坐于石台之上，手中还攥着一枚储物戒。',fn(){S.stone+=rnd(300,1200);S.mind+=rnd(1,3)}},
+ {c:'good',t:'灵泉之眼',min:3,txt:'一泓灵泉汩汩而出，泉水沁人心脾，伤势竟好了几分。',fn(){S.injury=Math.max(0,S.injury-1);gainExp(needExp(S.lv)*0.35)}},
+ {c:'good',t:'药王谷',min:6,txt:'云雾深处竟是一整片药田，灵药遍野。',fn(){for(let i=0;i<rnd(2,4);i++)addItem(pick(['h2','h3','h4','h5']),1)}},
+ {c:'good',t:'高人论道',min:10,txt:'一位无名老者与你对坐论道三日，你茅塞顿开。',fn(){S.mind+=rnd(4,9);gainExp(needExp(S.lv)*0.6)}},
+ {c:'good',t:'天降甘露',min:14,txt:'九天之上降下七彩甘霖，浸体生香。',fn(){S.lifeLeft+=rnd(10,30);toast('寿元 +'+rnd(10,30)+' 年','good')}},
+ {c:'good',t:'剑冢认主',min:17,txt:'万剑坟前，一柄锈剑嗡鸣不止，竟自行飞入你手中。',fn(){const k=pick(['w_jian','w_dun','w_yin']);if(!has(k)){addItem(k,1);toast('获得法宝：'+ITEMS[k].n,'big')}else{S.stone+=ITEMS[k].v}}},
+ {c:'good',t:'丹道顿悟',min:0,txt:'观摩丹炉中的火候变化，你对炼丹一道颇有所得。',fn(){S.refine+=rnd(2,5);S.mind+=1}},
+ {c:'bad',t:'心魔丛生',min:8,txt:'久修不进，杂念化作心魔，在识海中嘶吼。',fn(){S.demon++;toast('心魔 +1','bad')}},
+ {c:'bad',t:'灵气枯竭',min:0,txt:'此地灵气稀薄，数月苦修，所获寥寥。',fn(){S.lifeLeft-=rnd(1,3)}},
+ {c:'bad',t:'邪修伏击',min:12,txt:'一名黑袍修士自暗处袭来，招招致命。',fn(){hurt(rnd(1,2),'邪修伏击')}},
+ {c:'bad',t:'天雷淬体',min:20,txt:'云端降下一道紫雷，正中天灵。',fn(){hurt(1,'天雷');gainExp(needExp(S.lv)*0.5)}},
+ {c:'',t:'路人闲谈',min:0,txt:'茶棚中几个散修正在谈论某处秘境的传闻。',fn(){S.mind+=1;if(Math.random()<.3)addItem(pick(['h1','h2']),2)}},
+ {c:'',t:'旧友相逢',min:5,txt:'故人相逢，饮了一壶浊酒，说起当年同入仙门的旧事。',fn(){S.demon=Math.max(0,S.demon-1);S.stone+=rnd(50,200)}},
+ {c:'',t:'白帝楼论剑',min:6,txt:'白帝楼中有人摆下剑局，你上前讨教了两招，引来满堂喝彩。',fn(){S.mind+=rnd(2,4);addLike('baidi',2);gainExp(needExp(S.lv)*0.15)}},
+ {c:'bad',t:'风雨楼悬赏',min:13,txt:'茶楼上有人压低声音念出一个名字——那名字，是你。',fn(){hurt(1,'风雨楼刺客');S.stone=Math.max(0,S.stone-rnd(200,800))}},
+ {c:'good',t:'龙族邀约',min:17,txt:'港口一名白衣少年拦住你去路，自称广陵城百里家的人，想讨教两手。',fn(){addLike('bailiqi',10);S.stone+=rnd(1000,3000)}},
+ {c:'good',t:'天衍阁夜拍',min:17,txt:'天机阁十年一度的拍卖会，你举了几次牌，换来几样压箱底的东西。',fn(){const c5=pick(['h7','h8','h9']);addItem(c5,1);addLike('fanjiu',5);S.mind+=1}},
+ {c:'',t:'沂山劫道',min:4,txt:'山路被几个邪修拦住，为首的疤脸汉子伸手就要买路钱。',fn(){if(power()>npcPow(NPCS[27])){S.stone+=rnd(100,400);log('你打发了他们，还顺手摸走了他们的钱袋。','good')}else{S.stone=Math.max(0,S.stone-rnd(100,400));log('好汉不吃眼前亏，你交了买路钱。','bad')}}},
+];
+
+/* ---------------- 状态 ---------------- */
+let S=null;
+const SAVEKEY='michangsheng_mobile_v1';
+
+function newState(){
+  return {
+    name:'无名',gender:'男',age:16,lv:0,exp:0,
+    lifeMax:LV[0].life,lifeLeft:LV[0].life,
+    roots:['mu'],rootType:'天灵根',rootC:1.65,apt:80,
+    stone:200,mind:5,injury:0,demon:0,refine:0,tena:0,
+    arts:{a_yinqi:1},art:'a_yinqi',
+    shen:{},dun:{},
+    wps:{},wp:null,
+    bag:{},recipes:{r_qi:1},
+    legacy:0,deaths:0,months:0,
+    spdMul:1,hpBonus:0,brHpMul:1,dunBonus:0,elW:0,discount:0,
+    xin:0,poison:0,noPill:0,regen:0,tong:0,wuchi:0,daoMul:0,daoBr:0,charm:0,plant:0,waste:0,dao1000:0,
+    diff:'normal',aotian:false,soul:false,birth:'farm',phys:'mortal',child:'free',youth:'idle',
+    sect:null,likes:{},story:{},flags:{},fortune:0,
+    log:[],best:0,bestName:'',
+  };
+}
+
+/* ---------------- 开局选项（天赋点 buy，还原原版建号）---------------- */
+const DIFFS=[
+ {k:'normal',n:'普通',desc:'道途平稳，天赋点充裕',pt:18},
+ {k:'hard',n:'困难',desc:'天劫更厉，资源紧缩',pt:12},
+ {k:'ex',n:'极难',desc:'九死一生，步步惊心',pt:8},
+];
+const CROOT={
+ 1:{n:'天灵根',c:1.65,pt:12,apt:[80,96]},
+ 2:{n:'双灵根',c:1.24,pt:11,apt:[68,86]},
+ 3:{n:'三灵根',c:1.02,pt:9,apt:[55,72]},
+ 4:{n:'四灵根',c:0.86,pt:7,apt:[44,60]},
+ 5:{n:'五灵根',c:0.70,pt:5,apt:[40,52]},
+};
+const BIRTHS=[
+ {k:'orphan',n:'流浪孤儿',pt:-1,desc:'气血 −10（返还天赋点）',eff:{hp:-10}},
+ {k:'farm',n:'普通农户',pt:0,desc:'无特殊，朴实起步'},
+ {k:'wu',n:'练武世家',pt:1,desc:'气血 +10',eff:{hp:10}},
+ {k:'merch',n:'商贾富豪',pt:1,desc:'灵石 +300',eff:{stone:300}},
+ {k:'book',n:'书香门第',pt:2,desc:'悟性 +10（神识）',eff:{mind:10}},
+ {k:'cult',n:'修真家族',pt:2,desc:'得《庚金剑法》与灵石',eff:{art:'a_jin',stone:300}},
+];
+const PHYSIQUE=[
+ {k:'mortal',n:'普通凡人',pt:0,desc:'无特殊，默认之资'},
+ {k:'xuanyin',n:'玄阴绝脉',pt:-3,desc:'修炼速度 −10%',eff:{spd:-0.10},ban:'daoti'},
+ {k:'daoti',n:'先天道体',pt:3,desc:'修炼速度 +10%，筑基灵气 +4',eff:{spd:0.10},ban:'xuanyin'},
+ {k:'yiti',n:'先天异脉',pt:-8,desc:'服丹、妖丹、废丹皆不得修为',eff:{noPill:1}},
+ {k:'ruo',n:'羸弱多病',pt:-5,desc:'气血 −5，突破气血 −20%',eff:{hp:-5,brHp:-0.20}},
+ {k:'wuxing',n:'五行灵体',pt:1,desc:'主灵根权重 +5',eff:{elW:5}},
+ {k:'jueyin',n:'绝阴毒体',pt:4,desc:'丹毒盈时威力更盛',eff:{poison:1}},
+ {k:'shenmo',n:'神魔血脉',pt:5,desc:'气血 +5，突破气血 +20%',eff:{hp:5,brHp:0.20}},
+ {k:'long',n:'龙族血脉',pt:6,desc:'回合终了回 5% 气血',eff:{regen:0.05}},
+ {k:'yitong',n:'天生异瞳',pt:6,desc:'神识占优时十之一二令敌落空',eff:{tong:0.10}},
+ {k:'tianfu',n:'天道福泽',pt:6,desc:'悟道之益 +20%',eff:{dao:0.20}},
+ {k:'wuchi',n:'五气朝元',pt:8,desc:'五行连击更利聚气',eff:{wuchi:1}},
+ {k:'zhuan',n:'转世仙人',pt:16,desc:'悟性 +30（神识），突破大境界悟道 +10',eff:{mind:30,daoBr:10}},
+];
+const CHILDHOOD=[
+ {k:'ill',n:'大病一场',pt:-3,desc:'寿元 −30',eff:{life:-30}},
+ {k:'mind',n:'心智有损',pt:-1,desc:'悟性 −5（神识）',eff:{mind:-5},ban:'mem'},
+ {k:'dis',n:'先天残疾',pt:-1,desc:'遁速 −3',eff:{dun:-3}},
+ {k:'free',n:'放情丘壑',pt:0,desc:'无特殊'},
+ {k:'healthy',n:'修身养性',pt:1,desc:'寿元 +10',eff:{life:10}},
+ {k:'heart',n:'道心坚定',pt:1,desc:'心境 +30',eff:{xin:30}},
+ {k:'spring',n:'神奇温泉',pt:1,desc:'气血 +10',eff:{hp:10}},
+ {k:'star',n:'星辰泪',pt:2,desc:'得星辰泪（可售灵石）',eff:{stone:200}},
+ {k:'bottle',n:'神秘绿瓶',pt:2,desc:'灵植速成之资',eff:{plant:1}},
+ {k:'mem',n:'过目不忘',pt:4,desc:'悟性 +20（神识）',eff:{mind:20},ban:'mind'},
+];
+const YOUTH=[
+ {k:'break',n:'惨遭退婚',pt:-1,desc:'心境 −30',eff:{xin:-30}},
+ {k:'idle',n:'碌碌无为',pt:0,desc:'无特殊'},
+ {k:'qin',n:'轻功高手',pt:1,desc:'遁速 +3',eff:{dun:3}},
+ {k:'pharm',n:'药堂学徒',pt:1,desc:'炼丹之资 +2',eff:{refine:2}},
+ {k:'cliff',n:'坠崖奇遇',pt:1,desc:'得草药若干',eff:{item:'h3'}},
+ {k:'cave',n:'后山洞窟',pt:1,desc:'得清灵法袍（灵石）',eff:{stone:200}},
+ {k:'shell',n:'神秘贝壳',pt:2,desc:'服废丹可进补修为',eff:{waste:1}},
+ {k:'wu2',n:'先天武者',pt:2,desc:'气血 +20',eff:{hp:20}},
+ {k:'peach',n:'命犯桃花',pt:2,desc:'道侣缘法更深',eff:{charm:1}},
+ {k:'men',n:'初窥门径',pt:3,desc:'悟道之基 +1000（神识）',eff:{dao1000:1000}},
+ {k:'bargain',n:'讲价技巧',pt:4,desc:'坊市折扣',eff:{discount:0.1}},
+];
+const C={diff:'normal',aotian:false,soul:false,birth:'farm',phys:'mortal',child:'free',youth:'idle',cnt:1,main:'jin'};
+function effApply(e){
+ if(!e)return;
+ if(e.hp)S.hpBonus=(S.hpBonus||0)+e.hp;
+ if(e.life){S.lifeMax+=e.life;S.lifeLeft=clamp(S.lifeLeft+e.life,Math.min(0,S.lifeMax),S.lifeMax);}
+ if(e.mind)S.mind+=e.mind;
+ if(e.stone)S.stone+=e.stone;
+ if(e.dun)S.dunBonus=(S.dunBonus||0)+e.dun;
+ if(e.refine)S.refine+=e.refine;
+ if(e.xin)S.xin=(S.xin||0)+e.xin;
+ if(e.elW)S.elW=(S.elW||0)+e.elW;
+ if(e.brHp)S.brHpMul=(S.brHpMul||1)*(1+e.brHp);
+ if(e.discount)S.discount=Math.max(S.discount||0,e.discount);
+ if(e.spd)S.spdMul=(S.spdMul||1)*(1+e.spd);
+ if(e.poison)S.poison=1;
+ if(e.noPill)S.noPill=1;
+ if(e.regen)S.regen=(S.regen||0)+e.regen;
+ if(e.tong)S.tong=(S.tong||0)+e.tong;
+ if(e.wuchi)S.wuchi=1;
+ if(e.dao)S.daoMul=(S.daoMul||0)+e.dao;
+ if(e.daoBr)S.daoBr=(S.daoBr||0)+e.daoBr;
+ if(e.charm)S.charm=1;
+ if(e.plant)S.plant=1;
+ if(e.waste)S.waste=1;
+ if(e.dao1000)S.dao1000=(S.dao1000||0)+1000;
+ if(e.art){S.arts[e.art]=1;S.art=e.art;}
+ if(e.item)addItem(e.item,1);
+}
+function optGroup(title,items,kind){
+ let h='<div class="card"><div class="ttl">'+title+'</div><div class="opts">';
+ items.forEach(it=>{const sel=(C[kind]===it.k);const tag=it.pt>0?'<span class="pt">+'+it.pt+'</span>':it.pt<0?'<span class="pt neg">'+it.pt+'</span>':'';
+  h+='<button class="opt'+(sel?' on':'')+'" onclick="pickOpt(\''+kind+'\',\''+it.k+'\')">'+it.n+tag+'<span class="od">'+it.desc+'</span></button>'});
+ return h+'</div></div>';
+}
+function budgetPts(){const d=DIFFS.find(x=>x.k===C.diff)||DIFFS[0];return d.pt+(C.aotian?10:0);}
+function spentPts(){
+ let s=CROOT[C.cnt].pt;
+ const b=BIRTHS.find(x=>x.k===C.birth);if(b)s+=b.pt;
+ if(C.soul)s+=1;
+ const p=PHYSIQUE.find(x=>x.k===C.phys);if(p)s+=p.pt;
+ const c=CHILDHOOD.find(x=>x.k===C.child);if(c)s+=c.pt;
+ const y=YOUTH.find(x=>x.k===C.youth);if(y)s+=y.pt;
+ return s;
+}
+function remainPts(){return budgetPts()-spentPts();}
+function pickDiff(k){C.diff=k;renderCreate();}
+function toggleAotian(){C.aotian=!C.aotian;renderCreate();}
+function toggleSoul(){C.soul=!C.soul;renderCreate();}
+function pickRoot(n){C.cnt=n;renderCreate();}
+function pickMain(el){C.main=el;renderCreate();}
+function pickOpt(kind,k){
+ C[kind]=k;
+ renderCreate();
+}
+function renderCreate(){
+ let h='';
+ h+='<div class="card"><div class="ttl">道途难度</div><div class="opts">';
+ DIFFS.forEach(d=>{h+='<button class="opt'+(C.diff===d.k?' on':'')+'" onclick="pickDiff(\''+d.k+'\')">'+d.n+(d.pt?' <span class="pt">+'+d.pt+'</span>':'')+'<span class="od">'+d.desc+'</span></button>'});
+ h+='</div><button class="opt'+(C.aotian?' on':'')+'" style="margin-top:8px" onclick="toggleAotian()">异世傲天<span class="pt">+10</span><span class="od">主角光环，天赋点 +10</span></button></div>';
+ h+='<div class="card"><div class="ttl">出身 · 身世</div><div class="opts">';
+ BIRTHS.forEach(b=>{const tag=b.pt>0?'<span class="pt">+'+b.pt+'</span>':b.pt<0?'<span class="pt neg">'+b.pt+'</span>':'';h+='<button class="opt'+(C.birth===b.k?' on':'')+'" onclick="pickOpt(\'birth\',\''+b.k+'\')">'+b.n+tag+'<span class="od">'+b.desc+'</span></button>'});
+ h+='</div><button class="opt'+(C.soul?' on':'')+'" style="margin-top:8px" onclick="toggleSoul()">魂穿异世<span class="pt">+1</span><span class="od">神识 +3（可叠加于他身世）</span></button></div>';
+ h+='<div class="card"><div class="ttl">灵根 · 自择</div><div class="sub">元素多寡（纯度）</div><div class="opts">';
+ [1,2,3,4,5].forEach(n=>{const r=CROOT[n];h+='<button class="opt'+(C.cnt===n?' on':'')+'" onclick="pickRoot('+n+')">'+r.n+' <span class="pt">'+r.pt+'</span><span class="od">速度 ×'+r.c.toFixed(2)+'　资质 '+r.apt[0]+'~'+r.apt[1]+'</span></button>'});
+ h+='</div><div class="sub">主灵根</div><div class="opts row5">';
+ ELS.forEach(el=>{h+='<button class="opt'+(C.main===el?' on':'')+'" onclick="pickMain(\''+el+'\')"><span style="color:'+ELC[el]+'">'+ELN[el]+'</span><span class="od">'+el+'</span></button>'});
+ h+='</div></div>';
+ h+=optGroup('先天体质',PHYSIQUE,'phys');
+ h+=optGroup('儿时经历',CHILDHOOD,'child');
+ h+=optGroup('青年经历',YOUTH,'youth');
+ $('#el-root').innerHTML='<span style="color:'+ELC[C.main]+'">'+ELN[C.main]+'</span>'+(C.cnt>1?' <span style="color:#6d7488;font-size:30px">+ '+(C.cnt-1)+' 杂</span>':'');
+ $('#create-body').innerHTML=h;
+ const rem=remainPts(),bud=budgetPts();
+ $('#pt-bar').innerHTML='<div class="ttl">天赋点</div><div class="ptrow"><span class="muted">已用 '+(bud-rem)+' / 共 '+bud+'</span><b class="'+(rem<0?'red':'jade')+'">剩余 '+rem+'</b></div>'+(rem<0?'<div class="muted" style="color:#f0a89c">天赋点不足，请取舍选项。</div>':'');
+ $('#card-start').style.display='block';
+ const r=CROOT[C.cnt];
+ $('#start-info').innerHTML='道号：<b class="gold">'+($('#in-name').value.trim()||'未取')+'</b>　性别：'+S.gender+'<br>'+
+  '灵根：'+r.n+'（'+ELN[C.main]+(C.cnt>1?' +'+(C.cnt-1)+' 杂':'')+'）　速度 ×'+r.c.toFixed(2)+'<br>'+
+  '资质：约 '+r.apt[0]+'~'+r.apt[1]+(S.legacy?'　传承 +'+S.legacy:'')+'<br>'+
+  '难度：'+DIFFS.find(x=>x.k===C.diff).n+(C.aotian?' · 异世傲天':'')+'　剩余天赋点 <b class="'+(rem<0?'red':'jade')+'">'+rem+'</b>';
+}
+function applyCreate(){
+ const cnt=C.cnt,main=C.main;
+ const pool=ELS.filter(e=>e!==main),others=[];
+ for(let i=0;i<cnt-1;i++)others.push(pool.splice(Math.floor(Math.random()*pool.length),1)[0]);
+ S.roots=[main].concat(others);
+ S.rootType=CROOT[cnt].n;S.rootC=CROOT[cnt].c;
+ const ar=CROOT[cnt].apt;
+ S.apt=clamp(Math.round(rnd(ar[0],ar[1])+(S.legacy?S.legacy*0.2:0)),40,100);
+ const birth=BIRTHS.find(x=>x.k===C.birth);if(birth)effApply(birth.eff);
+ if(C.soul)effApply({mind:3});
+ const phys=PHYSIQUE.find(x=>x.k===C.phys);if(phys)effApply(phys.eff);
+ const ch=CHILDHOOD.find(x=>x.k===C.child);if(ch)effApply(ch.eff);
+ const yo=YOUTH.find(x=>x.k===C.youth);if(yo)effApply(yo.eff);
+ if(S.dao1000)S.mind+=S.dao1000;
+}
+function has(k){return (k in (S.bag||{})) || (k in S.arts) || (k in S.wps)}
+function fl(k){return S.flags&&S.flags[k]?1:0}
+function like(k){return (S.likes&&S.likes[k])||0}
+function addLike(k,n){S.likes=S.likes||{};S.likes[k]=clamp((S.likes[k]||0)+n,-50,100);if(S.likes[k]<0)delete S.likes[k]}
+function addItem(k,n){S.bag[k]=(S.bag[k]||0)+n}
+function takeItem(k,n){S.bag[k]=(S.bag[k]||0)-n;if(S.bag[k]<=0)delete S.bag[k]}
+function count(k){return S.bag[k]||0}
+
+function save(){try{localStorage.setItem(SAVEKEY,JSON.stringify(S))}catch(e){}}
+function load(){try{const s=localStorage.getItem(SAVEKEY);return s?JSON.parse(s):null}catch(e){return null}}
+
+/* ---------------- 数值 ---------------- */
+function artBonus(){
+  const a=ITEMS[S.art]; if(!a) return 1;
+  let b=1+(10-a.rank)*0.09;
+  if(a.el&&S.roots.includes(a.el)) b+=0.25;
+  if(!a.el&&S.roots.length>=4) b+=0.2;
+  return b;
+}
+function artDesc(){const a=ITEMS[S.art];return a?a.n+'（'+a.rank+'品'+(a.el?ELN[a.el]+'系':'通用')+'）':'无'}
+function fuBonus(){return S.wps&&S.wps.w_fu?0.3:0}
+function sectBonus(){
+  if(!S.sect)return 1;
+  const s=SECTS.find(x=>x.k===S.sect);if(!s)return 1;
+  let b=1.06;                                  // 宗门资源
+  const a=ITEMS[S.art];
+  if(a&&a.el&&a.el===s.el)b+=0.08;             // 功法与山门同属
+  return b;
+}
+function gainPerMonth(){
+  const base=16*Math.pow(1.155,S.lv);
+  let g=base*S.rootC*artBonus()*(1+fuBonus())*(0.88+Math.random()*0.28)*sectBonus();
+  g*=1+fl('changsheng')*0.12+fl('qicheng')*0.08+fl('taixu')*0.05;
+  g*=(1-S.injury*0.18);
+  g*=S.apt/85;
+  g*=(S.spdMul||1);
+  return g;
+}
+function power(){
+  let p=60*Math.pow(1.42,S.lv);
+  const a=ITEMS[S.art]; if(a) p*=1+(10-a.rank)*0.05;
+  if(S.wp&&ITEMS[S.wp]) p+=ITEMS[S.wp].atk;
+  p+=S.mind*0.8*(1+fl('xuanqing'));
+  p*=1+fl('canzi')*0.05+fl('jiantong')*0.2;
+  p*=(1-S.injury*0.2);
+  return Math.round(p);
+}
+function breakRate(){
+  let r=0.58+S.apt/100*0.22+S.legacy*0.004+(S.tena||0);
+  if(!isBigStep(S.lv)) r+=0.28; else r-=0.04;
+  r-=S.demon*0.04;
+  r-=S.injury*0.04;
+  r-=Math.min(0.25,REALMS[LV[S.lv].ri].n==='真仙'?0:0.008*S.lv);
+  if(S.bag.p_zhang>0) r+=0.25;
+  const big=isBigStep(S.lv);
+  if(big){const map={筑基:'p_zhu',金丹:'p_jin',元婴:'p_ying',化神:'p_shen'};const k=map[LV[S.lv+1]?.realm];if(k&&S.bag[k]>0)r+=0.35}
+  r+=fl('fenshen')*0.08+fl('taixu')*0.03;
+  return clamp(r,0.08,0.97);
+}
+
+/* ---------------- 行动 ---------------- */
+function gainExp(n){S.exp+=n}
+function log(t,c){S.log.unshift({t,c:c||''});if(S.log.length>80)S.log.pop()}
+
+function advance(months){
+  for(let i=0;i<months;i++){
+    S.months++; S.age+=1/12; S.lifeLeft-=1/12;
+    if(S.lifeLeft<=0){S.lifeLeft=0;die('寿元耗尽，寿终正寝');return false}
+  }
+  return true;
+}
+
+function cultivate(months){
+  let got=0,breakEv=null;
+  for(let i=0;i<months;i++){
+    if(!advance(1)) return;
+    got+=gainPerMonth();
+    if(Math.random()<(S.demon>=4?0.003:0.007)&&S.demon<6){S.demon++;breakEv='心魔滋生'}
+  }
+  gainExp(got);
+  if(S.daoMul)S.mind+=Math.round(got*0.0016*(1+S.daoMul));
+  log('静心打坐 '+months+' 月，修为 +'+fmt(got),'good');
+  if(breakEv) {log(breakEv+'，道心蒙尘','bad');toast('心魔 +1','bad')}
+  afterAction();
+}
+
+function calm(){
+  if(!advance(6))return;
+  S.demon=Math.max(0,S.demon-1);
+  S.injury=Math.max(0,S.injury-1);
+  log('静心调息半载，心魔渐消，伤势好转','good');
+  toast('心魔 -1，伤势 -1','good');
+  afterAction();
+}
+
+function breakthrough(){
+  const need=needExp(S.lv);
+  if(S.lv>=MAXLV){toast('已臻至道，无可再进','big');return}
+  if(S.exp<need){toast('修为不足，尚需 '+fmt(need-S.exp),'bad');return}
+  const rate=breakRate(),big=isBigStep(S.lv);
+  const used=[];
+  if(S.bag.p_zhang>0){takeItem('p_zhang',1);used.push('破障丹')}
+  const map={筑基:'p_zhu',金丹:'p_jin',元婴:'p_ying',化神:'p_shen'};
+  const nb=LV[S.lv+1]?map[LV[S.lv+1].realm]:null;
+  if(nb&&S.bag[nb]>0){takeItem(nb,1);used.push(ITEMS[nb].n)}
+  if(!advance(big?6:2)) return;
+  if(Math.random()<rate){
+    S.lv++; S.exp=Math.max(0,S.exp-need*0.5);
+    const nl=LV[S.lv].life;
+    if(nl>S.lifeMax){S.lifeLeft+=(nl-S.lifeMax);S.lifeMax=nl}
+    S.demon=Math.max(0,S.demon-(big?2:1));
+    S.tena=0;
+    if(S.lv>S.best)S.best=S.lv;
+    log('【突破】步入 '+LV[S.lv].name+(big?'，寿元大涨！':''),'big');
+    toast('突破成功：'+LV[S.lv].name,'big');
+    if(S.lv>=MAXLV) ending();
+  }else{
+    S.exp=Math.max(0,S.exp-need*0.2);
+    S.demon=Math.min(6,S.demon+1);
+    S.tena=Math.min(0.3,(S.tena||0)+0.06);
+    log('【失败】冲击 '+LV[S.lv+1].name+' 未成，气息紊乱','bad');
+    toast('突破失败，心魔 +1','bad');
+    if(Math.random()<0.5) hurt(1,'突破反噬');
+  }
+  afterAction();
+}
+
+function hurt(n,reason){
+  S.injury=clamp(S.injury+n,0,3);
+  const lose=rnd(2,8)*n;
+  S.lifeLeft-=lose;
+  toast((reason?reason+'，':'')+'寿元 -'+lose+' 年','bad');
+  if(S.lifeLeft<=0){S.lifeLeft=0;die(reason||'重创而亡')}
+}
+
+function explore(zi){
+  const z=ZONES[zi];
+  if(S.lv<z.lv){toast('修为不足，此地凶险莫测','bad');return}
+  if(!advance(3)) return;
+  const dz=DZ[z.d];
+  const mul={city:1.6,sect:0.55,evil:0.95,danger:1.3,secret:1.6}[z.kind]||1;
+  const hn={city:rnd(0,1),sect:rnd(2,3),evil:rnd(1,2),danger:rnd(2,3),secret:rnd(2,4)}[z.kind];
+  if(Math.random()<0.28){
+    S.stone+=Math.round(rnd(dz.stone[0],dz.stone[1])*mul*0.6);
+    for(let i=0;i<Math.max(0,hn-1);i++)addItem(pick(z.herbs),1);
+    S.mind+=1;log('入'+z.n+'历练，寻得机缘','');
+    afterEvent(z);afterAction();return;
+  }
+  const e=makeBeast(z);
+  startBattle(e,(res,fled)=>{
+    if(res==='win'){
+      S.stone+=Math.round(rnd(dz.stone[0],dz.stone[1])*mul*(1+Math.random()*0.5));
+      for(let i=0;i<hn;i++)addItem(pick(z.herbs),1);
+      S.mind+=rnd(1,2);gainExp(needExp(S.lv)*rnd(4,8)/100);
+      log('入'+z.n+'历练，斩妖除魔','good');toast('斩妖除魔，得灵石 '+fmt(S.stone),'good');
+    }else if(fled){log('入'+z.n+'历练，不敌妖兽，遁走','bad')}
+    else{log('入'+z.n+'历练，不敌妖兽，负伤而逃','bad');hurt(rnd(1,2),'妖兽')}
+    afterEvent(z);afterAction();
+  });
+}
+function afterEvent(z){
+  if(z.kind==='city'){
+    const mon=(S.months%12)+1;
+    if(mon<=2){S.stone+=Math.round(rnd(200,600)*z.d);S.mind+=2;log('城中恰有仙师集会，颇有所得','good')}
+    if(YIXIAN[z.k]===mon&&S.fortune<3) meetYixian();
+  }
+  if(Math.random()<0.42){
+    const pool=EVENTS.filter(e=>S.lv>=e.min);
+    if(pool.length){const e=pick(pool);log('【'+e.t+'】'+e.txt,e.c);e.fn();toast(e.t,e.c==='bad'?'bad':'big')}
+  }
+}
+
+/* ---------------- 一仙道人 ---------------- */
+const YX_WORDS=[
+ '"道友留步。贫道看你印堂发黑，近日必有血光之灾——不如算上一卦？"',
+ '"这一卦嘛……贫道看你命里，缺一座仙府。"',
+ '"三百年后，云汐城左近。到时候，别忘了带块玉佩。"'];
+function meetYixian(){
+  const price=[100,500,2000][S.fortune]||2000;
+  showModal('一仙道人','<p>'+YX_WORDS[Math.min(S.fortune,2)]+'</p>'+
+    '<p class="muted">第 '+(S.fortune+1)+' 卦 · 卦金 '+fmt(price)+' 灵石。三卦之后，他会摸出一块玉佩。</p>',
+    [{t:'算（'+fmt(price)+' 灵石）',f:'fortuneTell('+price+')'},{t:'不必了',f:'closeModal()',c:'ghost'}]);
+}
+function fortuneTell(price){
+  if(S.stone<price){toast('灵石不足','bad');return}
+  S.stone-=price;S.fortune=Math.min(3,S.fortune+1);
+  log('【一仙道人】'+YX_WORDS[S.fortune-1].replace(/"/g,''),'good');
+  if(S.fortune>=3&&!count('p_pei')){
+    addItem('p_pei',1);toast('获得 破碎玉佩','big');
+    log('一仙道人摸出一块破碎的玉佩塞进你手里，转身没入了人海。','big');
+  }
+  closeModal();afterAction();
+}
+
+/* ---------------- 门派 ---------------- */
+const SECT_MATES={zhushan:['liqinglin','mingshan'],jinhong:['xiaoqianjue','lingwuzhenren'],
+  xinghe:['murongying','yunji'],lihuo:['yanxiao','henghuo'],huachen:['dantaixian']};
+function joinSect(k){
+  const s=SECTS.find(x=>x.k===k);if(!s)return;
+  if(S.sect){toast('你已是'+SECTS.find(x=>x.k===S.sect).n+'门下','bad');return}
+  if(!s.ok()){toast('不合入门之规：'+s.req,'bad');return}
+  S.sect=k;S.arts[s.art]=1;S.art=s.art;
+  (SECT_MATES[k]||[]).forEach(n=>addLike(n,30));
+  log('【入门】拜入'+s.n+'，得授《'+ITEMS[s.art].n+'》。','big');
+  toast('拜入 '+s.n,'big');
+  afterAction();
+}
+
+/* ---------------- 人物交往 ---------------- */
+function npcAct(k,act){
+  const n=NPCS.find(x=>x.k===k);if(!n)return;
+  const lk=like(k);
+  if(act==='lun'){
+    if(!advance(2))return;
+    const g=Math.max(1,Math.round(n.lv/6))+(Math.random()<0.4?1:0);
+    S.mind+=g;if(Math.random()<0.5&&S.demon>0)S.demon--;
+    addLike(k,2);
+    log('与'+n.n+'论道两月，神识 +'+g,'good');toast('神识 +'+g,'good');
+  }else if(act==='qie'){
+    if(!advance(1))return;
+    const e=makeNpcEnemy(n);
+    startBattle(e,(res,fled)=>{
+      if(res==='win'){addLike(k,5);const st=Math.round(e.maxHp*0.4);S.stone+=st;log('与'+n.n+'切磋，胜。得灵石 '+fmt(st),'good');toast('胜 · 灵石 +'+fmt(st),'good')}
+      else if(fled){addLike(k,1);log('与'+n.n+'切磋，不敌而退。','bad')}
+      else{addLike(k,1);hurt(1,n.n+'手下')}
+      afterAction();
+    });
+    return;
+  }else if(act==='zeng'){
+    const cost=50+Math.round(lk*2);
+    if(S.stone<cost){toast('灵石不足','bad');return}
+    S.stone-=cost;const g=rnd(6,12);addLike(k,g);
+    if(!advance(1))return;
+    log('赠'+n.n+'一份厚礼，花去 '+fmt(cost)+' 灵石，好感 +'+g,'good');toast('好感 +'+g,'good');
+  }else if(act==='qing'){
+    if(lk<60){toast('交情尚浅（需好感 60）','bad');return}
+    if(!advance(3))return;
+    const e=needExp(S.lv)*(0.15+Math.random()*0.2);
+    gainExp(e);addLike(k,3);
+    if(Math.random()<0.35&&n.lv>=16)addItem(pick(['h5','h6','h7','h8','h9']),1);
+    log('得'+n.n+'指点三月，修为 +'+fmt(e),'good');toast('修为 +'+fmt(e),'good');
+  }
+  afterAction();
+}
+
+/* ---------------- 主线剧情 ---------------- */
+/* ==================== 战斗（卡牌式回合制 · 五行灵气，还原原版）==================== */
+/* 每回合按灵根权重抽金木水火土灵气，功法当卡牌打出（耗灵气）；五行相生前置触发「连击」
+   增伤，五行相克另有倍率；法宝给被动（护罩/减伤/反伤/易伤）；遁速高者先手；气血归零判负。 */
+const QIMAX=12;
+const SHENG={mu:'huo',huo:'tu',tu:'jin',jin:'shui',shui:'mu'};   // X 生 Y
+const KE={mu:'tu',tu:'shui',shui:'huo',huo:'jin',jin:'mu'};       // X 克 Y
+function keMul(a,d){ if(!a||!d)return 1; if(KE[a]===d)return 1.3; if(KE[d]===a)return 0.8; return 1; }
+
+const FIGHT={
+ a_yinqi:{qi:1,pow:4,cd:0,eff:'heal'},
+ a_jin:{qi:2,pow:11,cd:0,eff:'armor'},
+ a_mu:{qi:2,pow:9,cd:0,eff:'shield'},
+ a_shui:{qi:2,pow:10,cd:0,eff:'reduce'},
+ a_huo:{qi:2,pow:12,cd:0,eff:'burn'},
+ a_tu:{qi:2,pow:10,cd:0,eff:'shield'},
+ a_taiyin:{qi:3,pow:15,cd:1,eff:'vuln'},
+ a_wuxing:{qi:3,pow:17,cd:1,eff:'burnvuln'},
+ a_hunyuan:{qi:4,pow:22,cd:2,eff:'heal2'},
+ a_zhushan:{qi:2,pow:11,cd:0,eff:'burn'},
+ a_jinhong:{qi:2,pow:13,cd:0,eff:'armor'},
+ a_xinghe:{qi:2,pow:12,cd:0,eff:'vuln'},
+ a_lihuo:{qi:2,pow:13,cd:0,eff:'burn'},
+ a_huachen:{qi:2,pow:11,cd:0,eff:'shield'},
+};
+/* 神通战斗数据：el 五行/同气(tong)，qi 灵气消耗，pow 伤害，eff 效果，once 每场限一次，pierce 无视护罩 */
+const QIELS=ELS.concat(['tong']);                       // 灵气种类：五行 + 同气
+const ELNS=Object.assign({tong:'同'},ELN);
+const SHEN={
+ s_sanmei:{el:'huo',qi:4,pow:22,eff:'burn'},
+ s_yehuo:{el:'huo',qi:3,pow:17,eff:'burn'},
+ s_liehuo:{el:'huo',qi:2,pow:19,eff:null},
+ s_houtu:{el:'tu',qi:3,pow:0,eff:'shield2'},
+ s_bengyan:{el:'tu',qi:2,pow:16,eff:'shield'},
+ s_sanshan:{el:'tu',qi:2,pow:12,eff:'armor'},
+ s_jinren:{el:'jin',qi:3,pow:21,eff:null},
+ s_jinmang:{el:'jin',qi:3,pow:18,eff:null},
+ s_jinguang:{el:'jin',qi:3,pow:0,eff:'shield2'},
+ s_shuiliao:{el:'shui',qi:3,pow:0,eff:'heal2'},
+ s_nutao:{el:'shui',qi:2,pow:16,eff:null},
+ s_xuanbing:{el:'shui',qi:2,pow:14,eff:'freeze'},
+ s_yimu:{el:'mu',qi:3,pow:14,eff:'drain'},
+ s_jixue:{el:'mu',qi:3,pow:16,eff:'drain'},
+ s_quteng:{el:'mu',qi:2,pow:0,eff:'entangle'},
+ s_jinghun:{el:'tong',qi:3,pow:20,eff:null},
+ s_ranhun:{el:'tong',qi:3,pow:14,eff:'vuln'},
+ s_guiyuan:{el:'tong',qi:4,pow:24,eff:null},
+ s_jiangang:{el:'tong',qi:3,pow:18,eff:'shield'},
+ s_tianjian:{el:'tong',qi:6,pow:34,eff:null,once:true,pierce:true},
+};
+/* 遁术：sp 遁速加成（被动），escape 主动舍命遁走 */
+const DUN={d_qing:{sp:3},d_yufeng:{sp:6},d_yujian:{sp:10},d_xue:{escape:true}};
+function playerDun(){let d=S.lv+Math.floor(S.mind/20)+(S.wp&&ITEMS[S.wp]&&(ITEMS[S.wp].atk||0)>1000?3:0);for(const k in (S.dun||{}))if(DUN[k])d+=DUN[k].sp||0;return d+(S.dunBonus||0);}
+
+const WP_FX={w_jian:{reflect:0.12},w_dun:{shield:30,reduce:0.12},w_yin:{vuln:0.15},
+ w_ding:{reduce:0.18,reflect:0.1},w_shan:{vuln:0.2},w_zhu:{shield:60,reduce:0.15,reflect:0.1},
+ w_xiujian:{reflect:0.08},w_jiuzhuan:{shield:40},w_zhuxian:{vuln:0.25}};
+const NPC_EL={yixian:null,nixuxin:'mu',yangyi:'jin',nizhendong:'jin',baidi:'jin',bailiqi:'shui',
+ gongsunji:'tu',linmuxin:'shui',xingning:'shui',xiaoqianjue:'jin',lingwuzhenren:'jin',
+ murongying:'shui',yunji:'shui',yanxiao:'huo',henghuo:'huo',dantaixian:'tu',liqinglin:'mu',
+ mingshan:'mu',weiwuji:'jin',fanjiu:'tu',mojuren:'tu',heixin:'huo',tianxiezi:'huo',
+ xuewei:'shui',xuehe:'huo',kumu:'tu',malaoliu:'mu',dulaoer:'mu',yanling:'huo'};
+const BEASTS={1:['青牛妖','山魈','野彘精'],2:['妖兽','妖修','赤睛狼'],3:['妖王','独角蛟','魔将'],4:['海域凶兽','覆海巨妖','魔修'],5:['古魔','仙府守卫','剑魂'],6:['道殛','虚空邪灵','天魔']};
+
+let B=null;
+function logB(t,c){B.log.unshift({t,c:c||''});if(B.log.length>40)B.log.pop();}
+function elWeight(el){const w={};ELS.forEach(e=>w[e]=1);if(el)w[el]=3;w['tong']=1;return w;}
+function playerWeights(){const w={};ELS.forEach(e=>w[e]=1);if(S.roots.length===1)w[S.roots[0]]=2;if(S.elW&&S.roots[0])w[S.roots[0]]+=S.elW;w['tong']=1;return w;}
+function drawQi(ent,n){for(let i=0;i<n;i++){const w=ent.w;let tot=0;for(const e in w)tot+=w[e];let r=Math.random()*tot,x=null;for(const e in w){r-=w[e];if(r<=0){x=e;break}}if(!x)x=ELS[0];ent.qi[x]=Math.min(QIMAX,(ent.qi[x]||0)+1)}}
+function effHint(e){return {heal:'回血',heal2:'大回血',shield:'护罩',shield2:'大护罩',armor:'减伤',reduce:'减伤',burn:'灼烧',vuln:'易伤',burnvuln:'灼烧·易伤',freeze:'冻结',entangle:'缠绕',drain:'汲血',qi:'聚气'}[e]||''}
+function cardDef(k){
+ if(k==='sword')return {n:'五行剑气',el:S.roots[0],qi:1,pow:8,cd:0,eff:null,type:'art'};
+ if(k==='ning')return {n:'凝神',el:null,qi:0,pow:0,cd:0,eff:'qi',type:'art'};
+ if(FIGHT[k]){const f=FIGHT[k],it=ITEMS[k];return {n:it?it.n:k,el:it?it.el:null,qi:f.qi,pow:f.pow,cd:f.cd||0,eff:f.eff,type:'art'};}
+ if(SHEN[k]){const f=SHEN[k],it=ITEMS[k];return {n:it?it.n:k,el:f.el,qi:f.qi,pow:f.pow,cd:f.cd||0,eff:f.eff,once:f.once,type:'shen',pierce:f.pierce};}
+ const it=ITEMS[k];return {n:it?it.n:k,el:it?it.el:null,qi:2,pow:20,cd:0,eff:null,type:it&&it.t==='shen'?'shen':'art'};
+}
+function cardEl(k){return k==='sword'?S.roots[0]:cardDef(k).el;}
+
+function enemyAtk(el,lv){return {el,pow:6,eff:{huo:'burn',tu:'shield',jin:'armor',shui:'vuln',mu:'heal'}[el]};}
+function beastName(z){return pick(BEASTS[z.d]||BEASTS[1]);}
+function makeBeast(z){
+ const el=z.el||pick(ELS);
+ const e={kind:'beast',name:beastName(z),n:beastName(z),el,lv:Math.max(1,S.lv+rnd(-1,2)),
+  maxHp:0,hp:0,qi:{},w:elWeight(el),shield:0,armor:0,armorT:0,vuln:0,vulnT:0,burn:0,reflect:0,frozen:0,atkMul:1,atk:enemyAtk(el,S.lv),_t:0};
+ e.maxHp=e.hp=Math.round(34*Math.pow(1.27,e.lv))+e.lv*10;
+ if(S.wp&&WP_FX[S.wp])e.reflect=WP_FX[S.wp].reflect||0;
+ return e;
+}
+function makeNpcEnemy(n){
+ const el=NPC_EL[n.k]||pick(ELS);
+ const e={kind:'npc',name:n.n,n:n.n,el,lv:n.lv,
+  maxHp:0,hp:0,qi:{},w:elWeight(el),shield:0,armor:0,armorT:0,vuln:0,vulnT:0,burn:0,reflect:0,frozen:0,atkMul:1,atk:enemyAtk(el,n.lv),_t:0};
+ e.maxHp=e.hp=Math.round(40*Math.pow(1.27,n.lv))+n.lv*10;
+ if(S.wp&&WP_FX[S.wp])e.reflect=WP_FX[S.wp].reflect||0;
+ return e;
+}
+
+function startBattle(e,done){
+ const me={name:S.name,lv:S.lv,el:S.roots[0],
+  maxHp:Math.round(40*Math.pow(1.27,S.lv)*(S.brHpMul||1))+S.mind*2+(S.hpBonus||0),hp:0,qi:{},w:playerWeights(),
+  shield:0,armor:0,armorT:0,vuln:0,vulnT:0,burn:0,reflect:0,cd:{},lastEl:null,frozen:0,atkMul:1,xued:false,usedOnce:{}};
+ me.hp=me.maxHp;
+ if(S.wp&&WP_FX[S.wp]){const fx=WP_FX[S.wp];if(fx.shield)me.shield+=fx.shield;if(fx.reduce){me.armor=Math.max(me.armor,fx.reduce);me.armorT=99}if(fx.reflect)me.reflect=fx.reflect;}
+ e.dun=e.lv+rnd(-1,2);
+ B={enemy:e,me,done,over:false,turn:'me',log:[],round:1,showItems:false};
+ drawQi(me,6);drawQi(e,4);
+ const ps=playerDun(),es=e.dun;
+ logB('【'+(e.name)+'】'+(e.kind==='npc'?'邀你切磋':'拦路而来')+'！（'+(ps>=es?'你遁速占先':'对手遁速占先')+'）','big');
+ openBattle();
+ if(ps<es-1){enemyTurn();if(!B||B.over)return;renderBattle();}else renderBattle();
+}
+function openBattle(){$('#battle').classList.remove('hidden')}
+function closeBattle(){const el=$('#battle');if(el)el.classList.add('hidden');B=null}
+
+function applyEffCard(eff,dst,src,boost,dmg){
+ if(!eff)return;
+ switch(eff){
+  case 'heal': src.hp=Math.min(src.maxHp,src.hp+Math.round(src.maxHp*0.12));break;
+  case 'heal2': src.hp=Math.min(src.maxHp,src.hp+Math.round(src.maxHp*0.25));src.shield+=Math.round(src.maxHp*0.15);break;
+  case 'shield': src.shield+=Math.round(src.maxHp*0.12);break;
+  case 'shield2': src.shield+=Math.round(src.maxHp*0.22);break;
+  case 'armor': case 'reduce': src.armor=Math.max(src.armor,0.15);src.armorT=2;break;
+  case 'burn': dst.burn+=2+boost;break;
+  case 'vuln': dst.vuln=Math.max(dst.vuln,0.2);dst.vulnT=2;break;
+  case 'burnvuln': dst.burn+=2;dst.vuln=Math.max(dst.vuln,0.2);dst.vulnT=2;break;
+  case 'freeze': dst.frozen=1;break;
+  case 'entangle': dst.vuln=Math.max(dst.vuln,0.2);dst.vulnT=2;dst.atkMul=0.6;break;
+  case 'drain': src.hp=Math.min(src.maxHp,src.hp+Math.round((dmg||0)*0.4));break;
+ }
+}
+function applyCard(src,dst,card,lastEl){
+ if(card.eff==='qi'){drawQi(src,3);return src.name+' 凝神聚气，灵气大涨'}
+ let combo=false;
+ if(card.el&&lastEl&&SHENG[lastEl]===card.el)combo=true;
+ let dmg=card.pow*Math.pow(1.27,src.lv||0);
+ if(card.el&&dst.el)dmg*=keMul(card.el,dst.el);
+ if(combo)dmg*=1.5;
+ dmg*=(1-(dst.armor||0))*(1+(dst.vuln||0));
+ if(dst.shield>0&&!card.pierce){const a=Math.min(dst.shield,Math.max(1,Math.round(dmg)));dst.shield-=a;dmg-=a;}
+ dmg=Math.max(1,Math.round(dmg));
+ dst.hp-=dmg;
+ let extra='';
+ if(dst.reflect&&dmg>0){const r=Math.round(dmg*dst.reflect);src.hp-=r;if(r>0)extra='，反伤 '+r}
+ let t=src.name+' 施「'+card.n+(combo?'·连击':(card.el&&card.el!=='tong'?'·'+ELN[card.el]+'系':card.el==='tong'?'·同气':''))+'」伤 '+dst.name+' '+dmg+extra;
+ applyEffCard(card.eff,dst,src,combo?1:0,dmg);
+ return t;
+}
+function enemyTurn(){
+ const e=B.enemy;e._t++;
+ if(e.frozen>0){e.frozen--;logB(e.name+' 被【冻结】，无法行动！','');if(B.me.hp<=0)bLose();return;}
+ if(S.tong&&Math.random()<S.tong){logB('【天生异瞳】'+e.name+' 神通落空！','big');if(B.me.hp<=0)bLose();return;}
+ drawQi(e,2);
+ const atk=e.atk,strong=(e._t%3===0);
+ const card={n:e.name+' 灵术',el:atk.el,qi:0,pow:(strong?atk.pow*1.6:atk.pow)*(e.atkMul||1),eff:atk.eff};
+ logB(applyCard(e,B.me,card,null),'bad');
+ if(B.me.hp<=0)bLose();
+}
+function upkeep(){
+ B.round++;
+ for(const kk in B.me.cd){B.me.cd[kk]--;if(B.me.cd[kk]<=0)delete B.me.cd[kk];}
+ [B.me,B.enemy].forEach(x=>{
+  if(x.burn>0){const d=Math.round(x.burn*(1+0.06*x.lv));x.hp-=d;logB('【灼烧】'+(x===B.me?'你':x.name)+' 受 '+d+' 伤',x===B.me?'bad':'');x.burn--;}
+  if(x.armorT>0){x.armorT--;if(x.armorT<=0)x.armor=0;}
+  if(x.vulnT>0){x.vulnT--;if(x.vulnT<=0)x.vuln=0;}
+ });
+ if(S.regen&&B.me.hp>0&&B.me.hp<B.me.maxHp){const r=Math.round(B.me.maxHp*S.regen);B.me.hp=Math.min(B.me.maxHp,B.me.hp+r);logB('【龙族血脉】回血 '+r,'big');}
+ drawQi(B.me,3);drawQi(B.enemy,2);B.me.lastEl=null;
+ if(B.me.hp<=0)bLose();else if(B.enemy.hp<=0)bWin();
+}
+function bWin(){endBattle('win');}
+function bLose(){endBattle('lose',false);}
+function bFlee(){if(!B||B.over||B.turn!=='me')return;if(B.me.dun>=B.enemy.dun){endBattle('lose',true);return;}logB('遁速不济，未能遁走！','bad');B.turn='enemy';renderBattle();enemyTurn();if(!B||B.over)return;upkeep();if(!B||B.over)return;B.turn='me';renderBattle();}
+function castXue(){if(!B||B.over||B.turn!=='me')return;if(B.me.xued){toast('血遁本场已用','bad');return;}if(!(S.dun&&S.dun.d_xue))return;const loss=Math.max(1,Math.round(B.me.hp*0.2));B.me.hp-=loss;B.me.xued=true;logB('你施展【血遁】，损耗 '+loss+' 气血，血光中遁走！','big');if(B.me.hp<=0){bLose();return;}endBattle('lose',true);}
+function endBattle(res,fled){if(!B||B.over)return;B.over=true;const cb=B.done;closeBattle();if(cb)cb(res,fled);}
+
+function castCard(k){
+ if(!B||B.over||B.turn!=='me')return;
+ const c=cardDef(k),el=cardEl(k);
+ if(c.once&&B.me.usedOnce[k]){toast('本场已施展过','bad');return}
+ if((c.cd||0)>0&&(B.me.cd[k]||0)>0){toast('尚在冷却','bad');return}
+ if(c.qi>0&&(B.me.qi[el]||0)<c.qi){toast('灵气不足','bad');return}
+ if(c.qi>0)B.me.qi[el]-=c.qi;
+ if(c.cd)B.me.cd[k]=c.cd+1;
+ if(c.once)B.me.usedOnce[k]=true;
+ const combo=(c.el&&B.me.lastEl&&SHENG[B.me.lastEl]===c.el);
+ logB(applyCard(B.me,B.enemy,{n:c.n,el:c.el,qi:c.qi,pow:c.pow,eff:c.eff,pierce:c.pierce},B.me.lastEl),combo?'big':'');
+ B.me.lastEl=cardEl(k);
+ if(B.enemy.hp<=0){renderBattle();bWin();return;}
+ B.turn='enemy';renderBattle();
+ enemyTurn();
+ if(!B||B.over)return;
+ upkeep();
+ if(!B||B.over)return;
+ B.turn='me';renderBattle();
+}
+
+function hpBar(x){const pct=clamp(x.hp/x.maxHp*100,0,100);return '<div class="bar life'+(x.hp/x.maxHp<0.3?' low':'')+'"><i style="width:'+pct+'%"></i></div><div class="hpt">'+Math.max(0,Math.round(x.hp))+' / '+x.maxHp+(x.shield>0?'　盾'+Math.round(x.shield):'')+'</div>'}
+function statusStr(x){let s=[];if(x.burn>0)s.push('<span class="st burn">灼烧'+x.burn+'</span>');if(x.vuln>0)s.push('<span class="st vuln">易伤</span>');if(x.armor>0)s.push('<span class="st armor">减伤</span>');if(x.frozen>0)s.push('<span class="st freeze">冻结</span>');return s.join('')}
+function enemyPanel(e){return '<div class="side-h"><b>'+e.name+'</b>'+(e.el?'<span class="el-tag" style="color:'+ELC[e.el]+'">'+ELN[e.el]+'系</span>':'')+'<span class="muted" style="margin-left:auto">第 '+B.round+' 合</span></div>'+hpBar(e)+'<div class="st-row">'+statusStr(e)+'</div>'}
+function mePanel(m){let h='<div class="side-h"><b class="jade">'+m.name+'</b>'+(m.el?'<span class="el-tag" style="color:'+ELC[m.el]+'">主'+ELN[m.el]+'</span>':'')+'</div>'+hpBar(m)+'<div class="st-row">'+statusStr(m)+'</div><div class="qi-row">';QIELS.forEach(el=>{const v=m.qi[el]||0;const col=el==='tong'?'#b9b3c9':ELC[el];h+='<span class="qi'+(v>0?' on':'')+'" style="color:'+col+';border-color:'+col+'66">'+ELNS[el]+'<b>'+v+'</b></span>'});return h+'</div>'}
+function renderBattle(){
+ if(!B)return;const e=B.enemy,m=B.me;
+ $('#b-enemy').innerHTML=enemyPanel(e);
+ $('#b-log').innerHTML=B.log.slice(0,9).map(l=>'<div class="bl '+(l.cls||'')+'">'+l.t+'</div>').join('');
+ $('#b-me').innerHTML=mePanel(m);
+ const bc=$('#b-cards');
+ if(B.showItems){renderItemsPanel(bc);return;}
+ let cards=['sword','ning'].concat(Object.keys(S.arts)).concat(Object.keys(S.shen||{}));
+ let ch='<div class="b-acts">';
+ ch+='<button class="bact" onclick="B.showItems=true;renderBattle()">储物·丹药</button>';
+ if(S.dun&&S.dun.d_xue&&!B.me.xued)ch+='<button class="bact xue" onclick="castXue()">血遁·舍命遁走</button>';
+ ch+='</div>';
+ cards.forEach(k=>{const c=cardDef(k),el=cardEl(k),onCd=(c.cd||0)>0&&(m.cd[k]||0)>0,usedOnce=c.once&&m.usedOnce[k],noQi=c.qi>0&&(m.qi[el]||0)<c.qi,dis=onCd||usedOnce||noQi||B.turn!=='me'||B.over;
+  const tag=el?'<span style="color:'+(el==='tong'?'#b9b3c9':ELC[el])+'">'+ELNS[el]+'</span>'+c.qi:'—';
+  const cls=(c.type==='shen'?' t-shen':'')+(el&&el!=='tong'?' el-'+el:'')+(dis?' dis':'');
+  const lbl=usedOnce?' 已用':(onCd?' 冷却':(c.type==='shen'?' 神':''));
+  ch+='<button class="bcard'+cls+'"'+(dis?' disabled':'')+' onclick="castCard(\''+k+'\')"><div class="bn">'+c.n+lbl+'</div><div class="bc">'+(c.eff?effHint(c.eff)+'　':'')+'耗 '+tag+'</div></button>';});
+ ch+='<button class="bcard flee" onclick="bFlee()">遁 走</button>';
+ bc.innerHTML=ch;
+}
+function renderItemsPanel(bc){
+ const usable=['p_yuan','p_qi','p_xu'].filter(k=>count(k)>0);
+ let h='<div class="bitem-hd">储物 · 临阵用丹</div>';
+ if(!usable.length)h+='<div class="muted" style="padding:10px 4px">囊中无可用丹药。突破丹、延寿丹宜战外服用。</div>';
+ usable.forEach(k=>{const it=ITEMS[k];h+='<button class="bcard" onclick="useBattlePill(\''+k+'\')"><div class="bn">'+it.n+'</div><div class="bc">'+it.d+'</div></button>'});
+ h+='<button class="bcard flee" onclick="B.showItems=false;renderBattle()">返 回</button>';
+ bc.innerHTML=h;
+}
+function useBattlePill(k){
+ if(!B||B.over||B.turn!=='me'||B.showItems===false)return;
+ if(count(k)<=0){B.showItems=false;renderBattle();return;}
+ takeItem(k,1);B.showItems=false;
+ let msg='';
+ if(k==='p_yuan'){const h=Math.round(B.me.maxHp*0.4);B.me.hp=Math.min(B.me.maxHp,B.me.hp+h);msg='服下培元丹，恢复气血 '+h}
+ else if(k==='p_qi'){drawQi(B.me,3);msg='服下凝气丹，灵气大涨'}
+ else if(k==='p_xu'){B.me.hp=B.me.maxHp;B.me.shield+=Math.round(B.me.maxHp*0.3);msg='服下太虚还魂丹，气血充盈'}
+ else {addItem(k,1);toast('此丹不宜临阵服用','bad');return;}
+ logB(msg,'good');save();
+ B.turn='enemy';renderBattle();enemyTurn();if(!B||B.over)return;upkeep();if(!B||B.over)return;B.turn='me';renderBattle();
+}
+
+/* ---------------- 主线剧情 ---------------- */
+function storyOn(ch){
+  if(S.story[ch.id])return false;
+  if(ch.need&&!S.story[ch.need])return false;
+  if(S.lv<ch.lv)return false;
+  if(Math.floor(S.months/12)<ch.year)return false;
+  return true;
+}
+function storyOpen(){return STORY.filter(storyOn)}
+function applyEff(e){
+  if(!e)return;
+  if(e.exp)gainExp(needExp(S.lv)*e.exp);
+  if(e.stone)S.stone=Math.max(0,S.stone+e.stone);
+  if(e.item){
+    const it=ITEMS[e.item];
+    if(it.t==='wp'){S.wps[e.item]=1;if(!S.wp||(ITEMS[S.wp].atk||0)<(it.atk||0))S.wp=e.item}
+    else if(it.t==='art'){S.arts[e.item]=1;S.art=e.item}
+    else addItem(e.item,1);
+  }
+  if(e.pill)addItem(e.pill,1);
+  if(e.herb)e.herb.forEach(k=>addItem(k,1));
+  if(e.sect){const s=SECTS.find(x=>x.k===e.sect);if(s){S.sect=e.sect;S.arts[s.art]=1;S.art=s.art}}
+  if(e.flag)S.flags[e.flag]=1;
+  if(e.like)for(const k in e.like)addLike(k,e.like[k]);
+  if(e.mind)S.mind+=e.mind;
+  if(e.life)S.lifeLeft+=e.life;
+  if(e.injury){S.injury=clamp(S.injury+e.injury,0,3);if(e.injury>0){const ls=rnd(2,8)*e.injury;S.lifeLeft-=ls;toast('寿元 -'+ls+' 年','bad')}}
+  if(e.demon)S.demon=clamp(S.demon+e.demon,0,6);
+}
+function doStory(id,oi){
+  const ch=STORY.find(x=>x.id===id);if(!ch||S.story[id])return;
+  const o=ch.opts[oi];if(!o)return;
+  const oldLv=S.lv,oldLife=S.lifeLeft,oldStone=S.stone;
+  applyEff(o.e);
+  S.story[id]={o:oi,r:o.r};
+  log('【'+ch.t+'】'+o.r,'big');
+  const diff=[];
+  if(S.stone!==oldStone)diff.push('灵石 '+(S.stone>oldStone?'+':'')+fmt(S.stone-oldStone));
+  if(Math.abs(S.lifeLeft-oldLife)>=1)diff.push('寿元 '+((S.lifeLeft-oldLife)>0?'+':'')+Math.round(S.lifeLeft-oldLife)+' 年');
+  if(diff.length)log('　'+diff.join('　'),'');
+  closeModal();afterAction();
+}
+function showStory(id){
+  const ch=STORY.find(x=>x.id===id);if(!ch)return;
+  let h='<p>'+ch.txt+'</p>';
+  ch.opts.forEach((o,i)=>{
+    const lack=o.need&&!count(o.need);
+    h+='<button class="btn '+(lack?'ghost':'')+'" '+(lack?'disabled':'')+' onclick="doStory(\''+id+'\','+i+')">'+
+       o.t+(lack?'（需'+ITEMS[o.need].n+'）':'')+'</button>';
+  });
+  showModal(ch.t,h,[{t:'再想想',f:'closeModal()',c:'ghost'}]);
+}
+
+function refine(rk){
+  const r=RECIPES[rk];
+  if(!S.recipes[rk]){toast('尚未习得此丹方','bad');return}
+  for(const k in r.need){if(count(k)<r.need[k]){toast('药材不足：'+ITEMS[k].n,'bad');return}}
+  if(!advance(2)) return;
+  for(const k in r.need) takeItem(k,r.need[k]);
+  const skill=S.refine*0.02+S.mind*0.01;
+  const rate=clamp(0.62+skill-r.diff*0.07,0.15,0.95);
+  if(Math.random()<rate){
+    addItem(r.out,1);S.refine++;
+    log('开炉炼丹，成！得 '+ITEMS[r.out].n,'good');toast('炼成 '+ITEMS[r.out].n,'good');
+  }else{
+    S.refine+=0.5;
+    log('丹炉炸裂，药材尽毁','bad');toast('炼丹失败','bad');
+  }
+  afterAction();
+}
+
+function usePill(k){
+  if(count(k)<=0)return;
+  if(S.noPill&&k==='p_qi'){toast('先天异脉，服丹无所得','bad');addItem(k,1);return;}
+  takeItem(k,1);
+  switch(k){
+    case 'p_qi':gainExp(needExp(S.lv)*0.3);toast('修为 +'+fmt(needExp(S.lv)*0.3),'good');log('服下凝气丹，修为暴涨','good');break;
+    case 'p_yuan':S.injury=0;toast('伤势尽愈','good');log('服下培元丹，伤势尽愈','good');break;
+    case 'p_qing':S.demon=Math.max(0,S.demon-2);toast('心魔 -2','good');log('服下清心丹，道心澄明','good');break;
+    case 'p_shou':S.lifeLeft+=40;toast('寿元 +40 年','good');log('服下延寿丹，寿元 +40 年','good');break;
+    case 'p_xu':S.lifeLeft+=200;S.injury=0;toast('寿元 +200 年','big');log('太虚还魂丹下肚，枯木回春','big');break;
+    default:toast('此丹需突破时自动服用','bad');addItem(k,1);return;
+  }
+  afterAction();
+}
+
+function buy(k,price){
+  if(S.stone<price){toast('灵石不足','bad');return}
+  S.stone-=price;
+  const it=ITEMS[k];
+  if(it.t==='art'){S.arts[k]=1;S.art=k;toast('修习 '+it.n,'good');log('购得功法《'+it.n+'》','good')}
+  else if(it.t==='shen'){S.shen[k]=1;toast('修习神通 '+it.n,'good');log('习得神通《'+it.n+'》','good')}
+  else if(it.t==='dun'){S.dun[k]=1;toast('修习遁术 '+it.n,'good');log('习得遁术《'+it.n+'》','good')}
+  else if(it.t==='wp'){S.wps[k]=1;if(!S.wp||(ITEMS[S.wp].atk||0)<(it.atk||0))S.wp=k;toast('获得 '+it.n,'good');log('购得法宝 '+it.n,'good')}
+  else {addItem(k,1);toast('购入 '+it.n,'good')}
+  afterAction();
+}
+function buyRecipe(rk){
+  const r=RECIPES[rk];
+  if(S.recipes[rk]){toast('已习得','bad');return}
+  if(S.stone<r.v){toast('灵石不足','bad');return}
+  S.stone-=r.v;S.recipes[rk]=1;
+  toast('习得 '+r.n,'good');log('购得 '+r.n,'good');afterAction();
+}
+function sell(k,price){
+  if(count(k)<=0)return;
+  takeItem(k,1);S.stone+=price;
+  toast('售出，+'+fmt(price)+' 灵石','good');afterAction();
+}
+function sellWp(k){
+  if(!S.wps[k])return; delete S.wps[k]; if(S.wp===k)S.wp=null;
+  S.stone+=Math.round(ITEMS[k].v*0.5);toast('售出 '+ITEMS[k].n,'good');afterAction();
+}
+
+function afterAction(){
+  if(S.lifeLeft<=0){die('气息断绝');return}
+  if(S.lv>S.best)S.best=S.lv;
+  if(S.lifeLeft<10&&!S.warn){S.warn=1;toast('大限将至，速寻延寿之物','bad')}
+  if(S.lifeLeft>=10)S.warn=0;
+  const so=storyOpen().length;
+  if(so>0&&so>(S.storyN||0))toast('有新的机缘（江湖 · 剧情）','big');
+  S.storyN=so;
+  save();paint();
+}
+
+/* ---------------- 生死 ---------------- */
+function die(reason){
+  const gainLegacy=Math.round(Math.pow(S.lv,1.35)+S.refine*0.3+S.mind*0.2);
+  S.legacy+=gainLegacy;S.deaths++;
+  log('【身死】'+S.name+' 于 '+ageStr(S.age)+' 之年'+reason+'，一代修士就此落幕。','bad');
+  save();
+  showModal('身死道消','<p style="text-align:center;color:#e0604f;letter-spacing:2px">'+reason+'</p>'+
+    '<p>你这一世止步于 <b class="jade">'+LV[S.lv].name+'</b>，享年 <b class="gold">'+ageStr(S.age)+'</b>。</p>'+
+    '<p>一身道行凝为传承，来世可借此精进：<b class="pur">传承 +'+gainLegacy+'</b>（累计 '+S.legacy+'）</p>'+
+    '<p class="muted">寿元有尽，大道无穷。转世重修，再入仙途。</p>',
+    [{t:'转 世 重 修',f:'reborn()'}]);
+}
+function reborn(){
+  const lg=S.legacy,best=S.best,bn=S.bestName,deaths=S.deaths;
+  const g=S.gender,nm=S.name;
+  S=newState();
+  S.legacy=lg;S.best=best;S.bestName=bn;S.deaths=deaths;S.gender=g;S.name=nm;
+  rollRoot();                       // 转世重洗灵根与资质（含传承加成）
+  S.stone=200+lg*30;
+  S.log=[{t:'【转世】'+nm+' 带着 '+lg+' 点传承重入轮回，此生资质 '+S.apt,c:'big'}];
+  closeModal();save();paint();
+  toast('转世成功','big');
+}
+function ending(){
+  save();
+  showModal('长生','<p style="text-align:center" class="gold">金仙道果，与天同寿</p>'+
+    '<p>你自一介凡人，修至 <b class="gold">'+LV[S.lv].name+'</b>，历时 '+Math.floor(S.age)+' 年，历经 '+S.deaths+' 次转世。</p>'+
+    '<p class="muted">觅得长生，此局终了。你可继续游玩，或重开一世。</p>',
+    [{t:'继续修行',f:'closeModal()'},{t:'重开一世',f:'hardReset()'}]);
+}
+/* ---------------- 宗门流派数据（觅长生官方配置表 / wiki《全npc流派一览》）---------------- */
+const SECTDEX={"w":["养刀术","凌云诀","剑术要诀","御剑九诀","玉云功","御剑术","金元剑芒","运气术","蓄力","聚气","神剑诀","金虹剑诀","金芒诀","金翎托天功","静气诀","金虹剑法","破势","灵光印","纵地金光","太阴六虚功","太乙剑诀","砺剑诀","千刃术","太阴奇门阵","金虹剑阵","重剑诀","重元如意体","蓄势","石肤术","金光罩","水罩术","奔雷诀","重元无锋功","天晶诀","紫莲金影罩","重元轮转诀","覆体印","金虹贯日","神皇印","灵力护罩","一气分神功","神玄炼体诀","天刃诀","三山印","金芒术","水枪","木刺","火弹","落石","流光真诀","生生造化诀","寸芒","刺穴","振穴","玄门引气真诀","逆脉","通穴","藏离诀","蓄灵诀","紫阳混元劲","隐虚破","溯金真法","吞日神猿变","散元固气功","截脉","问水剑典","化雨诀","惊涛剑诀","柔水无痕","活血术","剑罡诀","乾坤化剑诀","灵水诀","怒水天殇","静水无波","破釜沉舟","泰然无波","刚柔并济","玄水真法","星河剑典","星河剑阵","冰霜诀","沧海诀","寒霜刺","玄冰劲","金刃","冰魄经","重水普渡诀","御水诀","滥觞","冰雨术","玄冰刺","裂冰诀","霜天寒月阵","玄冰凝骨术","浪击诀","浪击","水灵妙法","怒涛诀","游神御水诀","怒涛","璇水印","罡水印","紫微印","龙象吞海诀","狂澜诀","生木诀","上青诀","鸩羽诀","青藤诀","腐毒咒","引毒咒","五毒蚀心诀","青蛇要诀","回春诀","青蛇劲","寄杖诀","血毒经","五毒咒","化血毒掌","春丝印","驱藤术","善水印","花舞术","青鸾转生诀","九冲图集","落英","阳春百花诀","太乙玄功","寄生引血术","万象寄生诀","万象缠身诀","乱藤术","缠木","降魔锁骨阵","太阴玄毒功","灵犀掌","缠丝咒","幻影神行诀","竹山剑法","聚灵阵","地煞剑阵","烈焰诀","弄焰诀","引火诀","炙火印","吐焰诀","燃火术","叠焰诀","丹阳印","火铃印","爆燃","离火绝炎","炙炎轮回","泰阳功","陨日轮炎诀","燃焰诀","都天烈火仙阵","焚天功","红莲业焱","赤炎灵阵","焚心诀","煮海诀","焚阳诀","返火移景术","涅槃诀","化焰诀","化焰术","火墙术","熔盾诀","少阳诀","玄阳哺焰诀","浴火咒","焰灵招徕","聚焰","九龙神火罩","业火印","离火剑法","引火","上清印","凤灵妖火","化尘诀","地元炼体功","撼山诀","土御诀","沙牢","还尘","化沙","熔火盾","聚尘术","绝尘","聚尘诀","元戎飞沙诀","象甲功","引力术","落岩术","混元引气诀","四象天引录","天引术","万尘化土","三转炼山诀","万土归尘","大陨岩术","凝沙诀","化尘真诀","沙葬","沙缚","天崩地裂","万尘归灵诀","天星若雨","重岩诀","小须弥禁法","土墙术","土葬迷尘阵","土葬轮转阵","土相仙阵","落石阵","地煞凝结","三才化甲诀","紫霄功","九宫颠倒阵","五丁开山诀","开山诀","蛮牛护体诀","吐纳功法","飞云劲","罗烟步","八极崩","疾风劲","迷踪步","五行颠倒术","金刚移山诀","无影腿","大五行擒仙手","太上化龙诀","胎息经","四方愈灵图","乾坤百巧经","愈灵阵","五毒摄魂阵","五方天地诀","九宫杀阵","灵水仙阵","小迷踪阵","驱阵","御阵","剑典-人道篇","青莲剑诀","飞星剑诀","剑典-天道篇","剑典-地道篇","阴阳两仪剑","天剑","白帝剑诀","万剑诀","五内观想法","燃魂诀","惊魂咒","凝神咒","宝塔观想法","神门度气诀","浮尘炼心诀","神威式","扰魂术","神念诀","苍云荫月","月曝寒辉","月华流照","清月露华体","太清幻术","折星哺气诀","神蚀法","星耀凝魂诀","蚀神刺","隐匿术","罗睺振魂诀","星微神灭诀","月破引虚诀","人剑","地剑","玄武剑阵","血剑典-人灭","人灭剑","魍魉鬼卷","魑魅鬼卷","唤影典","万影录","天魔解体","噬影","九幽刺","血影术","影杀","乱影杀","渊血冥图","通幽冥图","酆都鬼蜮","镇魂掌","唤影箓","驱影术","炼影箓","血剑典-地绝","炼血策","泣血歌","地绝剑","血剑典-天煞","天煞剑","禾山经","猛鬼探空手","五鬼附身术","血祭噬魂术","啖魂术","浑天术","噬魂诀","拘魂阵","百鬼拘灵阵","落魂阵","夺灵诀","截灵手","悬灵术","三昧真火","驱寒印","蚀骨毒火","金罡斩","水龙弹","树牢术","地龙术","灵藤印","厚土印","土象归一诀","崩岩术","玄土印","铁甲咒","透石术","裂气斩","乱刃","回风印","归元咒","烈火掌","燃尽","暗雷劲","龟息术","风灵劲","摧血掌","牵灵咒","九玄内经","玄阴劲","枯灵劲","阴阳劲","长春通玄录","太青妙法","三相生灵诀","三相脱骨诀","三寸真元掌","七杀剑诀","归元剑气","鹤喙针","通宝合元诀","分影手","鹤回翔","大罗千幻诀","聚元咒","矢神刺","巨灵爪","气旋斩","催心爪","九纹轮回诀","金罡炼体诀","灭灵掌","大吞灭术","吞灵咒","坐火诀","灭灵诀","唤魔经","魔典","魔影双杀","祭血罩","狱血魔经","炼魔策","浴血咒","血魂煞","血影分神术","天魔录","心魔秘术","古神经","玄神经","幽神录","魔神变","五幽炼神诀","神威录","幽魂录","血魂录","驭灵典","唤灵咒","饲鬼术","魔神锻体诀","万魂录","魂啸"],"c":[{"n":"五大宗门","s":[{"n":"金虹剑派","f":[["金虹神剑流",["萧千绝","灵武真人","明河剑仙"],[["练气后期",[0,1,2,3,4],[5,6,7,8,9],[]],["筑基后期",[10,11,12,13,14],[15,16,17,18,7,8,9],[]],["金丹后期",[10,11,19,13,20],[15,16,17,18,7,8,9],[]],["元婴后期",[10,11,13,21,20],[22,15,16,17,18,7,8,9,23,24],[19]]]],["金虹蓄势流",["镇元剑仙","冲和剑仙"],[["练气后期",[25,26,4,1],[27,17,28,29,30,7,9],[]],["筑基后期",[25,31,26,32,33],[27,17,34,18,7,9],[]],["金丹后期",[25,31,35,32,11],[27,34,18,36,37,38,7,9,39],[]],["元婴后期",[40,31,41,32,11],[27,34,18,36,37,38,7,9,39],[35]]]],["金虹寸芒流",["龙阳上人"],[["练气后期",[42,0,12,4,1],[43,44,45,46,47,48,7,9],[]],["筑基后期",[12,49,13,42,50],[43,17,51,44,28,18,52,7,9],[]],["金丹后期",[12,49,13,42,50],[43,17,51,44,28,18,52,7,9,53],[]],["元婴后期",[50,49,13,41,54],[55,43,17,51,44,28,18,56,53,9],[57]]]],["金虹散气流",["白鹿真人"],[["练气后期",[42,0,12,4,1],[43,44,45,46,47,48,7,9],[]],["筑基后期",[58,14,4,59,0],[18,60,7],[]],["金丹后期",[61,58,40,62,63],[18,60],[]],["元婴后期",[61,58,14,62,63],[18,60],[40]]]],["徐凡",[],[["练气后期",[25,26,4,1],[27,17,28,29,30,7,9],[]],["筑基后期",[25,31,26,32,11],[27,17,34,64,18,7,9],[]],["金丹后期",[25,31,35,32,11],[27,17,34,64,18,7,9],[]],["元婴后期",[25,31,41,32,11],[27,17,34,64,18,36,38,37,7,9],[35]]]]]},{"n":"星河剑派","f":[["星河水剑流",["云玑天师","玄伶仙子","青嫣"],[["练气后期",[65,66,2,1,4],[67,68,69,70,9,7],[]],["筑基后期",[71,72,65,66,14],[73,74,75,76,77,69,9,7],[]],["金丹后期",[71,72,65,78,79],[73,74,75,76,77,69,80,9,7],[]],["元婴后期",[71,72,65,78,79],[73,74,75,76,77,69,80,9,7],[20]]]],["星河霜冻流",["凝霜仙子","白露","冰魄仙子"],[["练气后期",[81,82,66,1,4],[83,84,7,9,85,45,46,47,48],[]],["筑基后期",[81,86,87,59,72],[88,84,89,90,83,91,7,9],[]],["金丹后期",[81,86,87,59,92],[88,84,89,90,83,91,7,9],[]],["元婴后期",[81,86,87,59,54],[93,88,84,89,90,94,83,91,7,9],[92]]]],["星河怒涛流",["慕容颖","润熹仙子"],[["练气后期",[82,66,95,1,4],[7,8,9,85,96,46,47,48],[]],["筑基后期",[97,95,87,98,99],[7,8,9,88,89,100,96,101,102,103],[]],["金丹后期",[97,95,50,98,99],[7,8,9,88,89,100,96,101,102,103],[]],["元婴后期",[97,104,50,98,99],[7,8,9,88,89,100,96,101,102,103],[105]]]]]},{"n":"竹山宗","f":[["竹山叠毒流",["青蛇真人"],[["练气后期",[4,106,107,108,109],[110,111,7,9,39],[]],["筑基后期",[112,108,14,113,114],[115,110,111,116,7,9,39],[]],["金丹后期",[112,117,14,113,114],[118,115,110,111,116,119,7,9,39],[]],["元婴后期",[112,108,54,113,114],[118,115,110,111,116,119,7,9,39],[117]]]],["竹山落英流",["紫菱仙子"],[["练气后期",[4,106,107,108,109],[7,9,120,121,122,123,46],[]],["筑基后期",[124,125,4,106,107],[7,9,120,121,122,116,126,123,46],[]],["金丹后期",[127,114,107,125,124],[7,9,120,121,122,116,126,123,83],[]],["元婴后期",[114,54,125,124,128],[7,9,120,121,122,116,126,123,83],[127]]]],["竹山缠绕流",["李青麟","青竹道人","长春真人","韩湘子"],[["练气后期",[4,106,107,108,109],[7,9,121,129],[]],["筑基后期",[109,130,131,124,59],[7,9,116,120,121,132,129,133,134],[]],["金丹后期",[109,130,131,124,135],[116,9,136,120,121,132,129,133,137,134],[]],["元婴后期",[138,130,131,124,135],[116,9,136,120,121,132,129,133,137,134],[128]]]],["竹山剑法",["温杰","青元剑仙"],[["练气后期",[109,106,4,107],[122,120,139,5,7,9],[]],["筑基后期",[109,106,4,107,114],[122,120,139,5,116,7,9,140],[]],["金丹后期",[125,114,107,41,21],[122,120,139,5,116,7,9,140,141],[]],["元婴后期",[125,114,107,41,21],[122,120,139,5,116,7,9,140,141],[20]]]]]},{"n":"离火门","f":[["离火叠焰流",["恒火真君","火云老祖"],[["练气后期",[142,143,144,1,4],[145,146,46,147,85,48,7,9],[]],["筑基后期",[14,143,144,148,144],[149,145,150,151,147,152,153,9,7],[]],["金丹后期",[154,155,148,156,59],[149,145,150,151,147,152,153,9,7,157],[]],["元婴后期",[154,155,59],[149,145,150,151,147,152,153,9,7,157],[158]]]],["离火灼烧流",["炎萧","苍坤上人","杨雄琦"],[["练气后期",[142,143,144,1,4],[145,146,45,46,47,48,85,7,9],[]],["筑基后期",[142,143,144,1,156],[7,9,159,152,153,145,160,140],[]],["金丹后期",[161,162,41,59,163],[7,9,164,159,152,153,145,157,160,140],[]],["元婴后期",[161,162,41,59,163],[7,9,164,159,152,153,145,157,160,140],[165]]]],["离火化焰流",["正阳道长"],[["练气后期",[143,166,142,4,1],[167,145,168,47,7,9],[]],["筑基后期",[169,166,142,170,41],[167,145,152,153,140,168],[]],["金丹后期",[171,169,163,170,162],[167,172,173,152,153,174,140,157,175],[]],["元婴后期",[171,169,163,170,162],[167,172,173,152,153,174,140,157,175],[41]]]],["离火剑法",["无"],[["练气后期",[142,143,144,1,4],[145,146,46,147,85,46,48,7,9],[]],["筑基后期",[142,143,144,148,144],[110,149,145,176,177,152,153,9,7,157],[]],["金丹后期",[154,155,148,156,21],[110,149,145,176,177,152,153,9,7,157],[]],["元婴后期",[154,155,148,156,21],[110,149,145,176,177,152,153,9,7,157],[158]]]],["离火异火",["焦飞"],[["练气后期",[142,143,144,1,4],[145,146,45,178,147,85,46,48,7,9],[]],["筑基后期",[142,143,144,148,4],[149,178,176,147,151,152,153,9,7],[]],["金丹后期",[154,155,148,156,142],[149,178,176,147,151,152,153,9,7],[]],["元婴后期",[161,155,148,156,158],[7,9,179,152,153,178,149,180,147,173],[59]]]]]},{"n":"化尘教","f":[["化尘引力流",["恒如真人"],[["练气后期",[181,182,4,183,184],[150,185,186,187,188,189,190,7,9],[]],["筑基后期",[191,192,193,4,1],[194,195,7,9],[]],["金丹后期",[196,191,192,193,197],[198,194,195,199,7,9],[]],["元婴后期",[196,191,192,193,200],[198,201,199,194,202,7,9],[197]]]],["化尘尘沙流",["澹台仙","晟慧真君","冶庚上人","云秋兰"],[["练气后期",[181,182,4,183,184],[150,185,186,187,188,189,190,7,9],[]],["筑基后期",[181,203,204,192,184],[150,185,186,187,189,205,206,207,7,9],[]],["金丹后期",[208,203,204,192,50],[150,185,186,187,189,205,206,209,210,9],[]],["元婴后期",[200,203,204,192,50],[150,185,186,187,189,205,206,209,210,9],[208]]]],["化尘尘沙阵",["鸢本仙子"],[["练气后期",[181,182,4,183,184],[150,185,186,187,188,189,190,7,9],[]],["筑基后期",[181,203,204,193,211],[185,186,187,188,150,189,205,212,7,9],[]],["金丹后期",[170,203,204,193,211],[201,213,214,140,215,216,186,187,217,207],[]],["元婴后期",[170,203,204,193,211],[201,213,214,140,215,216,186,187,217,209],[208]]]],["化尘屯牌流",["无"],[["练气后期",[181,182,4,183,184],[150,185,186,187,188,189,190,7,9],[]],["筑基后期",[181,182,4,183,184],[185,186,187,188,150,189,205,212,7,9],[]],["金丹后期",[218,193,219,1,58],[220,140,215,199,221,222],[]],["元婴后期",[218,193,219,1,58],[220,140,215,199,221],[200]]]]]}]},{"n":"四大家族","s":[{"n":"百里府","f":[["百里府修士",[],[["练气后期",[4,223,224,1,225],[226,7,9,227],[]],["筑基后期",[41,223,59,4,228],[229,7,230,8,9],[]],["金丹后期",[231,138,41,223,228],[232,229,233,7,230,8,9],[]],["元婴后期",[231,138,62,223,228],[232,229,233,7,230,8,9],[234]]]],["百里奇",[],[["练气后期",[4,223,1,225,224],[226,7,9,227],[]],["筑基后期",[41,223,59,4,225],[229,7,230,8,9],[]],["金丹后期",[231,138,41,223,228],[232,229,233,7,230,8,9],[]],["元婴后期",[231,138,62,223,228],[232,229,233,7,230,8,9],[234]]]]]},{"n":"公孙府","f":[["公孙府修士",[],[["练气后期",[224,1,4,225,235],[85,45,46,47,48,140,216,7,9],[]],["筑基后期",[1,4,211,236,237],[238,160,239,215,140,216,7,9],[]],["金丹后期",[240,59,211,236,237],[241,242,238,160,239,215,140,216,7,9],[]],["元婴后期",[240,41,211,236,237],[241,242,238,160,239,215,140,216,7,9],[59]]]],["公孙季",[],[["练气后期",[224,1,4,225,235],[85,45,46,47,48,140,216,7,9],[]],["筑基后期",[1,41,211,236,237],[238,160,239,215,140,216,7,9],[]],["金丹后期",[240,59,211,236,237],[157,140,241,238,215,160,216,243,244,245],[]],["元婴后期",[240,41,211,236,237],[157,140,241,238,215,160,216,243,244,164],[14]]]]]},{"n":"倪府","f":[["倪家修士",[],[["练气后期",[2,3,4,1,246],[5,7,8,9],[]],["筑基后期",[2,247,4,1,246],[5,70,7,8,9],[]],["金丹后期",[248,247,41,249,250],[5,70,7,8,9],[]],["元婴后期",[248,247,14,249,250],[251,252,70,7,8,9],[253]]]],["倪旭欣",[],[["练气后期",[2,3,4,1,246],[5,7,8,9],[]],["筑基后期",[2,247,4,1,246],[5,70,7,8,9],[]],["金丹后期",[248,247,41,249,250],[5,70,7,8,9],[]],["元婴后期",[248,247,14,249,250],[251,252,70,254,7,8,9],[253]]]]]},{"n":"林府","f":[["林家修士",["林沐雪"],[["练气后期",[255,1,256,4],[257,258,7,8,9,39],[]],["筑基后期",[259,260,255,261,262],[263,258,264,265,266,267,268,269,270],[]],["金丹后期",[259,260,255,261,262],[263,258,264,265,266,267,268,269,270],[]],["元婴后期",[259,260,255,261,262],[263,258,264,265,266,267,268,269,270],[54]]]],["林沐心",[],[["练气后期",[255,1,256,4],[257,258,7,8,9,39],[]],["筑基后期",[259,260,255,271,262],[264,270,272,258,7,273,274],[]],["金丹后期",[259,260,275,271,262],[264,270,272,258,7,276,273,274],[]],["元婴后期",[259,260,275,271,262],[264,270,272,258,7,276,273,274],[277]]]]]}]},{"n":"三大宫楼","s":[{"n":"白帝楼","f":[["白帝楼剑阵流",[],[["练气后期",[246,2,4,225,1],[278,7,9],[]],["筑基后期",[246,250,41,248,2],[279,278,7,9,280],[]],["金丹后期",[246,250,249,41,248],[252,279,278,251,7,9,280],[]],["元婴后期",[246,250,249,41,248],[252,251,7,9,280],[253]]]],["白帝楼阴阳流",[],[["练气后期",[246,2,4,225,1],[278,7,9],[]],["筑基后期",[246,250,41,248,2],[279,278,70,7,9],[]],["金丹后期",[246,250,249,41,248],[252,279,278,70,7,9],[]],["元婴后期",[246,250,249,41,248],[251,252,70,7,9],[253]]]]]},{"n":"风雨楼","f":[["风雨楼绝命流",["琚运琦"],[["练气后期",[281,1,4],[282,7,9],[]],["筑基后期",[283,284,285,286,41],[287,288,289,290,291,292,7,9],[]],["金丹后期",[293,285,286,138,294],[287,290,288,289,291,292,7,9,295],[]],["元婴后期",[293,285,286,138,294],[287,288,289,290,291,292,7,9,295,80],[219]]]],["风雨楼吸血流",[],[["练气后期",[281,1,4],[282,7,9],[]],["筑基后期",[283,284,285,286,41],[296,287,290,297,290,298,7,9],[]],["金丹后期",[293,285,286,138,294],[296,287,290,297,290,299,7,9,295],[]],["元婴后期",[293,285,286,138,294],[296,287,290,297,290,299,7,9,295],[219]]]],["风雨楼血剑流",[],[["练气后期",[281,1,4],[282,7,9],[]],["筑基后期",[281,300,301,4,302],[287,303,282,7,9,140],[]],["金丹后期",[293,300,304,301,302],[287,305,303,282,7,9,140],[]],["元婴后期",[293,300,304,301,302],[287,305,303,282,7,9,140],[21]]]]]},{"n":"星宫","f":[["星宫修士",["星凝","无惑真人","蕊宫仙子"],[["练气后期",[255,1,256,4],[257,258,7,8,39],[]],["筑基后期",[259,260,255,271,262],[264,270,272,258,7],[]],["金丹后期",[259,260,275,271,262],[264,270,272,258,7,273,274],[]],["元婴后期",[259,260,275,271,262],[264,270,272,258,7,276,273,274],[277]]]],["王登",[],[["练气后期",[255,1,256,4],[257,258,7,8,39],[]],["筑基后期",[259,260,255,271,262],[264,270,272,258,7],[]],["金丹后期",[259,260,255,271,262],[264,270,272,258,7,273,274],[]],["元婴后期",[259,260,275,271,262],[264,270,272,258,7,276,273,274],[277]]]]]}]},{"n":"两大山门","s":[{"n":"禾山道","f":[["禾山道修士",["麻老九","颜老怪"],[["练气后期",[306,1,224,235,4],[7,8,9,307,39,308,309,310],[]],["筑基后期",[306,14,59,170,311],[7,8,9,307,39,308,309,310],[]],["金丹后期",[306,41,59,170,311],[312,308,310,309,7,9,140,313,314],[]],["元婴后期",[306,14,59,170,311],[312,308,310,309,7,9,140,313,315,314],[138]]]]]},{"n":"沂山派","f":[["沂山派修士",["杜老二","百毒老怪"],[["练气后期",[316,1,224,235,4],[317,85,45,46,47,48,7],[]],["筑基后期",[316,1,224,235,4],[317,85,45,46,47,48,7,227,318],[]],["金丹后期",[59,155,14,108,112],[110,111,319,145,152,153,320,7,9],[]],["元婴后期",[59,155,14,108,112],[110,111,319,145,152,153,320,321,7,9],[170]]]]]}]},{"n":"天下一阁","s":[{"n":"天机阁","f":[["天机阁剑罡",[],[["练气后期",[2,3,4,1,225],[5,7,9],[]],["筑基后期",[2,41,4,248,59],[5,70,7,9,280],[]],["金丹后期",[219,41,14,248,59],[5,70,7,9,280],[]],["元婴后期",[219,41,14,248,59],[5,70,7,9,280],[20]]]],["天机阁火毒",[],[["练气后期",[106,143,4,225,108],[110,146,145,7,9],[]],["筑基后期",[106,155,142,108,112],[110,111,319,145,152,153,320,7,9],[]],["金丹后期",[59,155,14,108,112],[110,111,319,145,152,153,320,7,9],[]],["元婴后期",[59,155,14,108,112],[110,111,319,145,152,153,320,321,7,9],[170]]]],["天机阁五行",[],[["练气后期",[224,1,4,225,235],[85,45,46,47,48,7,9],[]],["筑基后期",[59,1,4,235,170],[322,323,324,146,325,212,29,7,9],[]],["金丹后期",[59,1,4,50,170],[326,176,327,322,323,324,146,325,7,9],[]],["元婴后期",[59,1,41,50,170],[326,176,327,322,323,324,146,325,7,9],[138]]]]]}]},{"n":"散修小派","s":[{"n":"散修小派","f":[["散修火毒",[],[["练气后期",[106,143,4,225,108],[110,146,145,7,9],[]],["筑基后期",[106,155,142,108,112],[110,111,319,145,152,153,320,7,9],[]],["金丹后期",[59,155,14,108,112],[110,111,319,145,152,153,320,7,9],[]],["元婴后期",[59,155,14,108,112],[110,111,319,145,152,153,320,321,7,9],[170]]]],["散修崩岩",["广成散人"],[["练气后期",[183,1,4,225,235],[85,45,46,47,48,212,7,9],[]],["筑基后期",[183,182,4,59,328],[329,330,331,332,39,7,9],[]],["金丹后期",[192,193,41,14,328],[217,329,330,331,332,39,333,9],[]],["元婴后期",[192,193,41,14,328],[217,329,330,331,332,39,333,9],[138]]]],["散修五行",[],[["练气后期",[224,1,4,225,235],[85,45,46,47,48,7,9],[]],["筑基后期",[59,14,4,235,170],[322,323,324,146,325,212,29,7,9],[]],["金丹后期",[59,14,4,50,170],[326,176,327,322,323,324,146,325,7,9],[]],["元婴后期",[59,14,41,50,170],[326,176,327,322,323,324,146,325,7,9],[138]]]],["散修乱刃",[],[["练气后期",[224,1,4,225,235],[136,85,45,46,47,48,7,9],[]],["筑基后期",[235,4,1,219,59],[136,334,7,230,8,9],[]],["金丹后期",[14,41,1,219,59],[136,335,334,7,230,8,9,336],[]],["元婴后期",[14,41,1,219,59],[136,335,334,7,230,8,9,336],[54]]]],["散修剑罡",[],[["练气后期",[2,3,4,1,225],[5,7,9],[]],["筑基后期",[2,41,4,248,59],[5,70,7,9,140],[]],["金丹后期",[219,41,14,248,3],[5,70,7,9,140],[]],["元婴后期",[219,41,14,248,59],[5,70,7,9,140],[20]]]],["散修烈火掌",[],[["练气后期",[143,142,1,225,4],[85,45,46,47,48,7,9],[]],["筑基后期",[143,142,1,225,155],[337,152,179,7,230,9,320],[]],["金丹后期",[219,142,14,156,155],[337,152,179,7,230,9,320,338,336],[]],["元婴后期",[219,62,14,138,155],[337,152,179,7,230,9,320,338,336],[156]]]],["散修暗劲（慎）",[],[["练气后期",[224,1,4,225,235],[339,39,7,230],[]],["筑基后期",[59,340,219,170,41],[341,342,343,7,230,9],[]],["金丹后期",[59,340,219,344,41],[345,341,342,343,7,230,9],[]],["元婴后期",[59,340,219,344,41],[346,347,345,341,339,342,343,7,230,9],[54]]]],["散修暗劲（莽）",["雷音真人"],[["练气后期",[224,1,4,225,235],[339,39,7,230],[]],["筑基后期",[59,14,219,170,41],[341,342,343,7,230,9],[]],["金丹后期",[59,14,219,344,41],[345,341,342,343,7,230,9],[]],["元婴后期",[59,14,219,344,41],[346,347,345,341,339,342,343,7,230,9],[54]]]]]}]},{"n":"四大海岛","s":[{"n":"蓬莎岛","f":[["蓬莎岛烈焰",[],[["练气后期",[143,142,1,225,4],[85,45,46,47,48,7,9],[]],["筑基后期",[143,142,1,225,155],[337,152,179,7,230,9,320],[]],["金丹后期",[219,142,14,156,155],[337,152,179,7,230,9,320,338,336],[]],["元婴后期",[219,62,14,138,155],[337,152,179,7,230,9,320,338,336],[156]]]],["蓬莎岛自愈",[],[["练气后期",[109,106,1,224,66],[85,45,46,47,48,7,9],[]],["筑基后期",[109,106,59,124,41],[45,326,324,88,122,116,7,9],[]],["金丹后期",[14,348,311,219,124],[349,350,351,116,89,7,9,336],[]],["元婴后期",[14,348,311,62,124],[349,350,351,116,89,7,9,336],[41]]]],["蓬莎岛滞气",[],[["练气后期",[224,1,4,225,235],[85,45,46,47,48,7,9],[]],["筑基后期",[42,62,1,59,41],[64,352,7,230,9,336,140],[]],["金丹后期",[219,62,14,59,104],[18,64,352,7,230,9,336,140,89],[]],["元婴后期",[219,62,14,59,104],[18,64,352,7,230,9,336,140,89],[138]]]],["蓬莎岛剑罡",[],[["练气后期",[2,3,4,1,225],[5,7,9],[]],["筑基后期",[2,41,4,248,59],[5,70,7,9,140],[]],["金丹后期",[219,41,14,248,59],[5,70,7,9,140],[]],["元婴后期",[219,41,14,248,59],[5,70,7,9,140],[20]]]],["蓬莎岛流血剑",[],[["练气后期",[2,3,4,1,225],[5,7,9],[]],["筑基后期",[353,41,4,248,59],[18,354,5,7,9,140],[]],["金丹后期",[353,41,14,248,59],[18,354,5,7,9,140],[]],["元婴后期",[353,41,14,248,59],[18,354,5,70,7,9,140],[20]]]]]},{"n":"碎星岛","f":[["碎星岛针",["唐平"],[["练气后期",[107,106,82,4,1],[85,45,46,47,48,355,7,230,9],[]],["筑基后期",[356,124,87,59,107],[357,355,116,89,7,230,9,336],[]],["金丹后期",[356,124,87,59,170],[357,355,358,116,89,7,230,9,336],[]],["元婴后期",[356,124,87,59,170],[357,355,358,116,89,7,230,9,336],[359]]]],["碎星岛神",["白灵冰"],[["练气后期",[255,1,256,4],[257,258,7,8,9,39],[]],["筑基后期",[356,170,259,359,59],[360,361,264,258,7,230,9],[]],["金丹后期",[356,170,259,359,59],[360,361,264,258,7,230,9],[]],["元婴后期",[356,170,259,359,59],[360,361,264,258,7,230,9],[138]]]],["碎星岛爪",["吴四海"],[["练气后期",[109,106,1,224,66],[85,45,324,47,48,7,9],[]],["筑基后期",[356,170,42,13,41],[357,362,7,8,9,43,17,363],[]],["金丹后期",[356,170,14,13,59],[357,362,364,7,8,9,43,18,363,336],[]],["元婴后期",[356,170,14,13,59],[357,362,364,7,8,9,43,18,363,336],[359]]]],["唐连峰",[],[["练气后期",[107,106,82,4,1],[85,45,46,47,48,355,7,230,9],[]],["筑基后期",[356,124,87,59,107],[357,355,116,89,7,230,9,336],[]],["金丹后期",[356,124,87,59,170],[357,355,358,116,89,7,230,9,336],[]],["元婴后期",[356,124,125,59,170],[357,355,358,116,89,7,230,9,336],[359]]]]]},{"n":"千流岛","f":[["千流岛修士",["连盛平"],[["练气后期",[224,1,4,225,235],[85,45,46,47,48,7,9],[]],["筑基后期",[59,1,4,235,170],[322,323,324,146,325,212,29,7,9],[]],["金丹后期",[365,193,219,366,41],[367,368,369,370,336],[]],["元婴后期",[365,193,219,366,41],[367,368,369,370,336],[371]]]]]}]},{"n":"魔教三绝","s":[{"n":"血剑宫","f":[["血剑宫修士",["血河老祖","血亢剑仙","血薇剑仙"],[["练气后期",[281,1,4],[282,7,9],[]],["筑基后期",[281,300,301,4,302],[303,282,7,9,140],[]],["金丹后期",[281,300,304,301,302],[305,303,282,7,9,140],[]],["元婴后期",[281,300,304,301,302],[305,303,282,7,9,140],[21]]]]]},{"n":"天魔道","f":[["天魔道修士",["黑木老魔"],[["练气后期",[372,373,4],[374,375,7,9],[]],["筑基后期",[372,376,373,301,377],[378,379,380,7,9],[]],["金丹后期",[372,376,373,301,377],[378,379,380,7,9],[]],["元婴后期",[372,376,373,301,377],[378,379,380,7,9],[381]]]]]},{"n":"古神教","f":[["古神教修士",["玄骨老祖"],[["练气后期",[255,1,256,4],[257,258,7,230],[]],["筑基后期",[382,383,219,259,1],[264,361,7,230],[]],["金丹后期",[384,383,385,386,387],[264,361,7,230],[]],["元婴后期",[388,383,385,386,387],[264,361,7,230],[384]]]]]}]},{"n":"其他","s":[{"n":"万魂殿","f":[["万魂殿修士",["夭桃"],[["练气后期",[389,1,224,235,4],[7,8,9,307,39,308,309,310],[]],["筑基后期",[389,390,391,301,311],[392,393,312,313,309,310],[]],["金丹后期",[389,390,391,394,395],[392,393,396,313,315,314,309,310],[]],["元婴后期",[389,390,391,394,395],[392,393,396,313,315,314,309,310],[301]]]]]}]}]};
+
+/* ---------------- 界面 ---------------- */
+let TAB='home',SHOPTAB='herb',PILLTAB='make',SECTCAT=0,SECTOPEN=null,SECTQ='',JHTAB='story';
+
+const XING=['云','清','玄','寒','墨','白','离','青','紫','凌','夜','慕','楚','沈','姜','洛','秦','顾','宋','谢'];
+const MING=['无涯','长风','子期','归尘','知非','寒山','明远','砚舟','惊鸿','孤鸿','九霄','听雪','知微','拂衣','清都','忘机','疏影','沉璧','问玄','抱朴'];
+function randName(){return pick(XING)+pick(MING)}
+
+function rollRoot(){
+  const r=Math.random();let cnt,type,c;
+  if(r<0.04){cnt=1;type='天灵根';c=1.65}
+  else if(r<0.13){cnt=2;type='变异灵根';c=1.42}
+  else if(r<0.34){cnt=2;type='双灵根';c=1.24}
+  else if(r<0.60){cnt=3;type='三灵根';c=1.02}
+  else if(r<0.84){cnt=4;type='四灵根';c=0.86}
+  else{cnt=5;type='五灵根';c=0.70}
+  const pool=ELS.slice(),roots=[];
+  for(let i=0;i<cnt;i++)roots.push(pool.splice(Math.floor(Math.random()*pool.length),1)[0]);
+  S.roots=roots;S.rootType=type;S.rootC=c;
+  S.apt=clamp(Math.round(rnd(46,90)+(6-cnt)*6+S.legacy*0.25),40,100);
+}
+function startGame(){
+  if(remainPts()<0){toast('天赋点不足，请取舍','bad');return;}
+  const n=$('#in-name').value.trim();
+  S.name=n||randName();
+  S.diff=C.diff;S.aotian=C.aotian;S.soul=C.soul;S.birth=C.birth;S.phys=C.phys;S.child=C.child;S.youth=C.youth;
+  applyCreate();
+  S.log=[{t:'【入道】'+S.name+'，'+S.rootType+'（'+S.roots.map(e=>ELN[e]).join('')+'），十六岁离家寻仙，自此踏上仙途。',c:'big'}];
+  $('#screen-create').classList.add('hidden');
+  $('#screen-main').classList.remove('hidden');
+  save();paint();
+  toast('仙途已启','big');
+}
+
+function paintHUD(){
+  const need=needExp(S.lv);
+  $('#h-name').textContent=S.name;
+  $('#h-realm').textContent=realmName(S.lv);
+  $('#h-age').textContent=ageStr(S.age);
+  $('#h-exp-t').textContent=fmt(S.exp)+'/'+fmt(need);
+  $('#h-exp').style.width=clamp(S.exp/need*100,0,100)+'%';
+  $('#h-life-t').textContent=S.lifeLeft.toFixed(1)+'/'+S.lifeMax;
+  $('#h-life').style.width=clamp(S.lifeLeft/S.lifeMax*100,0,100)+'%';
+  $('#h-life-bar').classList.toggle('low',S.lifeLeft<Math.max(15,S.lifeMax*0.12));
+  $('#h-stone').textContent=fmt(S.stone);
+  $('#h-atk').textContent=fmt(power());
+  $('#h-mind').textContent=S.mind;
+  $('#h-legacy').textContent=S.legacy;
+}
+function paint(keep){
+  if(!S)return;
+  const v=$('#view'),st=v.scrollTop;
+  paintHUD();renderView();
+  if(keep!==false)v.scrollTop=st;   // 连续操作时保持阅读位置
+}
+function go(t){TAB=t;document.querySelectorAll('.tab').forEach(x=>x.classList.toggle('on',x.dataset.tab===t));renderView();$('#view').scrollTop=0}
+
+function renderView(){
+  const v=$('#view');
+  v.innerHTML= TAB==='home'?viewHome():TAB==='train'?viewTrain():TAB==='pill'?viewPill():TAB==='shop'?viewShop():TAB==='dex'?viewDex():TAB==='jh'?viewJianghu():viewMore();
+}
+
+/* ---- 洞府 ---- */
+function viewHome(){
+  const need=needExp(S.lv),rate=breakRate(),next=S.lv<MAXLV?LV[S.lv+1].name:null;
+  const ok=S.lv<MAXLV&&S.exp>=need;
+  let h='';
+  h+='<div class="card"><div class="ttl">道体</div>'+
+    '<div class="row"><span class="k">境界</span><span class="v jade">'+realmName(S.lv)+'</span></div>'+
+    '<div class="row"><span class="k">修为</span><span class="v">'+fmt(S.exp)+' / '+fmt(need)+'</span></div>'+
+    '<div class="bar exp" style="margin:2px 0 10px"><i style="width:'+clamp(S.exp/need*100,0,100)+'%"></i></div>'+
+    '<div class="row"><span class="k">寿元</span><span class="v '+(S.lifeLeft<25?'red':'gold')+'">'+S.lifeLeft.toFixed(1)+' / '+S.lifeMax+' 年</span></div>'+
+    '<div class="row"><span class="k">灵根</span><span class="v">'+S.rootType+'（'+S.roots.map(e=>ELN[e]).join('')+'）×'+S.rootC.toFixed(2)+'</span></div>'+
+    '<div class="row"><span class="k">资质</span><span class="v">'+S.apt+'</span></div>'+
+    '<div class="row"><span class="k">主修</span><span class="v">'+artDesc()+'</span></div>'+
+    '<div class="row"><span class="k">门派</span><span class="v '+(S.sect?'pur':'')+'">'+(S.sect?((SECTS.find(x=>x.k===S.sect)||{}).n||'散修'):'散修')+'</span></div>'+
+    '<div class="row"><span class="k">心魔 / 伤势</span><span class="v '+((S.demon>2||S.injury>1)?'red':'')+'">'+S.demon+' / 6　'+['无','轻伤','重伤','垂死'][S.injury]+'</span></div>'+
+    '</div>';
+
+  h+='<div class="card"><div class="ttl">行功</div><div class="grid2">'+
+    '<button class="btn sm" onclick="cultivate(1)">打坐 一月</button>'+
+    '<button class="btn sm" onclick="cultivate(6)">打坐 半年</button>'+
+    '<button class="btn sm" onclick="cultivate(12)">打坐 一年</button>'+
+    '<button class="btn sm" onclick="cultivate(36)">闭关 三年</button>'+
+    '<button class="btn sm jade" style="grid-column:span 2" onclick="cultivate(120)">死关 十年（易生心魔）</button>'+
+    '<button class="btn sm ghost" style="grid-column:span 2" onclick="calm()">静心调息 半载（心魔 -1，伤势 -1）</button>'+
+    '</div></div>';
+
+  h+='<div class="card"><div class="ttl">破境</div>'+
+    (S.lv<MAXLV?
+      '<div class="row"><span class="k">下一境</span><span class="v">'+next+(isBigStep(S.lv)?' <span class="red">（大境界）</span>':'')+'</span></div>'+
+      '<div class="row"><span class="k">所需修为</span><span class="v '+(ok?'jade':'')+'">'+fmt(S.exp)+' / '+fmt(need)+'</span></div>'+
+      '<div class="row"><span class="k">成功率</span><span class="v '+(rate>0.7?'jade':rate>0.4?'gold':'red')+'">'+(rate*100).toFixed(0)+'%</span></div>'+
+      '<div class="muted">冲击需耗 '+(isBigStep(S.lv)?6:2)+' 月；失败则修为亏损、心魔滋生。</div>'+
+      '<button class="btn '+(ok?'jade':'ghost')+'" onclick="breakthrough()">'+(ok?'冲 击 '+next:'修为不足')+'</button>'
+      :'<div class="muted">已臻金仙道果，与天同寿。</div>')+
+    '</div>';
+
+  const opening=storyOpen();
+  if(opening.length){
+    h+='<div class="card"><div class="ttl">机缘</div>'+
+      opening.map(ch=>'<div class="item-row"><span><b class="gold">'+ch.t+'</b></span>'+
+        '<button class="btn sm jade" style="width:auto;padding:8px 14px" onclick="showStory(\''+ch.id+'\')">推 进</button></div>').join('')+
+      '</div>';
+  }
+
+  const pills=Object.keys(S.bag).filter(k=>ITEMS[k]&&ITEMS[k].t==='pill');
+  if(pills.length){
+    h+='<div class="card"><div class="ttl">囊中丹药</div>';
+    pills.forEach(k=>{const it=ITEMS[k];
+      h+='<div class="item-row"><div><b class="gold">'+it.n+'</b> ×'+S.bag[k]+'<div class="muted" style="font-size:11.5px">'+it.d+'</div></div>'+
+        '<button class="btn sm '+(k==='p_zhu'||k==='p_jin'||k==='p_ying'||k==='p_shen'?'ghost':'jade')+'" style="width:auto;padding:8px 14px" onclick="usePill(\''+k+'\')">'+
+        ((k==='p_zhu'||k==='p_jin'||k==='p_ying'||k==='p_shen')?'突破时自动':'服用')+'</button></div>'});
+    h+='</div>';
+  }
+
+  h+='<div class="card"><div class="ttl">纪事</div><div id="log">'+
+    (S.log.length?S.log.map(p=>'<p class="'+p.c+'">'+p.t+'</p>').join(''):'<p class="muted">尚无纪事。</p>')+'</div></div>';
+  return h;
+}
+
+/* ---- 历练 ---- */
+function viewTrain(){
+  const p=power();
+  let h='<div class="card tight"><div class="row"><span class="k">当前战力</span><span class="v gold">'+fmt(p)+'</span></div>'+
+    '<div class="muted">历练一次耗时三月。城邑有仙师集会，山门出灵药，邪派与险地多凶险，也多机缘。正月至二月在城中，还能碰上一仙道人。</div></div>';
+  let last='';
+  ZONES.forEach((z,i)=>{
+    if(z.area!==last){last=z.area;h+='<div class="ttl" style="margin:14px 0 8px">'+z.area+'</div>'}
+    const lock=S.lv<z.lv,bp=DZ[z.d].bp,ratio=p/bp;
+    const tag=ratio>1.15?'<span class="jade">碾压</span>':ratio>0.9?'<span class="gold">旗鼓相当</span>':'<span class="red">凶险万分</span>';
+    h+='<div class="card tight" style="'+(lock?'opacity:.5':'')+'">'+
+      '<div style="display:flex;justify-content:space-between;align-items:baseline"><b class="gold" style="font-size:15.5px">'+z.n+'</b>'+
+      '<span class="muted">凶险 '+'★'.repeat(z.d)+(z.el?'　'+ELN[z.el]+'属':'')+'</span></div>'+
+      '<div class="muted" style="margin:3px 0 8px">'+z.desc+'</div>'+
+      '<div class="row"><span class="k">入门修为</span><span class="v">'+realmName(z.lv)+'</span></div>'+
+      '<div class="row"><span class="k">此地凶物</span><span class="v">约 '+fmt(bp)+'　'+tag+'</span></div>'+
+      '<button class="btn sm '+(lock?'ghost':'jade')+'" '+(lock?'disabled':'')+' onclick="explore('+i+')">'+(lock?'修为不足':'前往 · 三月')+'</button>'+
+      '</div>';
+  });
+  return h;
+}
+
+/* ---- 丹房 ---- */
+function viewPill(){
+  let h='<div class="grid2" style="margin-bottom:12px">'+
+    '<button class="btn sm '+(PILLTAB==='make'?'':'ghost')+'" onclick="PILLTAB=\'make\';renderView()">开炉炼丹</button>'+
+    '<button class="btn sm '+(PILLTAB==='use'?'':'ghost')+'" onclick="PILLTAB=\'use\';renderView()">服用丹药</button></div>';
+  if(PILLTAB==='make'){
+    const owned=Object.keys(S.recipes);
+    if(!owned.length)h+='<div class="card"><div class="muted">尚未习得任何丹方，可去坊市购买。</div></div>';
+    owned.forEach(rk=>{
+      const r=RECIPES[rk],out=ITEMS[r.out];
+      let can=true,needHtml='';
+      for(const k in r.need){
+        const ok=count(k)>=r.need[k];if(!ok)can=false;
+        needHtml+='<span class="chip '+(ok?'on':'')+'">'+ITEMS[k].n+' '+count(k)+'/'+r.need[k]+'</span>';
+      }
+      const rate=clamp(0.62+S.refine*0.02+S.mind*0.01-r.diff*0.07,0.15,0.95);
+      h+='<div class="card tight"><div style="display:flex;justify-content:space-between"><b class="gold">'+out.n+'</b><span class="muted">成算 '+(rate*100).toFixed(0)+'%</span></div>'+
+        '<div style="margin:8px 0">'+needHtml+'</div>'+
+        '<div class="muted" style="margin-bottom:8px">'+out.d+'</div>'+
+        '<button class="btn sm '+(can?'jade':'ghost')+'" '+(can?'':'disabled')+' onclick="refine(\''+rk+'\')">'+(can?'开炉（二月）':'药材不足')+'</button></div>';
+    });
+    h+='<div class="card"><div class="ttl">丹道</div><div class="row"><span class="k">炼丹造诣</span><span class="v">'+(S.refine|0)+' 炉</span></div>'+
+      '<div class="muted">每成一丹，造诣 +1，成算随之提升；神识越深，火候越稳。</div></div>';
+  }else{
+    const ps=Object.keys(S.bag).filter(k=>ITEMS[k]&&ITEMS[k].t==='pill');
+    if(!ps.length)h+='<div class="card"><div class="muted">囊中无丹。可自行炼制，或往坊市求购。</div></div>';
+    ps.forEach(k=>{const it=ITEMS[k];
+      const auto=(k==='p_zhu'||k==='p_jin'||k==='p_ying'||k==='p_shen'||k==='p_zhang');
+      h+='<div class="card tight"><div class="row"><b class="gold">'+it.n+'</b><span class="v">×'+S.bag[k]+'</span></div>'+
+        '<div class="muted" style="margin:4px 0 8px">'+it.d+'</div>'+
+        (auto?'<div class="muted">突破时自动服用，无需手动。</div>'
+             :'<button class="btn sm jade" onclick="usePill(\''+k+'\')">服 用</button>')+'</div>';
+    });
+  }
+  return h;
+}
+
+/* ---- 坊市 ---- */
+function viewShop(){
+  const tabs=[['herb','灵药'],['rec','丹方'],['art','功法'],['shen','神通'],['dun','遁术'],['wp','法宝'],['sell','出售']];
+  let h='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px">';
+  tabs.forEach(t=>h+='<span class="chip '+(SHOPTAB===t[0]?'on':'')+'" onclick="SHOPTAB=\''+t[0]+'\';renderView()">'+t[1]+'</span>');
+  h+='</div>';
+  h+='<div class="card tight" style="margin-bottom:12px"><div class="row"><span class="k">囊中灵石</span><span class="v gold">'+fmt(S.stone)+'</span></div></div>';
+
+  if(SHOPTAB==='herb'){
+    ['h1','h2','h3','h4','h5','h6','h7','h8','h9','h10'].forEach(k=>{
+      const it=ITEMS[k];
+      h+='<div class="item-row"><div><b>'+it.n+'</b><span class="muted"> ×'+count(k)+'</span></div>'+
+        '<button class="btn sm" style="width:auto;padding:8px 16px" onclick="buy(\''+k+'\','+it.v+')">'+fmt(it.v)+' 灵石</button></div>';
+    });
+  }else if(SHOPTAB==='rec'){
+    Object.keys(RECIPES).forEach(rk=>{
+      const r=RECIPES[rk],own=S.recipes[rk];
+      let nd='';for(const k in r.need)nd+=ITEMS[k].n+'×'+r.need[k]+' ';
+      h+='<div class="card tight"><div style="display:flex;justify-content:space-between"><b class="gold">'+r.n+'</b><span class="muted">'+(own?'已习得':fmt(r.v)+' 灵石')+'</span></div>'+
+        '<div class="muted" style="margin:6px 0">产出：'+ITEMS[r.out].n+'　配方：'+nd+'</div>'+
+        (own?'':'<button class="btn sm" onclick="buyRecipe(\''+rk+'\')">购 买</button>')+'</div>';
+    });
+  }else if(SHOPTAB==='art'){
+    Object.keys(ITEMS).filter(k=>ITEMS[k].t==='art'&&k!=='a_yinqi').forEach(k=>{
+      const it=ITEMS[k],own=!!S.arts[k];
+      h+='<div class="card tight"><div style="display:flex;justify-content:space-between"><b class="gold">《'+it.n+'》</b><span class="muted">'+(it.el?ELN[it.el]+'系':'通用')+' '+it.rank+'品</span></div>'+
+        '<div class="muted" style="margin:6px 0">'+it.d+'　修炼 ×'+(1+(10-it.rank)*0.09).toFixed(2)+(it.el?'（同属灵根再 ×1.25）':'')+'</div>'+
+        (own?('<button class="btn sm '+(S.art===k?'ghost':'jade')+'" onclick="setArt(\''+k+'\')">'+(S.art===k?'正在主修':'改修此功')+'</button>')
+            :'<button class="btn sm" onclick="buy(\''+k+'\','+it.v+')">'+fmt(it.v)+' 灵石</button>')+'</div>';
+    });
+  }else if(SHOPTAB==='wp'){
+    Object.keys(ITEMS).filter(k=>ITEMS[k].t==='wp'&&ITEMS[k].v>0).forEach(k=>{
+      const it=ITEMS[k],own=!!S.wps[k];
+      h+='<div class="card tight"><div style="display:flex;justify-content:space-between"><b class="gold">'+it.n+'</b><span class="muted">'+it.rank+'品</span></div>'+
+        '<div class="muted" style="margin:6px 0">'+(it.atk?'战力 +'+fmt(it.atk):it.d)+'</div>'+
+        (own?('<button class="btn sm '+(S.wp===k?'ghost':'jade')+'" onclick="setWp(\''+k+'\')">'+(S.wp===k?'已祭炼':'祭炼此宝')+'</button>')
+            :'<button class="btn sm" onclick="buy(\''+k+'\','+it.v+')">'+fmt(it.v)+' 灵石</button>')+'</div>';
+    });
+  }else if(SHOPTAB==='shen'){
+    Object.keys(SHEN).forEach(k=>{
+      const it=ITEMS[k],f=SHEN[k],own=!!S.shen[k];
+      const elTxt=f.el==='tong'?'同气':(f.el?ELN[f.el]+'系':'通用');
+      h+='<div class="card tight"><div style="display:flex;justify-content:space-between"><b class="gold">《'+it.n+'》</b><span class="muted">'+elTxt+(f.once?' · 每场限一次':'')+'</span></div>'+
+        '<div class="muted" style="margin:6px 0">'+it.d+'　'+(f.eff?effHint(f.eff)+'　':'')+'耗 '+elTxt+f.qi+' 灵气</div>'+
+        (own?'<button class="btn sm ghost" disabled>已修习</button>'
+            :'<button class="btn sm" onclick="buy(\''+k+'\','+it.v+')">'+fmt(it.v)+' 灵石</button>')+'</div>';
+    });
+  }else if(SHOPTAB==='dun'){
+    Object.keys(DUN).forEach(k=>{
+      const it=ITEMS[k],own=!!S.dun[k];
+      const info=DUN[k].escape?'临阵舍命遁走（每场一次）':('遁速 +'+(DUN[k].sp||0));
+      h+='<div class="card tight"><div style="display:flex;justify-content:space-between"><b class="gold">'+it.n+'</b><span class="muted">'+(DUN[k].escape?'遁术·逃生':'遁术·遁速')+'</span></div>'+
+        '<div class="muted" style="margin:6px 0">'+it.d+'　'+info+'</div>'+
+        (own?'<button class="btn sm ghost" disabled>已修习</button>'
+            :'<button class="btn sm" onclick="buy(\''+k+'\','+it.v+')">'+fmt(it.v)+' 灵石</button>')+'</div>';
+    });
+  }else{
+    const bag=Object.keys(S.bag);
+    if(!bag.length&&!Object.keys(S.wps).length)h+='<div class="card"><div class="muted">囊中空空，无物可卖。</div></div>';
+    bag.forEach(k=>{const it=ITEMS[k];if(!it)return;
+      h+='<div class="item-row"><div><b>'+it.n+'</b><span class="muted"> ×'+S.bag[k]+'</span></div>'+
+        '<button class="btn sm ghost" style="width:auto;padding:8px 16px" onclick="sell(\''+k+'\','+Math.round(it.v*0.5)+')">售 '+fmt(Math.round(it.v*0.5))+'</button></div>'});
+    Object.keys(S.wps).filter(k=>ITEMS[k]&&ITEMS[k].v>0).forEach(k=>{const it=ITEMS[k];
+      h+='<div class="item-row"><div><b class="pur">'+it.n+'</b><span class="muted">（法宝）</span></div>'+
+        '<button class="btn sm ghost" style="width:auto;padding:8px 16px" onclick="sellWp(\''+k+'\')">售 '+fmt(Math.round(it.v*0.5))+'</button></div>'});
+  }
+  return h;
+}
+function setArt(k){S.art=k;log('改修《'+ITEMS[k].n+'》','good');toast('主修《'+ITEMS[k].n+'》','good');afterAction()}
+function setWp(k){S.wp=k;toast('已祭炼 '+ITEMS[k].n,'good');afterAction()}
+
+/* ---- 江湖（剧情 · 人物 · 门派）---- */
+function viewJianghu(){
+  const open=storyOpen().length;
+  const tabs=[['story','剧情'],['npc','人物'],['sect','门派']];
+  let h='<div style="display:flex;gap:6px;margin-bottom:12px">';
+  tabs.forEach(t=>h+='<span class="chip '+(JHTAB===t[0]?'on':'')+'" onclick="JHTAB=\''+t[0]+'\';renderView()">'+
+    t[1]+(t[0]==='story'&&open?'<b class="red"> ●</b>':'')+'</span>');
+  h+='</div>';
+  h+=JHTAB==='npc'?viewNpc():JHTAB==='sect'?viewSectJoin():viewStory();
+  return h;
+}
+function viewStory(){
+  let h='';
+  const open=storyOpen();
+  if(open.length){
+    h+='<div class="card"><div class="ttl">待决</div>';
+    open.forEach(ch=>{
+      h+='<div class="card tight" style="border-color:rgba(201,169,97,.6)">'+
+        '<div style="display:flex;justify-content:space-between;align-items:baseline"><b class="gold">'+ch.t+'</b>'+
+        '<span class="muted" style="font-size:11.5px">入道 '+(ch.year||0)+' 年 · '+realmName(ch.lv)+'</span></div>'+
+        '<div class="muted" style="margin:6px 0 9px;line-height:1.8">'+ch.txt.slice(0,52)+'……</div>'+
+        '<button class="btn sm jade" onclick="showStory(\''+ch.id+'\')">推 进</button></div>';
+    });
+    h+='</div>';
+  }else{
+    h+='<div class="card"><div class="muted">此时无事发生。修为渐长、年岁推移，自有机缘找上门来。</div></div>';
+  }
+  const done=STORY.filter(c=>S.story[c.id]);
+  if(done.length){
+    h+='<div class="card"><div class="ttl">往事</div>';
+    done.forEach(ch=>{
+      h+='<div class="card tight" style="opacity:.9">'+
+        '<div style="display:flex;justify-content:space-between"><b>'+ch.t+'</b><span class="muted" style="font-size:11.5px">已成</span></div>'+
+        '<div class="muted" style="margin-top:5px;line-height:1.85">'+S.story[ch.id].r+'</div></div>';
+    });
+    h+='</div>';
+  }
+  const locked=STORY.filter(c=>!S.story[c.id]&&!storyOn(c));
+  if(locked.length){
+    h+='<div class="card"><div class="ttl">未至之时</div>';
+    locked.forEach(ch=>{
+      const cond=[];
+      if(ch.year)cond.push('入道 '+ch.year+' 年后');
+      if(ch.lv)cond.push(realmName(ch.lv)+'以上');
+      if(ch.need&&!S.story[ch.need]){const pre=STORY.find(x=>x.id===ch.need);cond.push('先了结「'+(pre?pre.t:ch.need)+'」')}
+      h+='<div class="item-row"><span class="muted">'+ch.t+'</span><span class="muted" style="font-size:11.5px;text-align:right">'+cond.join(' · ')+'</span></div>';
+    });
+    h+='</div>';
+  }
+  return h;
+}
+function viewNpc(){
+  const p=power();
+  let h='<div class="card tight"><div class="muted">论道得神识，切磋验战力，赠礼结善缘。交情深厚者，开口请教便可得其指点。</div></div>';
+  NPCS.slice().sort((a,b)=>a.lv-b.lv).forEach(n=>{
+    const lk=like(n.k),np=npcPow(n);
+    const rel=lk>=80?'莫逆':lk>=60?'深交':lk>=30?'相善':lk>0?'相识':'素昧平生';
+    h+='<div class="card tight">'+
+      '<div style="display:flex;justify-content:space-between;align-items:baseline"><b class="gold">'+n.n+'</b>'+
+      '<span class="muted">'+rel+'　'+lk+'</span></div>'+
+      '<div class="bar" style="margin:5px 0 7px"><i style="width:'+clamp(lk,0,100)+'%;background:linear-gradient(90deg,#7a5f2a,#e8cf94)"></i></div>'+
+      '<div class="muted" style="font-size:12px;margin-bottom:5px">'+n.role+'　·　'+n.place+'</div>'+
+      '<div class="muted" style="line-height:1.75;margin-bottom:8px">'+n.desc+'</div>'+
+      '<div class="row" style="padding:2px 0"><span class="k">对手战力</span><span class="v '+(p>=np?'jade':'red')+'">'+fmt(np)+'（你 '+fmt(p)+'）</span></div>'+
+      '<div class="grid2">'+
+      '<button class="btn sm" onclick="npcAct(\''+n.k+'\',\'lun\')">论道 两月</button>'+
+      '<button class="btn sm '+(p>=np?'':'ghost')+'" onclick="npcAct(\''+n.k+'\',\'qie\')">切磋 一月</button>'+
+      '<button class="btn sm ghost" onclick="npcAct(\''+n.k+'\',\'zeng\')">赠礼 '+fmt(50+lk*2)+'</button>'+
+      '<button class="btn sm '+(lk>=60?'jade':'ghost')+'" '+(lk>=60?'':'disabled')+' onclick="npcAct(\''+n.k+'\',\'qing\')">'+(lk>=60?'请教 三月':'交情尚浅')+'</button>'+
+      '</div></div>';
+  });
+  return h;
+}
+function viewSectJoin(){
+  let h='';
+  if(S.sect){
+    const s=SECTS.find(x=>x.k===S.sect);
+    h+='<div class="card"><div class="ttl">门中</div><b class="gold" style="font-size:16px">'+s.n+'</b>'+
+      '<span class="muted">　'+s.place+(s.el?'　'+ELN[s.el]+'系':'')+'</span>'+
+      '<div class="muted" style="margin-top:6px;line-height:1.8">'+s.desc+'</div></div>';
+  }
+  h+='<div class="card tight" style="margin-bottom:12px"><div class="muted">'+
+    '拜入宗门可得镇派功法、同门照拂，门中灵气亦助人精进（修炼 +10%，若主修功法与山门同属再 +12%）。此生只可拜入一次。</div></div>';
+  SECTS.forEach(s=>{
+    const joined=S.sect===s.k,ok=s.ok();
+    h+='<div class="card tight"'+(joined?' style="border-color:rgba(201,169,97,.6)"':'')+'>'+
+      '<div style="display:flex;justify-content:space-between;align-items:baseline"><b class="gold">'+s.n+'</b>'+
+      '<span class="muted">'+s.place+'　'+(s.el?ELN[s.el]+'系':'')+'</span></div>'+
+      '<div class="muted" style="margin:6px 0;line-height:1.75">'+s.desc+'</div>'+
+      '<div class="muted">入门：'+s.req+'</div>'+
+      (joined?'<div class="jade" style="margin-top:8px">已在门下</div>'
+       :S.sect?''
+       :'<button class="btn sm '+(ok?'jade':'ghost')+'" '+(ok?'':'disabled')+' onclick="joinSect(\''+s.k+'\')">'+(ok?'拜 入':'不合入门之规')+'</button>')+
+      '</div>';
+  });
+  return h;
+}
+
+/* ---- 道途 ---- */
+/* ---- 宗门 ---- */
+function sectList(){
+  if(!SECTQ)return SECTDEX.c[SECTCAT].s;
+  const q=SECTQ.trim();
+  return SECTDEX.c[SECTCAT].s.map(s=>{
+    const fs=s.f.filter(f=>f[0].indexOf(q)>=0||f[1].join('').indexOf(q)>=0||s.n.indexOf(q)>=0);
+    return fs.length?{n:s.n,f:fs}:null;
+  }).filter(Boolean);
+}
+function viewDex(){
+  const W=SECTDEX.w,C=SECTDEX.c;
+  let h='<div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">';
+  C.forEach((c,i)=>h+='<span class="chip '+(SECTCAT===i?'on':'')+'" onclick="SECTCAT='+i+';SECTOPEN=null;renderView()">'+c.n+'</span>');
+  h+='</div>';
+
+  h+='<div class="card tight" style="margin-bottom:12px"><input id="sectq" value="'+SECTQ+'" placeholder="搜流派 / 人物，如：剑、竹山、倪旭欣" '+
+     'oninput="SECTQ=this.value;SECTOPEN=null;renderView();setTimeout(()=>{const e=$(\'#sectq\');if(e){e.focus();e.setSelectionRange(e.value.length,e.value.length)}},0)" '+
+     'style="width:100%;padding:9px 11px;border-radius:10px;background:rgba(255,255,255,.05);border:1px solid rgba(201,169,97,.28);color:var(--txt);font-family:inherit;font-size:13.5px;outline:none"></div>';
+
+  const list=sectList();
+  const nf=list.reduce((a,s)=>a+s.f.length,0);
+  h+='<div class="card tight" style="margin-bottom:12px"><div class="row"><span class="k">'+C[SECTCAT].n+'</span>'+
+     '<span class="v muted">'+list.length+' 势力 · '+nf+' 流派</span></div></div>';
+
+  if(!nf){h+='<div class="card"><div class="muted">无匹配条目。</div></div>';return h;}
+
+  list.forEach((s,si)=>{
+    h+='<div class="card tight" style="margin-bottom:10px"><div class="ttl" style="margin-bottom:4px">'+s.n+'</div>';
+    s.f.forEach((f,fi)=>{
+      const key=SECTCAT+'-'+si+'-'+fi,on=SECTOPEN===key;
+      h+='<div style="border-top:1px solid rgba(255,255,255,.07);padding:9px 0 3px">';
+      h+='<div style="display:flex;justify-content:space-between;align-items:center;gap:8px" onclick="SECTOPEN='+(on?'null':"'"+key+"'")+';renderView()">';
+      h+='<b class="jade" style="font-size:14px">'+(on?'▾ ':'▸ ')+f[0]+'</b>';
+      h+='<span class="muted" style="font-size:11.5px;flex-shrink:0">'+f[2].length+' 境</span></div>';
+      if(f[1]&&f[1].length)h+='<div class="muted" style="font-size:12px;margin-top:3px">代表：'+f[1].join('、')+'</div>';
+      if(on){
+        f[2].forEach(st=>{
+          h+='<div style="margin:10px 0 3px;font-size:12.5px;color:var(--gold2);letter-spacing:1px">'+st[0]+'</div>';
+          const line=(lab,arr,cls)=>{if(!arr||!arr.length)return '';
+            return '<div style="font-size:12.5px;line-height:1.95"><span class="muted" style="display:inline-block;min-width:52px">'+lab+'</span>'+
+              arr.map(i=>'<span class="'+cls+'">'+W[i]+'</span>').join('<span class="muted">·</span>')+'</div>';};
+          h+=line('元婴功法',st[3],'pur');
+          h+=line('功法',st[1],'gold');
+          h+=line('神通',st[2],'');
+        });
+      }
+      h+='</div>';
+    });
+    h+='</div>';
+  });
+  h+='<div class="card tight"><div class="muted">功法神通取自觅长生官方 NPC 配置表（wiki《全npc流派一览》，2024-01-19 版），共 63 种流派。排序即游戏内神通栏顺序。</div></div>';
+  return h;
+}
+
+function viewMore(){
+  let h='<div class="card"><div class="ttl">道途</div>'+
+    '<div class="row"><span class="k">道号</span><span class="v gold">'+S.name+'　'+S.gender+'</span></div>'+
+    '<div class="row"><span class="k">今世境界</span><span class="v jade">'+realmName(S.lv)+'</span></div>'+
+    '<div class="row"><span class="k">前世最高</span><span class="v">'+(S.best?realmName(S.best):'—')+'</span></div>'+
+    '<div class="row"><span class="k">转世次数</span><span class="v">'+S.deaths+'</span></div>'+
+    '<div class="row"><span class="k">传承道行</span><span class="v pur">'+S.legacy+'</span></div>'+
+    '<div class="row"><span class="k">入道时长</span><span class="v">'+Math.floor(S.months/12)+' 年</span></div>'+
+    '<div class="row"><span class="k">神识</span><span class="v">'+S.mind+'</span></div>'+
+    '<div class="row"><span class="k">门派</span><span class="v pur">'+(S.sect?((SECTS.find(x=>x.k===S.sect)||{}).n||'散修'):'散修')+'</span></div>'+
+    '<div class="row"><span class="k">剧情</span><span class="v">'+Object.keys(S.story||{}).length+' / '+STORY.length+' 章</span></div>'+
+    '</div>';
+
+  const bName=(BIRTHS.find(x=>x.k===S.birth)||{}).n||'—',pName=(PHYSIQUE.find(x=>x.k===S.phys)||{}).n||'—',
+    cName=(CHILDHOOD.find(x=>x.k===S.child)||{}).n||'—',yName=(YOUTH.find(x=>x.k===S.youth)||{}).n||'—',
+    dName=(DIFFS.find(x=>x.k===S.diff)||{}).n||'普通';
+  h+='<div class="card"><div class="ttl">出身根基</div>'+
+    '<div class="row"><span class="k">道途</span><span class="v">'+dName+(S.aotian?' · 异世傲天':'')+(S.soul?' · 魂穿异世':'')+'</span></div>'+
+    '<div class="row"><span class="k">身世</span><span class="v">'+bName+'</span></div>'+
+    '<div class="row"><span class="k">先天体质</span><span class="v">'+pName+'</span></div>'+
+    '<div class="row"><span class="k">儿时经历</span><span class="v">'+cName+'</span></div>'+
+    '<div class="row"><span class="k">青年经历</span><span class="v">'+yName+'</span></div>'+
+    '</div>';
+
+  const bag=Object.keys(S.bag);
+  const pills=bag.filter(k=>ITEMS[k]&&ITEMS[k].t==='pill');
+  const others=bag.filter(k=>ITEMS[k]&&ITEMS[k].t!=='pill');
+  h+='<div class="card"><div class="ttl">储物 · 丹药（可使用）</div>';
+  if(!pills.length)h+='<div class="muted">尚无丹药。炼丹或坊市可求。</div>';
+  else pills.forEach(k=>{const it=ITEMS[k];const auto=(k==='p_zhu'||k==='p_jin'||k==='p_ying'||k==='p_shen'||k==='p_zhang');
+    h+='<div class="item-row"><div><b class="gold">'+it.n+'</b> ×'+S.bag[k]+'<div class="muted" style="font-size:11px">'+it.d+'</div></div>'+
+      '<button class="btn sm '+(auto?'ghost':'jade')+'" style="width:auto;padding:8px 14px" onclick="usePill(\''+k+'\')">'+(auto?'突破时自动':'使用')+'</button></div>';});
+  if(others.length||Object.keys(S.wps).length){
+    h+='<div class="ttl" style="margin:12px 0 8px;font-size:13px;opacity:.8">杂物 · 法宝</div>';
+    let s='';others.forEach(k=>{if(ITEMS[k])s+='<span class="chip">'+ITEMS[k].n+' ×'+S.bag[k]+'</span>'});
+    Object.keys(S.wps).forEach(k=>s+='<span class="chip on">'+ITEMS[k].n+(S.wp===k?'（祭炼）':'')+'</span>');
+    h+=s;
+  }
+  h+='</div>';
+
+  h+='<div class="card"><div class="ttl">已习功法</div>';
+  Object.keys(S.arts).forEach(k=>h+='<div class="item-row"><div><b class="gold">《'+ITEMS[k].n+'》</b></div>'+
+    '<button class="btn sm '+(S.art===k?'ghost':'jade')+'" style="width:auto;padding:8px 14px" onclick="setArt(\''+k+'\')">'+(S.art===k?'主修中':'改修')+'</button></div>');
+  h+='</div>';
+
+  const shenKeys=Object.keys(S.shen||{});
+  h+='<div class="card"><div class="ttl">神通（'+(shenKeys.length?('临阵可施 '+shenKeys.length+' 道'):'尚未习得')+'）</div>';
+  if(!shenKeys.length)h+='<div class="muted">可往坊市「神通」购置，临阵耗灵气施展。</div>';
+  else shenKeys.forEach(k=>{const it=ITEMS[k],f=SHEN[k];const elTxt=f.el==='tong'?'同气':(f.el?ELN[f.el]+'系':'通用');
+    h+='<div class="item-row"><div><b class="pur">《'+it.n+'》</b><span class="muted"> '+elTxt+(f.once?' · 每场限一次':'')+'</span></div>'+
+      '<span class="muted" style="font-size:11px">'+effHint(f.eff||'')+'　耗'+elTxt+f.qi+'灵气</span></div>';});
+  h+='</div>';
+
+  const dunKeys=Object.keys(S.dun||{});
+  h+='<div class="card"><div class="ttl">遁术（遁速加成 '+(playerDun()-S.lv)+'）</div>';
+  if(!dunKeys.length)h+='<div class="muted">可往坊市「遁术」购置，提升遁速利于先手与遁走。</div>';
+  else dunKeys.forEach(k=>{const it=ITEMS[k];
+    h+='<div class="item-row"><div><b class="pur">'+it.n+'</b></div>'+
+      '<span class="muted" style="font-size:11px">'+(DUN[k].escape?'舍命遁走（每场一次）':'遁速 +'+(DUN[k].sp||0))+'</span></div>';});
+  h+='</div>';
+
+  h+='<div class="card"><div class="ttl">存档</div>'+
+    '<div class="grid2">'+
+    '<button class="btn sm ghost" onclick="exportSave()">导出</button>'+
+    '<button class="btn sm ghost" onclick="importSave()">导入</button>'+
+    '<button class="btn sm ghost" style="grid-column:span 2" onclick="confirmReset()">重开一世（清空全部）</button>'+
+    '</div>'+
+    '<div class="muted" style="margin-top:8px">进度自动保存在本机浏览器中，换设备请用导出／导入。</div></div>';
+
+  h+='<div class="card"><div class="ttl">凡例</div>'+
+    '<div class="muted" style="line-height:1.95">'+
+    '· 一月一推，寿元随岁月流逝，耗尽则身死，转世重修，道行化传承。<br>'+
+    '· 境界：练气→筑基→金丹→元婴→化神→炼虚→合体→大乘→渡劫→真仙，共十境。<br>'+
+    '· 灵根与资质决定进境快慢，功法与福地可再加速。<br>'+
+    '· 大境界突破凶险，宜备丹药；心魔越重，越易功败垂成。<br>'+
+    '· 延寿丹、太虚还魂丹可续命，丹方在坊市。<br>'+
+    '· 坊市「神通」「遁术」可购战斗神通与遁术：神通临阵耗五行/同气灵气施展，遁术增遁速以抢先手、利遁走；血遁可舍 20% 气血必遁。<br>'+
+    '· 临阵点「储物·丹药」可用培元丹回血、凝气丹聚气；储物栏亦可直接使用丹药。<br><br>'+
+    '<b class="gold">宁州风物</b><br>'+
+    '· 五城：武陵城（倪家·白帝楼）、逸风城（宁王府）、云汐城（公孙家·风雨楼）、天星城（林家·星宫）、广陵城（百里家·龙族）。<br>'+
+    '· 五派：竹山宗（木·方壶山）、金虹剑派（金·连石山）、星河剑派（水·风雷谷，只收女修）、离火门（火·沃焦山）、化尘教（土·正阳山）。<br>'+
+    '· 邪魔外道：沂山派、禾山道（宁州）；血剑宫（雍州）、古神教（衡州）、天魔道（幽州）。<br>'+
+    '· 一仙道人按月巡游五城客栈：正月武陵、三月逸风、六月云汐、八月天星、冬月广陵。三次算命之后，他会给你一块破碎玉佩。<br>'+
+    '· 正月至二月城中办仙师集会；宁州大事按年推演：七年巫山魔影、三十年灿字牌、七十八年魔门入侵、百二十年涵虚仙府、五百年宁州古迹、七百五十年剑通碧落。'+
+    '</div></div>';
+  return h;
+}
+
+/* ---- 提示 / 弹窗 ---- */
+function toast(t,c){
+  const box=$('#toast'),d=document.createElement('div');
+  d.className='tst '+(c||'');d.textContent=t;box.appendChild(d);
+  if(box.children.length>4)box.firstChild.remove();
+  setTimeout(()=>{d.style.transition='opacity .45s,transform .45s';d.style.opacity=0;d.style.transform='translateY(-8px)';setTimeout(()=>d.remove(),450)},1600);
+}
+function showModal(title,html,btns){
+  closeModal();
+  const m=document.createElement('div');m.id='modal';
+  let bh='';(btns||[]).forEach(b=>bh+='<button class="btn '+(b.c||'')+'" onclick="'+b.f+'">'+b.t+'</button>');
+  m.innerHTML='<div class="box"><h3>'+title+'</h3><div class="body">'+html+'</div>'+bh+'</div>';
+  $('#app').appendChild(m);
+}
+function closeModal(){const m=$('#modal');if(m)m.remove()}
+function confirmReset(){
+  showModal('重开一世','<p class="muted">将清空当前进度（含传承），回到开局。</p>',
+    [{t:'确认重开',f:'hardReset()',c:'ghost'},{t:'再想想',f:'closeModal()'}]);
+}
+function hardReset(){
+  try{localStorage.removeItem(SAVEKEY)}catch(e){}
+  S=newState();closeModal();
+  $('#screen-main').classList.add('hidden');
+  $('#screen-create').classList.remove('hidden');
+  $('#in-name').value='';C.diff='normal';C.aotian=false;C.soul=false;C.birth='farm';C.phys='mortal';C.child='free';C.youth='idle';C.cnt=1;C.main='jin';renderCreate();
+}
+function exportSave(){
+  showModal('导出存档','<p class="muted">复制下方文本，可在其他设备导入续档。</p>'+
+    '<textarea id="exp-t" style="width:100%;height:130px;background:rgba(0,0,0,.4);color:#a9a89f;border:1px solid var(--line);border-radius:10px;padding:10px;font-size:11px;font-family:monospace;outline:none">'+JSON.stringify(S)+'</textarea>',
+    [{t:'复制文本',f:'copySave()'},{t:'关闭',f:'closeModal()',c:'ghost'}]);
+}
+function copySave(){
+  const t=$('#exp-t');t.select();t.setSelectionRange(0,999999);
+  try{document.execCommand('copy');toast('已复制','good')}catch(e){toast('请长按手动复制','bad')}
+}
+function importSave(){
+  showModal('导入存档','<p class="muted">粘贴此前导出的存档文本。</p>'+
+    '<textarea id="imp-t" placeholder="在此粘贴" style="width:100%;height:130px;background:rgba(0,0,0,.4);color:#a9a89f;border:1px solid var(--line);border-radius:10px;padding:10px;font-size:11px;font-family:monospace;outline:none"></textarea>',
+    [{t:'导入并续档',f:'doImport()'},{t:'关闭',f:'closeModal()',c:'ghost'}]);
+}
+function doImport(){
+  try{
+    const o=JSON.parse($('#imp-t').value);
+    S=Object.assign(newState(),o);
+    S.shen=S.shen||{};S.dun=S.dun||{};
+    closeModal();save();
+    $('#screen-create').classList.add('hidden');
+    $('#screen-main').classList.remove('hidden');
+    paint();toast('导入成功','good');
+  }catch(e){toast('存档文本有误','bad')}
+}
+
+/* ---- 启动 ---- */
+(function init(){
+  const sv=load();
+  if(sv&&sv.name&&sv.lv!==undefined&&!sv.dead){
+    S=Object.assign(newState(),sv);
+    S.shen=S.shen||{};S.dun=S.dun||{};
+    $('#screen-create').classList.add('hidden');
+    $('#screen-main').classList.remove('hidden');
+    paint();
+  }else{
+    S=newState();renderCreate();
+  }
+  $('#in-name').addEventListener('input',renderCreate);
+})();
+</script>
+</body>
+</html>
