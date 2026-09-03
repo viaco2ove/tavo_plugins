@@ -227,6 +227,79 @@ def character_update_avatar(http_url, token, cid, name, description, first_mes, 
     print("  [char]    原地更新 avatar id=%s name=%s avatar=%s" % (cid, name, avatar_ref))
     return int(rr.get("id") or cid)
 
+def character_replace_avatar(http_url, token, chat_id, old_cid, name, description, first_mes,
+                             personality, avatar_ref, dry=False, extensions=None):
+    """头像更新走 import 新卡 → chat 重绑 → 删旧卡，保证 avatar 真正落库。
+
+    背景：tavo_character_update 写 avatar 字段被服务端静默忽略（返回 ok 但 get 回
+    avatar 仍为 null，8/14 avatar_status.md 实测）。唯一能落库角色头像的 MCP 路径是
+    tavo_character_import_card 整卡导入（带顶层 avatar 字段）。
+
+    流程：
+      1. character_import 建新卡（带 avatar_ref + extensions）→ new_cid
+      2. chat_get 读当前 chat 的 characterIds，把 old_cid 原位替换为 new_cid → chat_update
+      3. character_delete 删除旧卡（先重绑再删，避免旧卡被删时级联把角色移出群聊）
+    返回新 character id（new_cid）；失败时抛异常，不吞。
+    """
+    if dry:
+        print("  [char]    dry import新卡删旧卡 name=%s avatar=%s" % (name, avatar_ref or "无"))
+        return old_cid
+
+    # step 1: 导入新卡（带 avatar）
+    new_cid = character_import(http_url, token, name, description or "",
+                               first_mes or "", personality or "NPC",
+                               "npc", avatar_ref, dry=False, extensions=extensions)
+    if not new_cid:
+        raise RuntimeError("替换头像失败：character_import 未返回新 id (name=%s)" % name)
+    print("  [char]    import 新卡 id=%s name=%s avatar=%s" % (new_cid, name, avatar_ref or "无"))
+
+    # step 2: chat 重绑（把旧 id 替换为新 id）
+    if chat_id and str(chat_id).strip().lstrip("-").isdigit() and int(chat_id) > 0:
+        try:
+            cur = chat_current(http_url, token, int(chat_id))
+            # 兼容返回结构：{data:{...}} / {chat:{...}} / 直接 dict
+            chat_node = cur
+            if isinstance(cur, dict):
+                for key in ("data", "chat"):
+                    if key in cur and isinstance(cur[key], dict):
+                        chat_node = cur[key]
+                        break
+            member_ids = []
+            if isinstance(chat_node, dict):
+                member_ids = chat_node.get("characterIds") or []
+            replaced = False
+            new_list = []
+            for m in member_ids:
+                mid = m.get("id") if isinstance(m, dict) else m
+                try:
+                    mid = int(mid)
+                except (TypeError, ValueError):
+                    continue
+                if mid == int(old_cid):
+                    new_list.append(int(new_cid))
+                    replaced = True
+                else:
+                    new_list.append(mid)
+            if replaced:
+                chat_update(http_url, token, int(chat_id), characterIds=new_list)
+                print("  [char]    chat %s 成员已重绑 %s -> %s" % (chat_id, old_cid, new_cid))
+            else:
+                print("  [char]    chat %s 成员未找到旧 id=%s（无需重绑）" % (chat_id, old_cid))
+        except Exception as e:
+            # 重绑失败必须中止（新卡已建，旧卡未删，交给用户处理），
+            # 而不是继续删旧卡导致角色从群聊消失。
+            raise RuntimeError("替换头像失败：chat 重绑异常 (name=%s, error=%s)" % (name, e))
+
+    # step 3: 删除旧卡（此时新卡已入群，删旧卡不再影响群聊成员）
+    try:
+        rpc(http_url, token, "tavo_character_delete", {"id": int(old_cid)})
+        print("  [char]    删除旧卡 id=%s name=%s" % (old_cid, name))
+    except Exception as e:
+        print("  [char]    删除旧卡失败（保留旧卡，不影响新卡）: %s" % e)
+
+    return int(new_cid)
+
+
 def persona_create_minimal(http_url, token, name, description, dry=False, chat_id=None):
     """创建 persona（不传 avatar），用于在没有 chat_id 时拿到 persona_id 给 chat_create 用。
 
@@ -631,17 +704,17 @@ def sync_characters(http_url, token, config, story_dir, dry, force, chat_id_for_
                 except Exception:
                     continue
         if existing:
-            # 即使角色已存在，如果本地有新头像且 --force 模式，原地更新 avatar 字段
-            # （改用 character_update_avatar，不再 delete+reimport，避免 id 漂移与跨群聊级联删成员）。
+            # 即使角色已存在，如果本地有新头像且 --force 模式，用 import 新卡 → 重绑 → 删旧卡
+            # 更新头像（tavo_character_update 写 avatar 字段被服务端静默忽略，import 是唯一落库路径）。
             # skip_avatar=True（第一阶段，群聊未建、chat_id_for_files 无有效值）时不更新头像，
             # 统一延后到 upload_character_avatars（sync_chat 拿到 chat_id 后）补传，避免把空 chatId 传给 tavo_file_save。
             if force and av_local and os.path.isfile(av_local) and not skip_avatar:
                 av_ref = upload_avatar(http_url, token, chat_id_for_files, name, av_local, dry=dry)
                 if not dry:
-                    cid = character_update_avatar(http_url, token, existing, name,
-                                                  c.get("description", ""), c.get("first_mes", ""),
-                                                  c.get("personality", "NPC"), av_ref, dry=dry,
-                                                  extensions=chat_ext)
+                    cid = character_replace_avatar(http_url, token, chat_id_for_files, existing, name,
+                                                   c.get("description", ""), c.get("first_mes", ""),
+                                                   c.get("personality", "NPC"), av_ref, dry=dry,
+                                                   extensions=chat_ext)
                     print("  [char]    更新头像 id=%s name=%s avatar=%s" % (cid, name, av_ref or "无"))
                     results[name] = cid
                 else:
@@ -723,19 +796,21 @@ def upload_character_avatars(http_url, token, chat_id, char_ids, story_dir, conf
         av_ref = upload_avatar(http_url, token, chat_id, name, av_local, dry=dry)
         if av_ref:
             if not dry:
-                # 原地更新 avatar（不删除、不重导，id 不变）
+                # avatar 唯一落库路径 = import 新卡 → chat 重绑 → 删旧卡
+                # （tavo_character_update 写 avatar 字段被服务端静默忽略）
                 try:
-                    # 带上群聊归属标记（extensions.merge 语义，不会覆盖已有键）
                     chat_tag = (config.get("chat_name") or "").strip() or (config.get("story_name") or "").strip()
                     chat_ext = {"tavo_chat": chat_tag} if chat_tag else None
-                    character_update_avatar(http_url, token, cid, name,
-                                            c.get("description", ""), c.get("first_mes", ""),
-                                            c.get("personality", "NPC"), av_ref, dry=dry,
-                                            extensions=chat_ext)
-                    # id 不变，无需更新 char_ids
-                    print("  [char]    头像已更新 id=%s name=%s avatar=%s" % (cid, name, av_ref))
+                    new_cid = character_replace_avatar(
+                        http_url, token, chat_id, cid, name,
+                        c.get("description", ""), c.get("first_mes", ""),
+                        c.get("personality", "NPC"), av_ref, dry=dry,
+                        extensions=chat_ext)
+                    # 角色 id 已替换，更新映射供后续 chat 重绑/立绘/音色使用
+                    char_ids[name] = new_cid
+                    print("  [char]    头像已替换 id %s -> %s name=%s avatar=%s" % (cid, new_cid, name, av_ref))
                 except Exception as e:
-                    print("  [char]    更新头像失败: %s" % e)
+                    print("  [char]    替换头像失败(保留旧卡): %s" % e)
             else:
                 print("  [char avatar] %s -> %s (dry)" % (name, av_ref))
 
@@ -1559,19 +1634,38 @@ def main():
     if getattr(args, 'duplicate_delete', False):
         print('\n=== duplicate-delete: 删除同名角色和世界书 ===')
         # 删除角色
+        # 判定升级为 name + extensions.tavo_chat 双匹配：search 结果不含 extensions，
+        # 需 get 详情读归属标记；归属不一致的（其它群聊的同名角色）不得删，防止误删。
+        # 无 chat_tag 时退化为仅按 name 匹配（旧行为）。
+        dd_chat_tag = (config.get("chat_name") or "").strip() or (config.get("story_name") or "").strip()
         for c in config.get('characters', []):
             name = c.get('name')
             if not name: continue
             try:
                 result = search_character(http_url, token, name)
                 for item in (result or []):
-                    if item.get('name') == name:
-                        cid = item.get('id')
+                    if item.get('name') != name:
+                        continue
+                    cid = item.get('id')
+                    if not cid:
+                        continue
+                    if dd_chat_tag:
+                        # 双匹配：归属一致才删，归属不一致/读不到归属都保留
                         try:
-                            rpc(http_url, token, 'tavo_character_delete', {'id': cid})
-                            print('  [char] Deleted id=%s name=%s' % (cid, name))
+                            detail = character_get(http_url, token, cid)
+                            ext = detail.get("extensions") or {}
+                            if ext.get("tavo_chat") != dd_chat_tag:
+                                print('  [char] 跳过 id=%s name=%s (tavo_chat=%r != %r, 属其他群聊)' % (
+                                    cid, name, ext.get("tavo_chat"), dd_chat_tag))
+                                continue
                         except Exception as e:
-                            print('  [char] Delete failed: ' + str(e))
+                            print('  [char] 跳过 id=%s name=%s (归属读取失败: %s)' % (cid, name, e))
+                            continue
+                    try:
+                        rpc(http_url, token, 'tavo_character_delete', {'id': cid})
+                        print('  [char] Deleted id=%s name=%s' % (cid, name))
+                    except Exception as e:
+                        print('  [char] Delete failed: ' + str(e))
             except Exception:
                 pass
         # 删除 persona（搜索更多结果，确保删除所有重复）
