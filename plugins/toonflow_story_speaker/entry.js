@@ -369,6 +369,7 @@ async function tf_speaker(type, data) {
   }
 
   if('opening' == type ){
+    console.log('[speaker][tf_speaker][opening][chat:opened] opening 开始 ');
     var role = (data && data.role) || '旁白';
     var text = (data && data.text) || '';
     if (!text) {
@@ -419,6 +420,7 @@ async function tf_speaker(type, data) {
       console.log('[speaker][tf_speaker][opening] speakerAppendOpts charEntry: ' + charEntry.name);
     }
     try {
+      console.log('[speaker][tf_speaker][opening] 已写入开场白中' );
       await tavo.message.append(speakerAppendOpts);
       console.log('[speaker][tf_speaker][opening] 已写入开场白: ' + speakerAppendOpts.characterId + ":" + role + ':' + text.slice(0, 40));
       voice_gen_play(charEntry, text);
