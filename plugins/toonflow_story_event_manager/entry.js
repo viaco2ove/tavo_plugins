@@ -1956,10 +1956,26 @@ function restoreStaticData() {
   }
 }
 function initProgress(chapters) {
-  let prog = defaultProgress();
+  // 【关键修复】进度保留优先：正常继聊/重开 chat（resumption_start）时，tp_progress 已在 chat scope
+  // 存有已演进的进度；此前这里用 defaultProgress() 无条件全新覆盖，导致进度被整体重置回第一章开头
+  // （startedAt 跳变、runtimeOutline/completedStages 归零），剧情与进度脱节后死循环不触发章节切换。
+  // 现在只有「完全没有实质进度」时才全新初始化；否则沿用既有进度并按其 currentChapterIndex 对齐 outline。
+  let prog = getProgress();
+  const _roHasStages = prog.runtimeOutline && prog.runtimeOutline.phases
+    && prog.runtimeOutline.phases.some(p => p && p.stages && p.stages.length);
+  const _hasMarkers = (Array.isArray(prog.completedStages) && prog.completedStages.length > 0)
+    || (Array.isArray(prog.completedPhases) && prog.completedPhases.length > 0)
+    || !!prog.currentPhaseId;
+  if (!_roHasStages && !_hasMarkers) {
+    prog = defaultProgress();
+  }
   if (chapters.length) {
-    const ch0 = chapters[0];
+    // 对齐其它读取点：以 progress.currentChapterIndex 为准取章节，避免用第一章 outline 覆盖第二章进度
+    const idx = (typeof prog.currentChapterIndex === 'number' ? prog.currentChapterIndex : 0);
+    const ch0 = chapters[idx] || chapters[0];
+    prog.currentChapterIndex = chapters.indexOf(ch0) >= 0 ? chapters.indexOf(ch0) : idx;
     prog.runtimeOutline = resolveChapterRuntimeOutline(ch0, ch0.content || '');
+    prog.chaptersKey = chapters.length + ':' + prog.currentChapterIndex;
     // 指针：保留已有（如果在新 outline 里找得到），否则 fallback 到首个未完成 phase
     const phases0 = prog.runtimeOutline.phases || [];
     let keep0 = prog.currentPhaseId ? phases0.find(p => p.id === prog.currentPhaseId) : null;

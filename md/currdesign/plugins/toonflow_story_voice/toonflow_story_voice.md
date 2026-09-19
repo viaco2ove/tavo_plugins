@@ -18,3 +18,5 @@ story_sync_voice.py 同步音色文件的角色绑定
 xiaomimimo: 的模型固定为：mimo-v2.5-tts-voiceclone 和mimo-v2.5-tts
 aliyun: 阿里云固定为：voice-enrollment->cosyvoice-v3-plus
 tavo: 就是tavo 自己怎么配置的就是什么。约等于不用toonflow_story_voice插件。而是tavo 官方的语音生成。
+
+# 音色文件规格要求
