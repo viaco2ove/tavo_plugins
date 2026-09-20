@@ -1038,6 +1038,7 @@ async function buildOrchestrationPrompt(userInput) {
   const intentCtx = '';  // 简化：意图识别已由 memory_manager + mcs 的 classifyLLM 完成
 
   // 对齐 fixDB.prompts.ts: _PROMPT_STORY_ORCHESTRATOR_COMPACT
+  // 完整复制官方（toonflow-game-app/build/app.js:225866-226044），含 turn_state/expected_role 语义
 const _PROMPT_ORCHESTRATOR_SYSTEM = `你是剧情编排师（极简版）。
 
 只做一件事：决定本轮由谁发言，以及剧情推进一小步。
@@ -1062,7 +1063,109 @@ const _PROMPT_ORCHESTRATOR_SYSTEM = `你是剧情编排师（极简版）。
 ## 关键规则：关于用户输入 "."
 - 用户输入 "." 是一个明确的**跳过指令**。
 - 它代表用户不想进行当前互动，希望剧情自动推进。
-- 当检测到用户输入为 "." 时，应认为当前需要用户回应的阶段已经**被用户主动跳过并完成**。`;
+- 当检测到用户输入为 "." 时，应认为当前需要用户回应的阶段已经**被用户主动跳过并完成**。
+
+## 输入参数说明：
+### \`roles\` 角色动态参数卡列表数组(简略版)：
+  - 每个角色对象包含角色名和角色类型，如：
+    - \`name\`：角色名
+    - \`role_type\`：角色类型，如 \`npc\` / \`narrator\` / \`player\` / \`system\` /\`general\`
+    也就是 \`一般角色\`/\`旁白\`/\`用户\`/\`系统角色\`/\`万能角色\`
+    编排权重: 一般角色[0.7]>万能角色[0.6]>系统角色[0.5]>旁白[0.1]
+    根据事件（current_event）和已生成台词（recent_dialogue）进行编排。权重是在没有确定角色时的优先编排度而已。
+    如果用户说了:"@{角色名} xxx" 就应该编排这个角色说话。
+    万能角色：例如@宿管阿姨 这个角色在角色里列表没有，那么就编排某女子 去饰演宿管阿姨
+    万能角色不能代替一般角色和用户说话！！！例如角色列表里有"校长" 万能角色就不要饰演"校长"！！！
+### 已生成台词 \`recent_dialogue\`:
+  - recent_dialogue 数组 按前后顺序记录了角色说了什么台词
+  - 如果最后一句是问用户事情如"还请你告知姓名、性别与年龄" 那么就应该轮到用户发言
+  - 如果最后一句是用户发言，那么就应该安排其他角色发言
+  如果用户说了:"@{角色名} xxx" 就应该编排这个角色说话。
+  在继续推进剧情时需要先回应用户的发言，而不是直接忽略！！！
+  例如用户说了："@某女子 xxx" 必须编排某女子出来回应用户再继续推进事件！！！
+  然后就继续按照事件和台词等进行编排！而不是又安排用户说话！！！
+    - 时间流转：用户发言: "@旁白:睡了三天才醒来,早上,阴天" 那就是编排旁白 描述时间流转
+###\`current_event\` 表示本轮要推进的事件。
+- \`status\`：事件状态
+  - \`active\`：正在推进
+  - \`waiting_input\`：等待用户输入
+  - \`completed\`：事件已完成
+- \`summary\`：当前事件摘要，也是本轮主要依据
+  - 若格式为 \`@角色名：xxx\`，表示本轮应由该角色发言
+  - 例如 \`@旁白：xxx\` → \`speaker\` 必须是 \`旁白\`
+  - 例如 \`@萧炎：xxx\` → \`speaker\` 必须是 \`萧炎\`
+  - \`@角色名\` 的优先级高于其他判断
+- \`facts\`：当前事件关键信息
+  - 若为空，可根据 \`summary\` 补 1~2 条事实
+  - 只写事实，不写剧情正文
+- \`memory_summary\` / \`memory_facts\`：当前事件相关记忆信息
+规则：
+- \`summary\` 中有 \`@角色名：xxx\` 时，不要更换发言人
+- \`speaker\` 必须等于 \`@角色名\`
+- \`role_type\` 必须匹配该角色在角色列表中的类型
+- \`summary\` 为空时，必须补 \`event_summary\` 和 \`event_facts\`
+---
+### turn_state：本轮发言状态
+\`turn_state\` 表示系统对本轮发言的预期。
+- \`can_player_speak\`：用户当前是否可以发言
+  - \`true\`：可以安排用户发言
+  - \`false\`：不要安排用户发言
+- \`expected_role_type\`：预期发言角色类型
+  - 如 \`narrator\` / \`npc\` / \`player\`
+- \`expected_role\`：预期发言角色
+  - 如 \`旁白\`
+- \`last_speaker_role_type\`：上一轮发言角色类型
+- \`last_speaker\`：上一轮发言角色
+规则：
+- 若 \`can_player_speak = false\`：
+  - 不要安排 \`用户\`
+  - \`role_type\` 不要输出 \`player\`
+  - \`await_user\` 通常为 \`false\`
+- 若 \`expected_role\` 存在，可优先参考
+- 若 \`current_event.summary\` 有 \`@角色名：xxx\`，则以 \`@角色名\` 为最高优先级
+- \`last_speaker\` 只表示上一轮是谁，不代表本轮必须换人
+
+## 规则：
+1. speaker 必须来自当前角色列表，并符合 allowed_speakers
+2. 若用户未发言，先安排一轮非用户推进
+3. motive 用一句短话（10~25字）说明本轮要做什么
+4. 不输出解释或多余内容
+5. 编排用户要返回"role":"用户" 而不是用户的具体名称
+6."@旁白：xxx "。就是代表编排的角色是旁白的意思。"@角色名：xxx "。就是代表编排的该角色说话的意思
+
+## 事件：
+- 若 event_summary 为空 → 必须补一句 summary + 1~2条 facts
+- summary：事件摘要，如果是@角色名：xxx, 那么就代表这个角色要说这句话
+- facts：只保留关键信息
+
+## 状态：
+- event_adjust_mode: keep / update / waiting_input / completed
+- event_status: active / waiting_input / completed
+
+## 记忆：
+触发记忆管理器
+当用户获得物品，获得经验，获得金钱和一些重大信息变化时触发记忆管理器
+其他角色有了信息变化也要触发记忆管理器
+- 有新信息或变化 → trigger_memory_agent=true
+- 否则 false
+- 用户信息发生变化，等级，物品，技能 等→ trigger_memory_agent=true
+- 用户输入了"@记忆管理 xxx"  → trigger_memory_agent=true
+- 旁白输入了"@记忆管理 xxx"  → trigger_memory_agent=true
+
+## 输出（JSON）：
+直接输出 JSON，不要任何前缀注释和后缀：
+{
+  "speaker": "旁白",
+  "role_type": "narrator",
+  "motive": "引导用户完成身份绑定流程",
+  "await_user": false,
+  "trigger_memory_agent": false,
+  "event_adjust_mode": "keep",
+  "event_status": "waiting_input",
+  "event_summary": "@旁白：请输入你的姓名，性别，年龄进行绑定",
+  "event_facts": ["当前处于斗破苍穹乌坦城时间线的空间戒指绑定环节"],
+  "time_advance": null
+}`;
 
 const promptParts = [
     `返回严格 JSON（不要前缀注释、不要代码块、不要 markdown 围栏）。`,
@@ -1084,7 +1187,7 @@ const promptParts = [
   ].filter(Boolean);
 
   const outputSchema = `直接输出 JSON，不要任何其他文字：
-{"speaker":"角色名","role_type":"npc/narrator/general","motive":"一句话动机","await_user":false,"trigger_memory_agent":false,"event_adjust_mode":"keep","event_status":"active","event_summary":"当前事件一句话","event_facts":["关键事实1","关键事实2"]}`;
+{"speaker":"角色名","role_type":"npc/narrator/general/player","motive":"一句话动机","await_user":false,"trigger_memory_agent":false,"event_adjust_mode":"keep","event_status":"active","event_summary":"当前事件一句话","event_facts":["关键事实1","关键事实2"],"time_advance":null}`;
   console.log('[multi-character_stage][buildOrchestrationPrompt ]promptParts last');
   // 对齐 toonflow-game-app buildOrchestratorUserPrompt：user prompt = JSON.stringify(snapshot) + 世界知识
   const user = JSON.stringify(snapshotJson, null, 2) + (worldKb ? '\n\n【世界知识】\n' + worldKb : '');
@@ -1713,71 +1816,66 @@ function game_orchestration(userText,intentResult){
         console.warn('[multi-character_stage][' + ts() + '] 🎭 [mcs] 阶段一解析失败 fallback: speaker=' + speaker, e.message);
       }
 
-      // 3. 阶段二：发言器 → 台词正文（传入 evDigest + nextEvInfo 对齐官方入参）
-      const speakerPrompt = await buildSpeakerPrompt(speaker, roleType, motive, eventSummary, evDigest, nextEvInfo);
-      console.log('[multi-character_stage][' + ts() + '] 🎭 [mcs] 阶段二 prompt len=' + speakerPrompt.length);
-
-      const speakerLLMMode = (window.tf_llm && window.tf_llm.callDirect) ? '接管' : 'tavo原生';
-      console.warn('[multi-character_stage][' + ts() + '] 🎭 [mcs] 阶段二 LLM 路径: ' + speakerLLMMode
-        + ' | tf_llm=' + (typeof window.tf_llm) + ' | callDirect=' + (typeof (window.tf_llm && window.tf_llm.callDirect)));
-      // speakerPrompt 是 {system, user} 对象 → 转成消息数组
-      const speakerMessages = (speakerPrompt && typeof speakerPrompt === 'object' && speakerPrompt.system)
-        ? [{ role: 'system', content: speakerPrompt.system }, { role: 'user', content: speakerPrompt.user || '' }]
-        : [{ role: 'user', content: String(speakerPrompt || '') }];
-      console.log('[multi-character_stage][' + ts() + '] 🎭 [mcs] 阶段二 messages 模式: ' + (speakerMessages.length > 1 ? 'system+user' : 'user-only'));
-      let speakerRaw;
-      try {
-        speakerRaw = speakerLLMMode === '接管'
-          ? await window.tf_llm.callDirect(speakerMessages, { maxCompletionTokens: 1500 })
-          : await tavo.generate(speakerMessages.map(m => (m.role === 'system' ? '[系统]\n' : '') + m.content).join('\n\n'), { context: false, settings: { maxCompletionTokens: 1500 } });
-        console.log('[multi-character_stage][' + ts() + '] 🎭 [mcs] 阶段二结果 len=' + (speakerRaw||'').length + ' 首200: ' + JSON.stringify((speakerRaw||'').slice(0,200)));
-      } catch(e) {
-        console.error('[multi-character_stage][' + ts() + '] ❌ [mcs] 阶段二 LLM 异常: ' + e.message + ' | name=' + e.name + ' | stack=' + (e.stack||'').slice(0,500));
-        throw e;
-      }
-      const rawContent = (speakerRaw || '').trim();
-      console.log('[multi-character_stage][' + ts() + '] [mcs] 阶段二原始: ' + rawContent.slice(0, 300));
-      const { thinking, body } = extractThinking(rawContent);
-      const content = body.replace(/^["']|["']$/g, '').trim();
-      console.log('[multi-character_stage][' + ts() + '] [mcs] 阶段二台词: ' + JSON.stringify(content.slice(0, 80)));
-
-      console.log('[multi-character_stage][' + ts() + '] 🎭 [mcs] speaker("' + speaker + '") ');
-      // 4. 查角色 id 并 append
-      const charId = await findCharacterId(speaker);
-      if(speaker !="player" && speaker !="用户"){
-
-        console.log('[multi-character_stage][tf_last_speaker][' + ts() + '] 🎭 [mcs] findCharacterId("' + speaker + '") = ' + charId);
-
-        tavo.set('tf_last_speaker', { name: speaker, characterId: charId || '' }, 'chat');
-        console.log('[multi-character_stage][' + ts() + '] 🎭 [mcs] tf_last_speaker → ' + speaker + ' (id=' + charId + ')');
-
-        // 打印编排阶段（阶段一）的 thinking（如果模型有输出）
+      // 3. 用户发言节点：跳过发言器，推进事件进度，等待用户输入（对齐 toonflow-game-app buildAiNarrativePlanResult canYieldDirectly）
+      if (speaker === '用户' || speaker === 'player' || roleType === 'player') {
+        console.log('[multi-character_stage][' + ts() + '] ⏸ [mcs] 编排师返回用户发言节点，等待用户输入');
+        // 推进事件进度（用户发言阶段：等用户输入，下一轮再推进）
         try {
-          const orchThink = extractThinking(orchText);
-          if (orchThink.thinking) {
-            console.log('[multi-character_stage][' + ts() + '] 🎭 [mcs] 阶段一思考:\n' + orchThink.thinking.slice(0, 400));
+          if (window.tfStoryJudge && typeof window.tfStoryJudge.checkAndAdvance === 'function') {
+            let msgCount = 1;
+            try { msgCount = await tavo.message.count(); } catch(e) {}
+            window.tfStoryJudge.checkAndAdvance({ content: userText || '', messageCount: msgCount });
           }
-        } catch(e) {}
-
-
-        // 4b. append 角色消息
-        if (thinking) {
-          const esc = thinking.replace(/<\/div>/gi, '&lt;/div&gt;');
-          const block = '<div style="cursor:pointer;color:#888;font-size:0.85em" onclick="var d=this.getElementsByTagName(\'div\')[0];d.style.display=d.style.display==\'none\'?\'block\':\'none\'">💭 思考（点击展开）<div style="display:none;padding:8px 0;color:#666">' + esc + '</div></div>';
-          //await tavo.message.append({ role: 'assistant', characterId: charId || undefined, characterName: speaker, content: block + content, hidden: false });
-          window.tf_story_emit("append_message_steam",{ speaker: speaker, charId: charId || null, roleType: roleType, motive: motive, eventSummary: eventSummary, evDigest: evDigest, nextEvInfo: nextEvInfo, awaitUser: awaitUser, thinking: thinking });
-        } else {
-          //await tavo.message.append({ role: 'assistant', characterId: charId || undefined, characterName: speaker, content: content, hidden: false });
-          window.tf_story_emit("append_message_steam",{ speaker: speaker, charId: charId || null, roleType: roleType, motive: motive, eventSummary: eventSummary, evDigest: evDigest, nextEvInfo: nextEvInfo, awaitUser: awaitUser, thinking: thinking });
-        }
-
-
+        } catch (e) { console.warn('[multi-character_stage][' + ts() + '] 🎭 [mcs] 章节判定失败', e); }
+        // 通知 speaker 停下（auto_orchestrate 看 awaitUser=true 会 return，不再 emit auto_orchestrate）
+        window.tf_story_emit('append_message_steam', {
+          speaker: '用户', charId: null, roleType: 'player',
+          motive: motive || '请用户做决定',
+          eventSummary: eventSummary,
+          evDigest: evDigest, nextEvInfo: nextEvInfo,
+          awaitUser: true, thinking: '',
+        });
+        console.log('[multi-character_stage][' + ts() + '] 🎭 [mcs] │ ⚡ await_user=true trigger_memory_agent=' + triggerMemoryAgent);
+        console.log('[multi-character_stage][' + ts() + '] 🎭 [mcs] └─────────────────────────────────────');
+        console.log('[multi-character_stage]══════════════════════════════════════════════════');
+        // _mcsBusy 会在外层 finally 释放
+        return;
       }
+
+      // 4. 阶段二：交给 speaker 插件流式生成台词（不对齐 toonflow 双 stage；speaker 自己调 LLM 生成台词）
+      // 对齐 toonflow-game-app runStorySpeakerContent：speaker 接收编排结果，自行决定是否调 LLM
+      console.log('[multi-character_stage][' + ts() + '] 🎭 [mcs] 阶段二交给 speaker 插件流式生成台词 speaker=' + speaker);
+      const charId = await findCharacterId(speaker);
+      console.log('[multi-character_stage][tf_last_speaker][' + ts() + '] 🎭 [mcs] findCharacterId("' + speaker + '") = ' + charId);
+
+      tavo.set('tf_last_speaker', { name: speaker, characterId: charId || '' }, 'chat');
+      console.log('[multi-character_stage][' + ts() + '] 🎭 [mcs] tf_last_speaker → ' + speaker + ' (id=' + charId + ')');
+
+      // 编排阶段一的 thinking（如果模型有输出），speaker 用于折叠块展示
+      let orchThinking = '';
+      try {
+        const orchThink = extractThinking(orchText);
+        if (orchThink.thinking) {
+          orchThinking = orchThink.thinking;
+          console.log('[multi-character_stage][' + ts() + '] 🎭 [mcs] 阶段一思考:\n' + orchThinking.slice(0, 400));
+        }
+      } catch(e) {}
+
+      // 4b. append 角色消息（speaker 自己调 LLM 生成台词，不再 mcs 重复调）
+      window.tf_story_emit('append_message_steam', {
+        speaker: speaker,
+        charId: charId || null,
+        roleType: roleType,
+        motive: motive,
+        eventSummary: eventSummary,
+        evDigest: evDigest,
+        nextEvInfo: nextEvInfo,
+        awaitUser: awaitUser,
+        thinking: orchThinking,
+      });
 
       console.log('[multi-character_stage][' + ts() + '] ✅ [mcs] 角色消息已 append → speaker=' + speaker + ' charId=' + charId);
-      console.log('[multi-character_stage][' + ts() + '] 🎭 [mcs] │ 💬 台词: ' + JSON.stringify(content.slice(0, 80)));
       if (motive) console.log('[multi-character_stage][' + ts() + '] 🎭 [mcs] │ 💡 动机: ' + motive.slice(0,60));
-      if (thinking) console.log('[multi-character_stage][' + ts() + '] 🎭 [mcs] │ 🧠 思考: ' + thinking.slice(0,80));
       console.log('[multi-character_stage][' + ts() + '] 🎭 [mcs] │ ⚡ await_user=' + awaitUser + ' trigger_memory_agent=' + triggerMemoryAgent);
       console.log('[multi-character_stage][' + ts() + '] 🎭 [mcs] └─────────────────────────────────────');
       console.log('[multi-character_stage]══════════════════════════════════════════════════');
